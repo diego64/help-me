@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TECNICO
+  USUARIO
+}
+
+enum ChamadoStatus {
+  ABERTO
+  EM_ATENDIMENTO
+  ENCERRADO
+}
+
+enum Sector {
+  ADMINISTRACAO
+  ALMOXARIFADO
+  CALL_CENTER
+  COMERCIAL
+  DEPARTAMENTO_PESSOAL
+  FINANCEIRO
+  JURIDICO
+  LOGISTICA
+  MARKETING
+  QUALIDADE
+  RECURSOS_HUMANOS
+  TECNOLOGIA_INFORMACAO
+}
+
+model User {
+  id         String      @id @default(cuid())
+  firstName  String
+  lastName   String
+  email      String      @unique
+  password   String
+  role       Role
+  sector     Sector?     // Só para usuários
+  phone      String?
+  extension  String?
+  avatarUrl  String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  isActive   Boolean     @default(true) // Para desativar técnicos/usuarios
+
+  // Relacionamentos
+  chamadOs       Chamado[] @relation("UsuarioChamado")
+  tecnicoChamados Chamado[] @relation("TecnicoChamado")
+  tecnicoDisponibilidade TimeSlot[]
+}
+
+model TimeSlot {
+  id       String   @id @default(cuid())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String
+  start    String   // Ex: '08:00'
+  end      String   // Ex: '09:00'
+}
+
+model Service {
+  id         String    @id @default(cuid())
+  name       String    @unique
+  description String?
+  isActive   Boolean   @default(true) // Soft delete
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  chamados   ChamadoService[]
+}
+
+model Chamado {
+  id                  String      @id @default(cuid())
+  descricao           String       // informações adicionais obrigatórias
+  descricaoEncerramento String?    // descrição obrigatória ao encerrar
+  status              ChamadoStatus @default(ABERTO)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  // Relacionamentos
+  usuario             User        @relation("UsuarioChamado", fields: [usuarioId], references: [id])
+  usuarioId           String
+
+  tecnico             User        @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
+  tecnicoId           String
+
+  services            ChamadoService[]
+}
+
+model ChamadoService {
+  id         String   @id @default(cuid())
+  chamado    Chamado  @relation(fields: [chamadoId], references: [id])
+  chamadoId  String
+  service    Service  @relation(fields: [serviceId], references: [id])
+  serviceId  String
+}
