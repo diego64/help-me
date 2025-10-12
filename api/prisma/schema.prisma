@@ -48,6 +48,7 @@ model User {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   isActive   Boolean     @default(true) // Para desativar técnicos/usuarios
+  refreshToken String?   // Campo iniciará null quando o usuário fizer logout
 
   // Relacionamentos
   chamadOs       Chamado[] @relation("UsuarioChamado")
