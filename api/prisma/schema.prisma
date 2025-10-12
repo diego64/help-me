@@ -35,24 +35,24 @@ enum Sector {
 }
 
 model User {
-  id         String      @id @default(cuid())
-  firstName  String
-  lastName   String
-  email      String      @unique
-  password   String
-  role       Role
-  sector     Sector?     // Só para usuários
-  phone      String?
-  extension  String?
-  avatarUrl  String?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  isActive   Boolean     @default(true) // Para desativar técnicos/usuarios
-  refreshToken String?   // Campo iniciará null quando o usuário fizer logout
+  id                   String        @id @default(cuid())
+  firstName            String
+  lastName             String
+  email                String        @unique
+  password             String
+  role                 Role
+  sector               Sector?       // Só para usuários
+  phone                String?
+  extension            String?
+  avatarUrl            String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  isActive             Boolean       @default(true) // Para desativar técnicos/usuários
+  refreshToken         String?       // Campo iniciará null quando o usuário fizer logout
 
   // Relacionamentos
-  chamadOs       Chamado[] @relation("UsuarioChamado")
-  tecnicoChamados Chamado[] @relation("TecnicoChamado")
+  chamadOs             Chamado[]     @relation("UsuarioChamado")
+  tecnicoChamados      Chamado[]     @relation("TecnicoChamado")
   tecnicoDisponibilidade TimeSlot[]
 }
 
@@ -65,31 +65,31 @@ model TimeSlot {
 }
 
 model Service {
-  id         String    @id @default(cuid())
-  name       String    @unique
+  id          String             @id @default(cuid())
+  name        String             @unique
   description String?
-  isActive   Boolean   @default(true) // Soft delete
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  chamados   ChamadoService[]
+  isActive    Boolean            @default(true) // Soft delete
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  chamados    ChamadoService[]
 }
 
 model Chamado {
-  id                  String      @id @default(cuid())
-  descricao           String       // informações adicionais obrigatórias
-  descricaoEncerramento String?    // descrição obrigatória ao encerrar
-  status              ChamadoStatus @default(ABERTO)
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  id                    String          @id @default(cuid())
+  descricao             String          // Informações adicionais obrigatórias
+  descricaoEncerramento String?         // Descrição obrigatória ao encerrar
+  status                ChamadoStatus   @default(ABERTO)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
   // Relacionamentos
-  usuario             User        @relation("UsuarioChamado", fields: [usuarioId], references: [id])
-  usuarioId           String
+  usuario               User            @relation("UsuarioChamado", fields: [usuarioId], references: [id])
+  usuarioId             String
 
-  tecnico             User        @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
-  tecnicoId           String
+  tecnico               User            @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
+  tecnicoId             String
 
-  services            ChamadoService[]
+  services              ChamadoService[]
 }
 
 model ChamadoService {
