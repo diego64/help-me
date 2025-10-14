@@ -17,6 +17,7 @@ enum ChamadoStatus {
   ABERTO
   EM_ATENDIMENTO
   ENCERRADO
+  CANCELADO
 }
 
 enum Sector {
@@ -76,18 +77,19 @@ model Service {
 
 model Chamado {
   id                    String          @id @default(cuid())
-  descricao             String          // Informações adicionais obrigatórias
-  descricaoEncerramento String?         // Descrição obrigatória ao encerrar
+  osNumber              String          @unique   // Ex: INC0001, INC0002...
+  descricao             String
+  descricaoEncerramento String?
   status                ChamadoStatus   @default(ABERTO)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
+  closedIn              DateTime?
 
-  // Relacionamentos
   usuario               User            @relation("UsuarioChamado", fields: [usuarioId], references: [id])
   usuarioId             String
 
-  tecnico               User            @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
-  tecnicoId             String
+  tecnico               User?           @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
+  tecnicoId             String?
 
   services              ChamadoService[]
 }
