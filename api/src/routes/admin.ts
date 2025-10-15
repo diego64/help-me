@@ -25,7 +25,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Senha incorreta' });
     }
 
-    // Gera tokens
     const { accessToken, refreshToken } = generateTokenPair(user);
 
     res.json({ accessToken, refreshToken });
@@ -64,11 +63,7 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
-router.get(
-  '/me',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res) => {
+router.get('/me', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ error: 'Não autorizado.' });
@@ -101,13 +96,9 @@ router.get(
   }
 );
 
-router.post(
-  '/',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res) => {
-    const { firstName, lastName, email, password } = req.body;
-    if (!email || !password || !firstName || !lastName) {
+router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
+  const { firstName, lastName, email, password } = req.body;
+  if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
     }
 
@@ -124,7 +115,7 @@ router.post(
   }
 );
 
-// Listar todos os Admins
+// Listar todos os ADMINS
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
@@ -134,7 +125,7 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   }
 });
 
-// Editar Admin
+// Editar ADMIN
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { firstName, lastName, email, password } = req.body;
@@ -153,7 +144,7 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequ
   }
 });
 
-// Excluir Admin
+// Excluir ADMIN
 router.delete('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { id } = req.params;
 

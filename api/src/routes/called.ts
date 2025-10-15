@@ -41,96 +41,99 @@ async function gerarNumeroOSAtomic(): Promise<string> {
  * - Status padrão: ABERTO
  */
 router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
-  try {
-    const { descricao, services } = req.body;
+    try {
+      const { descricao, services } = req.body;
 
-    if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
-      return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
-    }
+      if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
+        return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
+      }
 
-    // Normaliza o campo "services"
-    const servicesArray: string[] =
-      services === undefined || services === null
-        ? []
-        : Array.isArray(services)
-        ? services.filter((s) => typeof s === 'string' && s.trim().length > 0)
-        : typeof services === 'string'
-        ? [services.trim()]
-        : [];
+      // Normaliza o campo "services"
+      const servicesArray: string[] =
+        services === undefined || services === null
+          ? []
+          : Array.isArray(services)
+          ? services.filter((s) => typeof s === 'string' && s.trim().length > 0)
+          : typeof services === 'string'
+          ? [services.trim()]
+          : [];
 
-    // Busca serviços ativos pelo nome
-    const foundServices = await prisma.service.findMany({
-      where: {
-        name: { in: servicesArray },
-        isActive: true,
-      },
-      select: { id: true, name: true },
-    });
-
-    const nomesEncontrados = foundServices.map((s) => s.name);
-    const nomesNaoEncontrados = servicesArray.filter((n) => !nomesEncontrados.includes(n));
-
-    if (nomesNaoEncontrados.length > 0) {
-      return res.status(400).json({
-        error: `Os seguintes serviços não foram encontrados ou estão inativos: ${nomesNaoEncontrados.join(', ')}`,
+      // Busca serviços ativos pelo nome
+      const foundServices = await prisma.service.findMany({
+        where: {
+          name: { in: servicesArray },
+          isActive: true,
+        },
+        select: { id: true, name: true },
       });
+
+      const nomesEncontrados = foundServices.map((s) => s.name);
+      const nomesNaoEncontrados = servicesArray.filter(
+        (n) => !nomesEncontrados.includes(n)
+      );
+
+      if (nomesNaoEncontrados.length > 0) {
+        return res.status(400).json({
+          error: `Os seguintes serviços não foram encontrados ou estão inativos: ${nomesNaoEncontrados.join(', ')}`,
+        });
+      }
+
+      const osNumber = await gerarNumeroOSAtomic();
+
+      const chamado = await prisma.chamado.create({
+        data: {
+          osNumber,
+          descricao: descricao.trim(),
+          usuarioId: req.user!.id,
+          status: 'ABERTO',
+          services: {
+            create: foundServices.map((service) => ({
+              service: { connect: { id: service.id } },
+            })),
+          },
+        },
+        include: {
+          usuario: {
+            select: {
+              id: true,
+              email: true,
+            },
+          },
+          services: {
+            include: {
+              service: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const response = {
+        id: chamado.id,
+        OS: chamado.osNumber,
+        descricao: chamado.descricao,
+        descricaoEncerramento: chamado.descricaoEncerramento,
+        status: chamado.status,
+        createdAt: chamado.createdAt,
+        updatedAt: chamado.updatedAt,
+        closedIn: chamado.closedIn,
+        tecnicoId: chamado.tecnicoId,
+        usuario: chamado.usuario,
+        servico: chamado.services.map((s) => ({
+          service: s.service,
+        })),
+      };
+
+      return res.status(201).json(response);
+    } catch (err: any) {
+      console.error('Erro ao criar chamado:', err);
+      return res.status(500).json({ error: 'Erro ao criar o chamado.' });
     }
-
-    const osNumber = await gerarNumeroOSAtomic();
-
-    // Criar um chamado
-    const chamado = await prisma.chamado.create({
-      data: {
-        osNumber,
-        descricao: descricao.trim(),
-        usuarioId: req.user!.id,
-        status: 'ABERTO',
-        services: {
-          create: foundServices.map((service) => ({
-            service: { connect: { id: service.id } },
-          })),
-        },
-      },
-      include: {
-        usuario: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        services: {
-          include: {
-            service: true,
-          },
-        },
-      },
-    });
-
-    const response = {
-      id: chamado.id,
-      osNumber: chamado.osNumber,
-      descricao: chamado.descricao,
-      descricaoEncerramento: chamado.descricaoEncerramento,
-      status: chamado.status,
-      createdAt: chamado.createdAt,
-      updatedAt: chamado.updatedAt,
-      closedIn: chamado.closedIn,
-      tecnicoId: chamado.tecnicoId,
-      usuario: chamado.usuario,
-      services: chamado.services.map((s) => ({
-        id: s.id,
-        service: s.service,
-      })),
-    };
-
-    return res.status(201).json(response);
-  } catch (err: any) {
-    console.error('Erro ao criar chamado:', err);
-    return res.status(500).json({ error: 'Erro ao criar o chamado.' });
   }
-});
+);
 
 /**
  * Atualizar status do chamado
@@ -273,7 +276,6 @@ router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), a
       where: { chamadoId: id },
     });
 
-    // Agora deleta o chamado
     await prisma.chamado.delete({
       where: { id },
     });

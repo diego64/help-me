@@ -12,22 +12,45 @@ const router = Router();
 const upload = multer({ dest: 'uploads/' });
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+    // Verifica se o usuário existe
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ error: 'Usuário não encontrado.' });
+    }
 
-  const validPassword = await bcrypt.compare(password, user.password);
-  if (!validPassword) return res.status(401).json({ error: 'Senha incorreta' });
+    // Verifica a senha
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Senha incorreta.' });
+    }
 
-  const { accessToken, refreshToken, expiresIn } = generateTokenPair(user);
+    // Gera tokens (access e refresh)
+    const { accessToken, refreshToken, expiresIn } = generateTokenPair(user);
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken },
-  });
+    // Atualiza o refreshToken no banco
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken },
+    });
 
-  res.json({ accessToken, refreshToken, expiresIn });
+    // Retorna o formato padronizado
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      accessToken,
+      refreshToken,
+      expiresIn,
+    });
+  } catch (err: any) {
+    console.error('Erro no login:', err);
+    return res.status(500).json({ error: 'Erro interno ao realizar login.' });
+  }
 });
 
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {

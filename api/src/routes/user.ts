@@ -23,35 +23,48 @@ interface UserInput {
 }
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body as { email: string; password: string };
+  try {
+    const { email, password } = req.body as { email: string; password: string };
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ error: 'Credenciais inválidas.' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Credenciais inválidas.' });
+    }
+
+    // Gera os tokens
+    const { accessToken, refreshToken, expiresIn } = generateTokenPair(user);
+
+    // Atualiza o refresh token no banco
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken },
+    });
+
+    return res.json({
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+      accessToken,
+      refreshToken,
+      expiresIn,
+    });
+  } catch (err: any) {
+    console.error('Erro no login:', err);
+    return res.status(500).json({ error: 'Erro interno ao realizar login.' });
   }
-
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return res.status(401).json({ error: 'Credenciais inválidas.' });
-
-  const passwordMatch = await bcrypt.compare(password, user.password);
-  if (!passwordMatch) return res.status(401).json({ error: 'Credenciais inválidas.' });
-
-  const tokens = generateTokenPair(user);
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: tokens.refreshToken },
-  });
-
-  res.json({
-    user: {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      role: user.role,
-    },
-    tokens,
-  });
 });
 
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
@@ -84,15 +97,11 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
-router.get(
-  '/me',
-  authMiddleware,
-  authorizeRoles('ADMIN', 'USUARIO'),
-  async (req: AuthRequest, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ error: 'Não autorizado.' });
-      }
+router.get('/me', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
 
       const user = await prisma.user.findUnique({
         where: { id: req.user.id },
@@ -121,11 +130,8 @@ router.get(
   }
 );
 
-//Criar conta de usuário (ADMIN)
-router.post('/',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req, res) => {
+// Criar conta de usuário (ADMIN)
+router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
     try {
       const { firstName, lastName, email, password, phone, extension, sector } = req.body as UserInput;
 
@@ -153,7 +159,7 @@ router.post('/',
   }
 );
 
-//Listar todos os usuários (ADMIN)
+// Listar todos os usuários (ADMIN)
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const usuarios = await prisma.user.findMany({
@@ -178,13 +184,9 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
 });
 
 // Buscar um usuário específico pelo e-mail (somente ADMIN)
-router.post(
-  '/find-by-email',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res) => {
-    try {
-      const { email } = req.body;
+router.post('/find-by-email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const { email } = req.body;
 
       if (!email || typeof email !== 'string') {
         return res.status(400).json({ error: 'E-mail é obrigatório e deve ser uma string.' });
@@ -219,7 +221,7 @@ router.post(
 );
 
 
-//Editar usuário (ADMIN ou próprio usuário)
+// Editar usuário (ADMIN ou próprio usuário)
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -237,7 +239,6 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
 });
 
 // Alterar senha (ADMIN ou próprio usuário)
-
 router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
