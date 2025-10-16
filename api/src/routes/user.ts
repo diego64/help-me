@@ -220,7 +220,6 @@ router.post('/find-by-email', authMiddleware, authorizeRoles('ADMIN'), async (re
   }
 );
 
-
 // Editar usuário (ADMIN ou próprio usuário)
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
