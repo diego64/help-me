@@ -145,20 +145,20 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
 router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, descricaoEncerramento } = req.body as {
+      status: 'EM_ATENDIMENTO' | 'ENCERRADO' | 'CANCELADO';
+      descricaoEncerramento?: string;
+    };
 
     const statusValidos = ['EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO'];
 
     if (!statusValidos.includes(status)) {
-      return res.status(400).json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
+      return res
+        .status(400)
+        .json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
     }
 
-    // Impede técnico de cancelar chamados
-    if (req.user!.role === 'TECNICO' && status === 'CANCELADO') {
-      return res.status(403).json({ error: 'Técnicos não podem cancelar chamados.' });
-    }
-
-    // Busca o chamado
+    // Busca o chamado atual
     const chamado = await prisma.chamado.findUnique({
       where: { id },
     });
@@ -167,15 +167,33 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       return res.status(404).json({ error: 'Chamado não encontrado.' });
     }
 
-    // Atualiza o chamado com base no papel do usuário
+    // Bloqueia alterações de chamados já encerrados por técnicos
+    if (chamado.status === 'ENCERRADO' && req.user!.role === 'TECNICO') {
+      return res
+        .status(403)
+        .json({ error: 'Chamados encerrados não podem ser alterados por técnicos.' });
+    }
+
+    // Impede técnico de cancelar chamados
+    if (req.user!.role === 'TECNICO' && status === 'CANCELADO') {
+      return res.status(403).json({ error: 'Técnicos não podem cancelar chamados.' });
+    }
+
     const dataToUpdate: any = {
       status,
       updatedAt: new Date(),
     };
 
+    // Se o chamado for encerrado, exige descrição
     if (status === 'ENCERRADO') {
+      if (!descricaoEncerramento || descricaoEncerramento.trim().length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'A descrição de encerramento é obrigatória ao encerrar um chamado.' });
+      }
+
       dataToUpdate.closedIn = new Date();
-      dataToUpdate.descricaoEncerramento = chamado.descricaoEncerramento;
+      dataToUpdate.descricaoEncerramento = descricaoEncerramento.trim();
     }
 
     // Se o técnico assumir o chamado
