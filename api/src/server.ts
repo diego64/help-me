@@ -2,24 +2,24 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
-import authRoutes from './routes/auth';
-import adminRoutes from './routes/admin';
-import tecnicoRoutes from './routes/technical';
-import userRoutes from './routes/user';
-import serviceRoutes from './routes/service';
-import calledRoutes from './routes/called'
-import callqueueRoutes from './routes/call-queue';
+import authRoutes from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
+import tecnicoRoutes from './routes/tecnico.routes';
+import usuarioRoutes from './routes/usuario.routes';
+import servicoRoutes from './routes/servico..routes';
+import chamadoRoutes from './routes/chamado.routes'
+import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
 
 const app = express();
 app.use(express.json());
 
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
-app.use('/technical', tecnicoRoutes);
-app.use('/user', userRoutes);
-app.use('/services', serviceRoutes);
-app.use('/called', calledRoutes);
-app.use('/callqueue', callqueueRoutes);
+app.use('/tecnico', tecnicoRoutes);
+app.use('/usuario', usuarioRoutes);
+app.use('/servico', servicoRoutes);
+app.use('/chamado', chamadoRoutes);
+app.use('/filadechamados', filaDeChamadosRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));

@@ -6,17 +6,17 @@ const prisma = new PrismaClient();
 const router = Router();
 
 // Função auxiliar para gerar número de OS
-async function gerarNumeroOSAtomic(): Promise<string> {
+async function gerarNumeroOS(): Promise<string> {
   return await prisma.$transaction(async (tx) => {
     const ultimoChamado = await tx.chamado.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { osNumber: true },
+      orderBy: { geradoEm: 'desc' },
+      select: { OS: true },
     });
 
     let novoNumero = 1;
 
-    if (ultimoChamado?.osNumber) {
-      const numeroAnterior = parseInt(ultimoChamado.osNumber.replace('INC', ''), 10);
+    if (ultimoChamado?.OS) {
+      const numeroAnterior = parseInt(ultimoChamado.OS.replace('INC', ''), 10);
       novoNumero = numeroAnterior + 1;
     }
 
@@ -24,11 +24,11 @@ async function gerarNumeroOSAtomic(): Promise<string> {
     const novoOS = `INC${numeroFormatado}`;
 
     const existente = await tx.chamado.findUnique({
-      where: { osNumber: novoOS },
+      where: { OS: novoOS },
     });
 
     if (existente) {
-      return gerarNumeroOSAtomic();
+      return gerarNumeroOS();
     }
 
     return novoOS;
@@ -42,33 +42,51 @@ async function gerarNumeroOSAtomic(): Promise<string> {
  */
 router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
     try {
-      const { descricao, services } = req.body;
+      const { descricao, servico } = req.body;
 
       if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
         return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
       }
 
-      // Normaliza o campo "services"
-      const servicesArray: string[] =
-        services === undefined || services === null
-          ? []
-          : Array.isArray(services)
-          ? services.filter((s) => typeof s === 'string' && s.trim().length > 0)
-          : typeof services === 'string'
-          ? [services.trim()]
-          : [];
+      // Agrupamento do "servico"
+      let servicosArray: string[] = [];
+
+      if (servico == null) {
+        // null ou undefined → nenhum serviço informado
+        servicosArray = [];
+      } else if (Array.isArray(servico)) {
+        // array → filtra apenas strings não vazias
+        servicosArray = servico
+          .filter((s): s is string => typeof s === 'string')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      } else if (typeof servico === 'string') {
+        // string única → transforma em array com 1 item
+        const nome = servico.trim();
+        servicosArray = nome.length > 0 ? [nome] : [];
+      } else {
+        // tipo inválido (ex: número, objeto, etc)
+        servicosArray = [];
+      }
+
+      // Não permitir chamado sem serviço
+      if (!servicosArray.length) {
+        return res.status(400).json({
+          error: 'É obrigatório informar pelo menos um serviço válido para abrir o chamado.',
+        });
+      }
 
       // Busca serviços ativos pelo nome
-      const foundServices = await prisma.service.findMany({
+      const encontrarServico = await prisma.servico.findMany({
         where: {
-          name: { in: servicesArray },
-          isActive: true,
+          nome: { in: servicosArray },
+          ativo: true,
         },
-        select: { id: true, name: true },
+        select: { id: true, nome: true },
       });
 
-      const nomesEncontrados = foundServices.map((s) => s.name);
-      const nomesNaoEncontrados = servicesArray.filter(
+      const nomesEncontrados = encontrarServico.map((s) => s.nome);
+      const nomesNaoEncontrados = servicosArray.filter(
         (n) => !nomesEncontrados.includes(n)
       );
 
@@ -78,17 +96,17 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
         });
       }
 
-      const osNumber = await gerarNumeroOSAtomic();
+      const OS = await gerarNumeroOS();
 
       const chamado = await prisma.chamado.create({
         data: {
-          osNumber,
+          OS,
           descricao: descricao.trim(),
-          usuarioId: req.user!.id,
+          usuarioId: req.usuario!.id,
           status: 'ABERTO',
-          services: {
-            create: foundServices.map((service) => ({
-              service: { connect: { id: service.id } },
+          servicos: {
+            create: encontrarServico.map((servico) => ({
+              servico: { connect: { id: servico.id } },
             })),
           },
         },
@@ -99,11 +117,11 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
               email: true,
             },
           },
-          services: {
+          servicos: {
             include: {
-              service: {
+              servico: {
                 select: {
-                  name: true,
+                  nome: true,
                 },
               },
             },
@@ -111,21 +129,21 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
         },
       });
 
-      const response = {
-        id: chamado.id,
-        OS: chamado.osNumber,
-        descricao: chamado.descricao,
-        descricaoEncerramento: chamado.descricaoEncerramento,
-        status: chamado.status,
-        createdAt: chamado.createdAt,
-        updatedAt: chamado.updatedAt,
-        closedIn: chamado.closedIn,
-        tecnicoId: chamado.tecnicoId,
-        usuario: chamado.usuario,
-        servico: chamado.services.map((s) => ({
-          service: s.service,
-        })),
-      };
+        const response = {
+          id: chamado.id,
+          OS: chamado.OS,
+          descricao: chamado.descricao,
+          descricaoEncerramento: chamado.descricaoEncerramento,
+          status: chamado.status,
+          geradoEm: chamado.geradoEm,
+          encerradoEm: chamado.encerradoEm,
+          tecnicoId: chamado.tecnicoId,
+          usuario: chamado.usuarioId,
+          servico:
+            chamado.servicos.length === 1
+              ? chamado.servicos[0].servico.nome
+              : chamado.servicos.map((s) => s.servico.nome),
+        };
 
       return res.status(201).json(response);
     } catch (err: any) {
@@ -151,66 +169,73 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
     };
 
     const statusValidos = ['EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO'];
-
     if (!statusValidos.includes(status)) {
-      return res
-        .status(400)
-        .json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
+      return res.status(400).json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
     }
 
-    // Busca o chamado atual
     const chamado = await prisma.chamado.findUnique({
       where: { id },
+      include: {
+        usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
+        servicos: { include: { servico: { select: { id: true, nome: true } } } },
+      },
     });
 
-    if (!chamado) {
-      return res.status(404).json({ error: 'Chamado não encontrado.' });
+    if (!chamado) return res.status(404).json({ error: 'Chamado não encontrado.' });
+
+    if (chamado.status === 'ENCERRADO' && req.usuario!.regra === 'TECNICO') {
+      return res.status(403).json({ error: 'Chamados encerrados não podem ser alterados por técnicos.' });
     }
 
-    // Bloqueia alterações de chamados já encerrados por técnicos
-    if (chamado.status === 'ENCERRADO' && req.user!.role === 'TECNICO') {
-      return res
-        .status(403)
-        .json({ error: 'Chamados encerrados não podem ser alterados por técnicos.' });
-    }
-
-    // Impede técnico de cancelar chamados
-    if (req.user!.role === 'TECNICO' && status === 'CANCELADO') {
+    if (req.usuario!.regra === 'TECNICO' && status === 'CANCELADO') {
       return res.status(403).json({ error: 'Técnicos não podem cancelar chamados.' });
     }
 
     const dataToUpdate: any = {
       status,
-      updatedAt: new Date(),
+      atualizadoEm: new Date(),
     };
 
-    // Se o chamado for encerrado, exige descrição
     if (status === 'ENCERRADO') {
       if (!descricaoEncerramento || descricaoEncerramento.trim().length === 0) {
-        return res
-          .status(400)
-          .json({ error: 'A descrição de encerramento é obrigatória ao encerrar um chamado.' });
+        return res.status(400).json({ error: 'A descrição de encerramento é obrigatória ao encerrar um chamado.' });
       }
-
       dataToUpdate.closedIn = new Date();
       dataToUpdate.descricaoEncerramento = descricaoEncerramento.trim();
     }
 
-    // Se o técnico assumir o chamado
-    if (status === 'EM_ATENDIMENTO' && req.user!.role === 'TECNICO') {
-      dataToUpdate.tecnicoId = req.user!.id;
+    if (status === 'EM_ATENDIMENTO' && req.usuario!.regra === 'TECNICO') {
+      dataToUpdate.tecnicoId = req.usuario!.id;
     }
 
     const chamadoAtualizado = await prisma.chamado.update({
       where: { id },
       data: dataToUpdate,
       include: {
-        usuario: { select: { id: true, firstName: true, lastName: true, email: true } },
-        services: { include: { service: true } },
+        usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
+        servicos: { include: { servico: { select: { id: true, nome: true } } } },
       },
     });
 
-    return res.status(200).json(chamadoAtualizado);
+    const response = {
+      id: chamadoAtualizado.id,
+      OS: chamadoAtualizado.OS,
+      descricao: chamadoAtualizado.descricao,
+      descricaoEncerramento: chamadoAtualizado.descricaoEncerramento,
+      status: chamadoAtualizado.status,
+      geradoEm: chamadoAtualizado.geradoEm,
+      atualizadoEm: chamadoAtualizado.atualizadoEm,
+      encerradoEm: chamadoAtualizado.encerradoEm,
+      usuario: chamadoAtualizado.usuario,
+      servico: chamadoAtualizado.servicos.length
+        ? {
+            id: chamadoAtualizado.servicos[0].servico.id,
+            nome: chamadoAtualizado.servicos[0].servico.nome,
+          }
+        : null,
+    };
+
+    return res.status(200).json(response);
   } catch (err: any) {
     console.error('Erro ao atualizar status do chamado:', err);
     return res.status(500).json({ error: 'Erro ao atualizar status do chamado.' });
@@ -239,7 +264,7 @@ router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 
     }
 
     // Somente o USUARIO que criou ou ADMIN pode cancelar
-    if (req.user!.role === 'USUARIO' && chamado.usuarioId !== req.user!.id) {
+    if (req.usuario!.regra === 'USUARIO' && chamado.usuarioId !== req.usuario!.id) {
       return res.status(403).json({ error: 'Você não tem permissão para cancelar este chamado.' });
     }
 
@@ -256,10 +281,10 @@ router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 
       data: {
         status: 'CANCELADO',
         descricaoEncerramento,
-        closedIn: new Date(),
-        updatedAt: new Date(),
+        encerradoEm: new Date(),
+        atualizadoEm: new Date(),
       },
-      include: { usuario: true, services: { include: { service: true } } },
+      include: { usuario: true, servicos: { include: { servico: true } } },
     });
 
     return res.status(200).json({
@@ -280,8 +305,8 @@ router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), a
     const chamado = await prisma.chamado.findUnique({
       where: { id },
       include: {
-        usuario: { select: { id: true, firstName: true, lastName: true, email: true } },
-        services: { include: { service: true } },
+        usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
+        servicos: { include: { servico: true } },
       },
     });
 
@@ -290,7 +315,7 @@ router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), a
     }
 
     // Deleta primeiro os serviços vinculados (para evitar erro de FK)
-    await prisma.chamadoService.deleteMany({
+    await prisma.ordemDeServico.deleteMany({
       where: { chamadoId: id },
     });
 
@@ -299,21 +324,21 @@ router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), a
     });
 
     return res.status(200).json({
-      message: `Chamado ${chamado.osNumber} deletado com sucesso.`,
+      message: `Chamado ${chamado.OS} deletado com sucesso.`,
       chamado: {
         id: chamado.id,
-        osNumber: chamado.osNumber,
+        Os: chamado.OS,
         descricao: chamado.descricao,
         descricaoEncerramento: chamado.descricaoEncerramento,
         status: chamado.status,
-        createdAt: chamado.createdAt,
-        updatedAt: chamado.updatedAt,
-        closedIn: chamado.closedIn,
+        geradoEm: chamado.geradoEm,
+        atualizadoEm: chamado.atualizadoEm,
+        encerradoEm: chamado.encerradoEm,
         tecnicoId: chamado.tecnicoId,
         usuario: chamado.usuario,
-        services: chamado.services.map((s) => ({
+        servicos: chamado.servicos.map((s) => ({
           id: s.id,
-          service: s.service,
+          servico: s.servico,
         })),
       },
     });

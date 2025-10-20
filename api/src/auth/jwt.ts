@@ -3,7 +3,7 @@ dotenv.config();
 
 import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
 import type ms from 'ms';
-import { User, Role } from '@prisma/client';
+import { Usuario, Regra } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
@@ -29,16 +29,16 @@ validateSecrets();
 export interface TokenPayload extends JwtPayload {
   id: string;
   email?: string;
-  role: Role;
+  regra: Regra;
   type: 'access' | 'refresh';
 }
 
 // Exporta generateToken para uso direto se necessário
-export function generateToken(user: User, type: 'access' | 'refresh'): string {
+export function generateToken(usuario: Usuario, type: 'access' | 'refresh'): string {
   const payload: TokenPayload = {
-    id: user.id,
-    email: user.email,
-    role: user.role,
+    id: usuario.id,
+    email: usuario.email,
+    regra: usuario.regra,
     type,
   };
 
@@ -56,9 +56,9 @@ export function generateToken(user: User, type: 'access' | 'refresh'): string {
 }
 
 // Gera par de tokens (access + refresh)
-export function generateTokenPair(user: User) {
-  const accessToken = generateToken(user, 'access');
-  const refreshToken = generateToken(user, 'refresh');
+export function generateTokenPair(usuario: Usuario) {
+  const accessToken = generateToken(usuario, 'access');
+  const refreshToken = generateToken(usuario, 'refresh');
   return { accessToken, refreshToken, expiresIn: JWT_EXPIRATION };
 }
 

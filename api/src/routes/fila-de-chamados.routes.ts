@@ -15,13 +15,13 @@ router.get('/meus-chamados',
   async (req: any, res) => {
     try {
       const chamados = await prisma.chamado.findMany({
-        where: { usuarioId: req.user.id },
+        where: { usuarioId: req.usuario.id },
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
-          services: { include: { service: { select: { name: true } } } },
+          servicos: { include: { servico: { select: { nome: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { geradoEm: 'desc' },
       });
 
       return res.json(chamados);
@@ -36,22 +36,22 @@ router.get('/meus-chamados',
  * Listar chamados atribuídos ao técnico logado
  */
 router.get(
-  '/chamados-tecnico',
+  '/chamados-atribuidos',
   authMiddleware,
   authorizeRoles('TECNICO'),
   async (req: any, res) => {
     try {
       const chamados = await prisma.chamado.findMany({
         where: {
-          tecnicoId: req.user.id,
+          tecnicoId: req.usuario.id,
           status: 'EM_ATENDIMENTO',
         },
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
-          services: { include: { service: { select: { name: true } } } },
+          servicos: { include: { servico: { select: { nome: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { geradoEm: 'desc' },
       });
 
       return res.json(chamados);
@@ -86,16 +86,16 @@ router.get(
       }
 
       // Assegurar que o valor de status corresponde a uma das opções válidas definidas
-      const statusEnum = status as unknown as ChamadoStatus;
+      const ChamadoStatus = status as unknown as ChamadoStatus;
 
       const chamados = await prisma.chamado.findMany({
-        where: { status: statusEnum },
+        where: { status: ChamadoStatus },
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
-          services: { include: { service: { select: { name: true } } } },
+          servicos: { include: { servico: { select: { nome: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { geradoEm: 'desc' },
       });
 
       return res.status(200).json(chamados);
@@ -120,9 +120,9 @@ router.get(
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
-          services: { include: { service: { select: { name: true } } } },
+          servicos: { include: { servico: { select: { nome: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { geradoEm: 'desc' },
       });
 
       return res.json(chamados);

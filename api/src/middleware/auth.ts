@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, TokenPayload, extractTokenFromHeader } from '../auth/jwt';
-import { Role } from '@prisma/client';
+import { Regra } from '@prisma/client';
 
 export interface AuthRequest extends Request {
-  user?: TokenPayload;
+  usuario?: TokenPayload;
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -24,7 +24,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     //Verifica token de acesso
     const decoded = verifyToken(token, 'access');
 
-    req.user = decoded;
+    req.usuario = decoded;
     return next();
   } catch (err: any) {
 
@@ -39,16 +39,16 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
   }
 }
 
-export function authorizeRoles(...roles: Array<Role | string>) {
+export function authorizeRoles(...regra: Array<Regra | string>) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
+    if (!req.usuario) {
       return res.status(401).json({ error: 'Não autorizado.' });
     }
 
-    const userRole = req.user.role as string;
+    const regraDeUsuario = req.usuario.regra as string;
 
-    const allowed = roles.map(r => String(r));
-    if (!allowed.includes(userRole)) {
+    const allowed = regra.map(r => String(r));
+    if (!allowed.includes(regraDeUsuario)) {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
 
