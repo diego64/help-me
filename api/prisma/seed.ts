@@ -8,18 +8,18 @@ async function main() {
   const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@sistema.com';
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin123!';
 
-  const existingAdmin = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
+  const procurarAdministrator = await prisma.usuario.findUnique({ where: { email: ADMIN_EMAIL } });
 
-  if (!existingAdmin) {
+  if (!procurarAdministrator) {
     const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 12);
 
-    const newAdmin = await prisma.user.create({
+    const newAdmin = await prisma.usuario.create({
       data: {
-        firstName: 'Administrador',
-        lastName: 'Sistema',
+        nome: 'Administrador',
+        sobrenome: 'Sistema',
         email: ADMIN_EMAIL,
         password: hashedPassword,
-        role: 'ADMIN',
+        regra: 'ADMIN',
       },
     });
 
@@ -27,10 +27,10 @@ async function main() {
     console.table({
       Email: newAdmin.email,
       Senha: ADMIN_PASSWORD,
-      Role: newAdmin.role,
+      Regra: newAdmin.regra,
     });
   } else {
-    console.log('Admintrator já cadastrado:', existingAdmin.email);
+    console.log('Admintrator já cadastrado:', procurarAdministrator.email);
   }
 }
 

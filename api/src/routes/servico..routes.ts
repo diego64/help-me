@@ -8,39 +8,39 @@ const router = Router();
 // Criar um novo serviço
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
-    const { name, description } = req.body;
+    const { nome, descricao } = req.body;
 
-    if (!name || name.trim().length === 0) {
+    if (!nome || nome.trim().length === 0) {
       return res.status(400).json({ error: 'O nome do serviço é obrigatório.' });
     }
 
-    const existing = await prisma.service.findUnique({ where: { name } });
-    if (existing) {
+    const verificarServico = await prisma.servico.findUnique({ where: { nome } });
+    if (verificarServico) {
       return res.status(409).json({ error: 'Já existe um serviço com esse nome.' });
     }
 
-    const service = await prisma.service.create({
-      data: { name: name.trim(), description },
+    const servico = await prisma.servico.create({
+      data: { nome: nome.trim(), descricao },
     });
 
-    return res.status(201).json(service);
+    return res.status(201).json(servico);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-// Listar todos os serviços (ativos por padrão)
+// Listar os serviços ativos
 router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req, res) => {
   try {
     const { incluirInativos } = req.query;
-    const showInactive = incluirInativos === 'true';
+    const exibirInativos = incluirInativos === 'true';
 
-    const services = await prisma.service.findMany({
-      where: showInactive ? {} : { isActive: true },
-      orderBy: { name: 'asc' },
+    const servicos = await prisma.servico.findMany({
+      where: exibirInativos ? {} : { ativo: true },
+      orderBy: { nome: 'asc' },
     });
 
-    return res.json(services);
+    return res.json(servicos);
   } catch (err: any) {
     return res.status(500).json({ error: 'Erro ao listar serviços.' });
   }
@@ -51,12 +51,12 @@ router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
   try {
     const { id } = req.params;
 
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
+    const servico = await prisma.servico.findUnique({ where: { id } });
+    if (!servico) {
       return res.status(404).json({ error: 'Serviço não encontrado.' });
     }
 
-    return res.json(service);
+    return res.json(servico);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -66,18 +66,18 @@ router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { nome, descricao } = req.body;
 
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
+    const servico = await prisma.servico.findUnique({ where: { id } });
+    if (!servico) {
       return res.status(404).json({ error: 'Serviço não encontrado.' });
     }
 
-    const updated = await prisma.service.update({
+    const updated = await prisma.servico.update({
       where: { id },
       data: {
-        name: name?.trim() || service.name,
-        description: description ?? service.description,
+        nome: nome?.trim() || servico.nome,
+        descricao: descricao ?? servico.descricao,
       },
     });
 
@@ -92,18 +92,18 @@ router.delete('/:id/desativar', authMiddleware, authorizeRoles('ADMIN'), async (
   try {
     const { id } = req.params;
 
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
+    const servico = await prisma.servico.findUnique({ where: { id } });
+    if (!servico) {
       return res.status(404).json({ error: 'Serviço não encontrado.' });
     }
 
-    if (!service.isActive) {
+    if (!servico.ativo) {
       return res.status(400).json({ error: 'O serviço já está desativado.' });
     }
 
-    await prisma.service.update({
+    await prisma.servico.update({
       where: { id },
-      data: { isActive: false },
+      data: { ativo: false },
     });
 
     return res.json({ message: 'Serviço desativado com sucesso.' });
@@ -117,21 +117,21 @@ router.patch('/:id/reativar', authMiddleware, authorizeRoles('ADMIN'), async (re
   try {
     const { id } = req.params;
 
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
+    const servico = await prisma.servico.findUnique({ where: { id } });
+    if (!servico) {
       return res.status(404).json({ error: 'Serviço não encontrado.' });
     }
 
-    if (service.isActive) {
+    if (servico.ativo) {
       return res.status(400).json({ error: 'O serviço já está ativo.' });
     }
 
-    const reactivated = await prisma.service.update({
+    const reactivated = await prisma.servico.update({
       where: { id },
-      data: { isActive: true },
+      data: { ativo: true },
     });
 
-    return res.json({ message: 'Serviço reativado com sucesso.', service: reactivated });
+    return res.json({ message: 'Serviço reativado com sucesso.', servico: reactivated });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -142,12 +142,12 @@ router.delete('/:id/excluir', authMiddleware, authorizeRoles('ADMIN'), async (re
   try {
     const { id } = req.params;
 
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
+    const servico = await prisma.servico.findUnique({ where: { id } });
+    if (!servico) {
       return res.status(404).json({ error: 'Serviço não encontrado.' });
     }
 
-    await prisma.service.delete({ where: { id } });
+    await prisma.servico.delete({ where: { id } });
 
     return res.json({ message: 'Serviço removido permanentemente do banco de dados.' });
   } catch (err: any) {

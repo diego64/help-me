@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
+enum Regra {
   ADMIN
   TECNICO
   USUARIO
@@ -20,7 +20,7 @@ enum ChamadoStatus {
   CANCELADO
 }
 
-enum Sector {
+enum Setor {
   ADMINISTRACAO
   ALMOXARIFADO
   CALL_CENTER
@@ -35,69 +35,69 @@ enum Sector {
   TECNOLOGIA_INFORMACAO
 }
 
-model User {
+model Usuario {
   id                   String        @id @default(cuid())
-  firstName            String
-  lastName             String
+  nome                 String
+  sobrenome            String
   email                String        @unique
   password             String
-  role                 Role
-  sector               Sector?       // Só para usuários
-  phone                String?
-  extension            String?
+  regra                Regra
+  setor                Setor?       // Só para usuários
+  telefone             String?
+  ramal                String?
   avatarUrl            String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
-  isActive             Boolean       @default(true) // Para desativar técnicos/usuários
+  geradoEm             DateTime      @default(now())
+  atualizadoEm         DateTime      @updatedAt
+  ativo                Boolean       @default(true) // Para desativar técnicos/usuários
   refreshToken         String?       // Campo iniciará null quando o usuário fizer logout
 
   // Relacionamentos
-  chamadOs             Chamado[]     @relation("UsuarioChamado")
-  tecnicoChamados      Chamado[]     @relation("TecnicoChamado")
-  tecnicoDisponibilidade TimeSlot[]
+  chamadoOS              Chamado[]     @relation("UsuarioChamado")
+  tecnicoChamados        Chamado[]     @relation("TecnicoResponsavel")
+  tecnicoDisponibilidade Expediente[]
 }
 
-model TimeSlot {
-  id       String   @id @default(cuid())
-  user     User     @relation(fields: [userId], references: [id])
-  userId   String
-  start    String   // Ex: '08:00'
-  end      String   // Ex: '09:00'
+model Expediente {
+  id            String   @id @default(cuid())
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id])
+  usuarioId     String
+  entrada       String   // Ex: '08:00'
+  saida         String   // Ex: '09:00'
 }
 
-model Service {
-  id          String             @id @default(cuid())
-  name        String             @unique
-  description String?
-  isActive    Boolean            @default(true) // Soft delete
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  chamados    ChamadoService[]
+model Servico {
+  id             String             @id @default(cuid())
+  nome           String             @unique
+  descricao      String?
+  ativo          Boolean            @default(true) // Soft delete
+  geradoEm       DateTime           @default(now())
+  atualizadoEm   DateTime           @updatedAt
+  chamados    OrdemDeServico[]
 }
 
 model Chamado {
-  id                    String          @id @default(cuid())
-  osNumber              String          @unique   // Ex: INC0001, INC0002...
+  id                    String            @id @default(cuid())
+  OS                    String            @unique   // Ex: INC0001, INC0002...
   descricao             String
   descricaoEncerramento String?
-  status                ChamadoStatus   @default(ABERTO)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-  closedIn              DateTime?
+  status                ChamadoStatus     @default(ABERTO)
+  geradoEm              DateTime          @default(now())
+  atualizadoEm          DateTime          @updatedAt
+  encerradoEm           DateTime?
 
-  usuario               User            @relation("UsuarioChamado", fields: [usuarioId], references: [id])
+  usuario               Usuario            @relation("UsuarioChamado", fields: [usuarioId], references: [id])
   usuarioId             String
 
-  tecnico               User?           @relation("TecnicoChamado", fields: [tecnicoId], references: [id])
+  tecnico               Usuario?           @relation("TecnicoResponsavel", fields: [tecnicoId], references: [id])
   tecnicoId             String?
 
-  services              ChamadoService[]
+  servicos              OrdemDeServico[]
 }
 
-model ChamadoService {
+model OrdemDeServico {
   id         String   @id @default(cuid())
   chamado    Chamado  @relation(fields: [chamadoId], references: [id])
   chamadoId  String
-  service    Service  @relation(fields: [serviceId], references: [id])
-  serviceId  String
+  servico    Servico  @relation(fields: [servicoId], references: [id])
+  servicoId  String
 }
