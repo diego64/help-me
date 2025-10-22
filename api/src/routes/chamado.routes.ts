@@ -41,117 +41,116 @@ async function gerarNumeroOS(): Promise<string> {
  * - Status padrão: ABERTO
  */
 router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
-    try {
-      const { descricao, servico } = req.body;
+  try {
+    const { descricao, servico } = req.body;
 
-      if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
-        return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
-      }
+    if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
+      return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
+    }
 
-      // Agrupamento do "servico"
-      let servicosArray: string[] = [];
+    // Agrupamento do "servico"
+    let servicosArray: string[] = [];
 
-      if (servico == null) {
-        // null ou undefined → nenhum serviço informado
-        servicosArray = [];
-      } else if (Array.isArray(servico)) {
-        // array → filtra apenas strings não vazias
-        servicosArray = servico
-          .filter((s): s is string => typeof s === 'string')
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-      } else if (typeof servico === 'string') {
-        // string única → transforma em array com 1 item
-        const nome = servico.trim();
-        servicosArray = nome.length > 0 ? [nome] : [];
-      } else {
-        // tipo inválido (ex: número, objeto, etc)
-        servicosArray = [];
-      }
+    if (servico == null) {
+      // null ou undefined → nenhum serviço informado
+      servicosArray = [];
+    } else if (Array.isArray(servico)) {
+      // array → filtra apenas strings não vazias
+      servicosArray = servico
+        .filter((s): s is string => typeof s === 'string')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    } else if (typeof servico === 'string') {
+      // string única → transforma em array com 1 item
+      const nome = servico.trim();
+      servicosArray = nome.length > 0 ? [nome] : [];
+    } else {
+      // tipo inválido (ex: número, objeto, etc)
+      servicosArray = [];
+    }
 
-      // Não permitir chamado sem serviço
-      if (!servicosArray.length) {
-        return res.status(400).json({
-          error: 'É obrigatório informar pelo menos um serviço válido para abrir o chamado.',
-        });
-      }
-
-      // Busca serviços ativos pelo nome
-      const encontrarServico = await prisma.servico.findMany({
-        where: {
-          nome: { in: servicosArray },
-          ativo: true,
-        },
-        select: { id: true, nome: true },
+    // Não permitir chamado sem serviço
+    if (!servicosArray.length) {
+      return res.status(400).json({
+        error: 'É obrigatório informar pelo menos um serviço válido para abrir o chamado.',
       });
+    }
 
-      const nomesEncontrados = encontrarServico.map((s) => s.nome);
-      const nomesNaoEncontrados = servicosArray.filter(
-        (n) => !nomesEncontrados.includes(n)
-      );
+    // Busca serviços ativos pelo nome
+    const encontrarServico = await prisma.servico.findMany({
+      where: {
+        nome: { in: servicosArray },
+        ativo: true,
+      },
+      select: { id: true, nome: true },
+    });
 
-      if (nomesNaoEncontrados.length > 0) {
-        return res.status(400).json({
-          error: `Os seguintes serviços não foram encontrados ou estão inativos: ${nomesNaoEncontrados.join(', ')}`,
-        });
-      }
+    const nomesEncontrados = encontrarServico.map((s) => s.nome);
+    const nomesNaoEncontrados = servicosArray.filter(
+      (n) => !nomesEncontrados.includes(n)
+    );
 
-      const OS = await gerarNumeroOS();
+    if (nomesNaoEncontrados.length > 0) {
+      return res.status(400).json({
+        error: `Os seguintes serviços não foram encontrados ou estão inativos: ${nomesNaoEncontrados.join(', ')}`,
+      });
+    }
 
-      const chamado = await prisma.chamado.create({
-        data: {
-          OS,
-          descricao: descricao.trim(),
-          usuarioId: req.usuario!.id,
-          status: 'ABERTO',
-          servicos: {
-            create: encontrarServico.map((servico) => ({
-              servico: { connect: { id: servico.id } },
-            })),
+    const OS = await gerarNumeroOS();
+
+    const chamado = await prisma.chamado.create({
+      data: {
+        OS,
+        descricao: descricao.trim(),
+        usuarioId: req.usuario!.id,
+        status: 'ABERTO',
+        servicos: {
+          create: encontrarServico.map((servico) => ({
+            servico: { connect: { id: servico.id } },
+          })),
+        },
+      },
+      include: {
+        usuario: {
+          select: {
+            id: true,
+            email: true,
           },
         },
-        include: {
-          usuario: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-          servicos: {
-            include: {
-              servico: {
-                select: {
-                  nome: true,
-                },
+        servicos: {
+          include: {
+            servico: {
+              select: {
+                nome: true,
               },
             },
           },
         },
-      });
+      },
+    });
 
-        const response = {
-          id: chamado.id,
-          OS: chamado.OS,
-          descricao: chamado.descricao,
-          descricaoEncerramento: chamado.descricaoEncerramento,
-          status: chamado.status,
-          geradoEm: chamado.geradoEm,
-          encerradoEm: chamado.encerradoEm,
-          tecnicoId: chamado.tecnicoId,
-          usuario: chamado.usuarioId,
-          servico:
-            chamado.servicos.length === 1
-              ? chamado.servicos[0].servico.nome
-              : chamado.servicos.map((s) => s.servico.nome),
-        };
+    const response = {
+      id: chamado.id,
+      OS: chamado.OS,
+      descricao: chamado.descricao,
+      descricaoEncerramento: chamado.descricaoEncerramento,
+      status: chamado.status,
+      geradoEm: chamado.geradoEm,
+      encerradoEm: chamado.encerradoEm,
+      tecnicoId: chamado.tecnicoId,
+      usuario: chamado.usuarioId,
+      servico:
+        chamado.servicos.length === 1
+          ? chamado.servicos[0].servico.nome
+          : chamado.servicos.map((s) => s.servico.nome),
+    };
 
-      return res.status(201).json(response);
-    } catch (err: any) {
-      console.error('Erro ao criar chamado:', err);
-      return res.status(500).json({ error: 'Erro ao criar o chamado.' });
-    }
+    return res.status(201).json(response);
+  } catch (err: any) {
+    console.error('Erro ao criar chamado:', err);
+    return res.status(500).json({ error: 'Erro ao criar o chamado.' });
   }
-);
+});
 
 /**
  * Atualizar status do chamado
@@ -163,9 +162,10 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
 router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { status, descricaoEncerramento } = req.body as {
+    const { status, descricaoEncerramento, atualizacaoDescricao } = req.body as {
       status: 'EM_ATENDIMENTO' | 'ENCERRADO' | 'CANCELADO';
       descricaoEncerramento?: string;
+      atualizacaoDescricao?: string;
     };
 
     const statusValidos = ['EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO'];
@@ -173,9 +173,11 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       return res.status(400).json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
     }
 
+    // Busca chamado atual
     const chamado = await prisma.chamado.findUnique({
       where: { id },
       include: {
+        tecnico: { select: { nome: true, email: true } },
         usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
         servicos: { include: { servico: { select: { id: true, nome: true } } } },
       },
@@ -183,6 +185,12 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
 
     if (!chamado) return res.status(404).json({ error: 'Chamado não encontrado.' });
 
+    // Bloqueio: Não permitir alteração/reabertura de chamados cancelados
+    if (chamado.status === 'CANCELADO') {
+      return res.status(400).json({ error: 'Chamados cancelados não podem ser reabertos ou alterados.' });
+    }
+
+    // Regras adicionais
     if (chamado.status === 'ENCERRADO' && req.usuario!.regra === 'TECNICO') {
       return res.status(403).json({ error: 'Chamados encerrados não podem ser alterados por técnicos.' });
     }
@@ -200,21 +208,82 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       if (!descricaoEncerramento || descricaoEncerramento.trim().length === 0) {
         return res.status(400).json({ error: 'A descrição de encerramento é obrigatória ao encerrar um chamado.' });
       }
-      dataToUpdate.closedIn = new Date();
+      dataToUpdate.encerradoEm = new Date();
       dataToUpdate.descricaoEncerramento = descricaoEncerramento.trim();
     }
 
+    // Validação de horário do técnico ao assumir chamado
     if (status === 'EM_ATENDIMENTO' && req.usuario!.regra === 'TECNICO') {
+      if (!req.usuario) {
+        return res.status(401).json({ error: 'Usuário não autenticado.' });
+      }
+      const expedientes = await prisma.expediente.findMany({
+        where: { usuarioId: req.usuario.id }
+      });
+
+      if (!expedientes.length) {
+        return res.status(403).json({ error: 'Sem horário de expediente cadastrado.' });
+      }
+
+      const agora = new Date();
+      const horaAtual = agora.getHours() + agora.getMinutes() / 60;
+
+      const dentroDeHorario = expedientes.some(exp => {
+        const [entradaHora, entradaMin] = exp.entrada.split(':').map(Number);
+        const [saidaHora, saidaMin] = exp.saida.split(':').map(Number);
+        const horarioEntrada = entradaHora + entradaMin / 60;
+        const horarioSaida = saidaHora + saidaMin / 60;
+        return horaAtual >= horarioEntrada && horaAtual <= horarioSaida;
+      });
+
+      if (!dentroDeHorario) {
+        return res.status(403).json({ error: 'Chamado só pode ser assumido dentro do seu horário de trabalho.' });
+      }
+
       dataToUpdate.tecnicoId = req.usuario!.id;
     }
 
+    // Atualiza chamado
     const chamadoAtualizado = await prisma.chamado.update({
       where: { id },
       data: dataToUpdate,
       include: {
+        tecnico: { select: { nome: true, email: true } },
         usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
         servicos: { include: { servico: { select: { id: true, nome: true } } } },
       },
+    });
+
+    // Salva histórico usando descrição do body (se houver)
+    await prisma.chamadoAtualizacao.create({
+      data: {
+        chamadoId: chamadoAtualizado.id,
+        dataHora: new Date(),
+        tipo: "STATUS",
+        de: chamado.status,
+        para: status,
+        descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0
+          ? atualizacaoDescricao.trim()
+          : (
+              status === "EM_ATENDIMENTO"
+                ? "Chamado assumido pelo técnico"
+                : status === "ENCERRADO"
+                ? "Chamado encerrado"
+                : status === "CANCELADO"
+                ? "Chamado cancelado"
+                : "Alteração de status"
+            ),
+        autorId: req.usuario!.id,
+      }
+    });
+
+    // Busca somente o registro mais recente do histórico
+    const historicoMaisRecente = await prisma.chamadoAtualizacao.findFirst({
+      where: { chamadoId: chamadoAtualizado.id },
+      orderBy: { dataHora: 'desc' },
+      include: {
+        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
+      }
     });
 
     const response = {
@@ -227,12 +296,22 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       atualizadoEm: chamadoAtualizado.atualizadoEm,
       encerradoEm: chamadoAtualizado.encerradoEm,
       usuario: chamadoAtualizado.usuario,
+      tecnico: chamadoAtualizado.tecnico,
       servico: chamadoAtualizado.servicos.length
         ? {
             id: chamadoAtualizado.servicos[0].servico.id,
             nome: chamadoAtualizado.servicos[0].servico.nome,
           }
         : null,
+      ultimaAtualizacao: historicoMaisRecente ? {
+        id: historicoMaisRecente.id,
+        dataHora: historicoMaisRecente.dataHora,
+        tipo: historicoMaisRecente.tipo,
+        de: historicoMaisRecente.de,
+        para: historicoMaisRecente.para,
+        descricao: historicoMaisRecente.descricao,
+        autor: historicoMaisRecente.autor
+      } : null
     };
 
     return res.status(200).json(response);
@@ -242,12 +321,152 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
   }
 });
 
-/**
- * Cancelar chamado pelo usuário
- * - Apenas o USUARIO que criou ou ADMIN podem cancelar
- * - Exige justificativa no campo descricaoEncerramento
- * - Não permite cancelar chamados já encerrados ou cancelados
- */
+router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const historico = await prisma.chamadoAtualizacao.findMany({
+      where: { chamadoId: id },
+      orderBy: { dataHora: 'asc' },
+      include: {
+        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
+      }
+    });
+
+    return res.status(200).json(historico);
+  } catch (err: any) {
+    console.error('Erro ao buscar histórico do chamado:', err);
+    return res.status(500).json({ error: 'Erro ao buscar histórico.' });
+  }
+});
+
+router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { atualizacaoDescricao } = req.body as {
+      atualizacaoDescricao?: string;
+    };
+
+    // Busca o chamado e o técnico atual
+    const chamado = await prisma.chamado.findUnique({
+      where: { id },
+    });
+
+    if (!chamado)
+      return res.status(404).json({ error: 'Chamado não encontrado.' });
+
+    if (chamado.usuarioId !== req.usuario!.id)
+      return res.status(403).json({ error: 'Você só pode reabrir chamados criados por você.' });
+
+    if (chamado.status !== 'ENCERRADO')
+      return res.status(400).json({ error: 'Somente chamados encerrados podem ser reabertos.' });
+
+    if (!chamado.encerradoEm)
+      return res.status(400).json({ error: 'Data de encerramento não localizada.' });
+
+    // Calcula se está dentro das 48 horas
+    const encerradoEm = new Date(chamado.encerradoEm);
+    const agora = new Date();
+    const diffHoras = (agora.getTime() - encerradoEm.getTime()) / (1000 * 60 * 60);
+    if (diffHoras > 48)
+      return res.status(400).json({ error: 'Só é possível reabrir até 48 horas após o encerramento.' });
+
+    // Descobre o último técnico ativo antes do encerramento, caso tecnicoId esteja nulo
+    let tecnicoId = chamado.tecnicoId;
+    if (!tecnicoId) {
+      // Busca última atualização histórica em que chamado estava EM_ATENDIMENTO
+      const historicoTecnico = await prisma.chamadoAtualizacao.findFirst({
+        where: {
+          chamadoId: chamado.id,
+          tipo: 'STATUS',
+          para: 'EM_ATENDIMENTO',
+        },
+        orderBy: { dataHora: 'desc' },
+        include: {
+          autor: true
+        }
+      });
+      // Se existir, autorId = tecnicoId
+      if (historicoTecnico) {
+        tecnicoId = historicoTecnico.autorId;
+      }
+    }
+
+    // Atualiza chamado: status REABERTO, zera encerradoEm, volta para o técnico anterior (se existir)
+    const chamadoAtualizado = await prisma.chamado.update({
+      where: { id },
+      data: {
+        status: 'REABERTO',
+        atualizadoEm: new Date(),
+        encerradoEm: null,
+        descricaoEncerramento: null,
+        tecnicoId: tecnicoId || null
+      },
+      include: {
+        tecnico: { select: { nome: true, email: true } },
+        usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
+        servicos: { include: { servico: { select: { id: true, nome: true } } } },
+      }
+    });
+
+    // Salva histórico da reabertura
+    await prisma.chamadoAtualizacao.create({
+      data: {
+        chamadoId: chamadoAtualizado.id,
+        dataHora: new Date(),
+        tipo: "REABERTURA",
+        de: 'ENCERRADO',
+        para: 'REABERTO',
+        descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0 
+          ? atualizacaoDescricao.trim() 
+          : 'Chamado reaberto pelo usuário dentro do prazo',
+        autorId: req.usuario!.id,
+      }
+    });
+
+    // Última atualização histórica
+    const historicoMaisRecente = await prisma.chamadoAtualizacao.findFirst({
+      where: { chamadoId: chamadoAtualizado.id },
+      orderBy: { dataHora: 'desc' },
+      include: {
+        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
+      }
+    });
+
+    const response = {
+      id: chamadoAtualizado.id,
+      OS: chamadoAtualizado.OS,
+      descricao: chamadoAtualizado.descricao,
+      status: chamadoAtualizado.status,
+      geradoEm: chamadoAtualizado.geradoEm,
+      atualizadoEm: chamadoAtualizado.atualizadoEm,
+      encerradoEm: chamadoAtualizado.encerradoEm,
+      usuario: chamadoAtualizado.usuario,
+      tecnico: chamadoAtualizado.tecnico,
+      servico: chamadoAtualizado.servicos.length
+        ? {
+            id: chamadoAtualizado.servicos[0].servico.id,
+            nome: chamadoAtualizado.servicos[0].servico.nome,
+          }
+        : null,
+      ultimaAtualizacao: historicoMaisRecente ? {
+        id: historicoMaisRecente.id,
+        dataHora: historicoMaisRecente.dataHora,
+        tipo: historicoMaisRecente.tipo,
+        de: historicoMaisRecente.de,
+        para: historicoMaisRecente.para,
+        descricao: historicoMaisRecente.descricao,
+        autor: historicoMaisRecente.autor
+      } : null
+    };
+
+    return res.status(200).json(response);
+  } catch (err: any) {
+    console.error('Erro ao reabrir chamado:', err);
+    return res.status(500).json({ error: 'Erro ao reabrir chamado.' });
+  }
+});
+
 router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient, ChamadoStatus } from '@prisma/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
+import { authMiddleware, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -44,17 +44,36 @@ router.get(
       const chamados = await prisma.chamado.findMany({
         where: {
           tecnicoId: req.usuario.id,
-          status: 'EM_ATENDIMENTO',
+          status: { in: ['EM_ATENDIMENTO', 'REABERTO'] },
         },
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
-          servicos: { include: { servico: { select: { nome: true } } } },
+          servicos: {
+            select: {
+              servicoId: true,
+              servico: { select: { nome: true } }
+            }
+          }
         },
         orderBy: { geradoEm: 'desc' },
       });
 
-      return res.json(chamados);
+      const response = chamados.map(chamado => ({
+        id: chamado.id,
+        OS: chamado.OS,
+        descricao: chamado.descricao,
+        descricaoEncerramento: chamado.descricaoEncerramento,
+        status: chamado.status,
+        geradoEm: chamado.geradoEm,
+        atualizadoEm: chamado.atualizadoEm,
+        encerradoEm: chamado.encerradoEm,
+        usuario: chamado.usuario,
+        tecnico: chamado.tecnico,
+        TipoDeServico: chamado.servicos
+      }));
+
+      return res.json(response);
     } catch (err) {
       console.error('Erro ao listar chamados do técnico:', err);
       return res.status(500).json({ error: 'Erro ao listar chamados do técnico.' });
@@ -73,7 +92,7 @@ router.get(
     try {
       const { status } = req.query as { status?: string };
 
-      const statusValidos = ['ABERTO', 'EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO'];
+      const statusValidos = ['ABERTO', 'EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO', 'REABERTO'];
 
       if (!status) {
         return res.status(400).json({ error: 'O parâmetro "status" é obrigatório.' });
@@ -116,7 +135,7 @@ router.get(
   async (_req, res) => {
     try {
       const chamados = await prisma.chamado.findMany({
-        where: { status: 'ABERTO' },
+        where: { status: { in: ['ABERTO', 'REABERTO'] } },
         include: {
           usuario: { select: { id: true, email: true } },
           tecnico: { select: { id: true, email: true } },
