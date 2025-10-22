@@ -18,6 +18,7 @@ enum ChamadoStatus {
   EM_ATENDIMENTO
   ENCERRADO
   CANCELADO
+  REABERTO
 }
 
 enum Setor {
@@ -36,68 +37,87 @@ enum Setor {
 }
 
 model Usuario {
-  id                   String        @id @default(cuid())
-  nome                 String
-  sobrenome            String
-  email                String        @unique
-  password             String
-  regra                Regra
-  setor                Setor?       // Só para usuários
-  telefone             String?
-  ramal                String?
-  avatarUrl            String?
-  geradoEm             DateTime      @default(now())
-  atualizadoEm         DateTime      @updatedAt
-  ativo                Boolean       @default(true) // Para desativar técnicos/usuários
-  refreshToken         String?       // Campo iniciará null quando o usuário fizer logout
+  id                     String         @id @default(cuid())
+  nome                   String
+  sobrenome              String
+  email                  String         @unique
+  password               String
+  regra                  Regra
+  setor                  Setor?         // Só para usuários
+  telefone               String?
+  ramal                  String?
+  avatarUrl              String?
+  geradoEm               DateTime       @default(now())
+  atualizadoEm           DateTime       @updatedAt
+  ativo                  Boolean        @default(true)
+  refreshToken           String?
 
   // Relacionamentos
-  chamadoOS              Chamado[]     @relation("UsuarioChamado")
-  tecnicoChamados        Chamado[]     @relation("TecnicoResponsavel")
+  chamadoOS              Chamado[]      @relation("UsuarioChamado")
+  tecnicoChamados        Chamado[]      @relation("TecnicoResponsavel")
   tecnicoDisponibilidade Expediente[]
+
+  chamadoAtualizacoes    ChamadoAtualizacao[] @relation("AutorAtualizacao") // Histórico de atualizações feitas pelo usuário
 }
 
 model Expediente {
-  id            String   @id @default(cuid())
-  usuario       Usuario  @relation(fields: [usuarioId], references: [id])
-  usuarioId     String
-  entrada       String   // Ex: '08:00'
-  saida         String   // Ex: '09:00'
+  id           String     @id @default(cuid())
+  usuario      Usuario    @relation(fields: [usuarioId], references: [id])
+  usuarioId    String
+  entrada      String     // Ex: '08:00'
+  saida        String     // Ex: '09:00'
 }
 
 model Servico {
-  id             String             @id @default(cuid())
-  nome           String             @unique
-  descricao      String?
-  ativo          Boolean            @default(true) // Soft delete
-  geradoEm       DateTime           @default(now())
-  atualizadoEm   DateTime           @updatedAt
-  chamados    OrdemDeServico[]
+  id           String     @id @default(cuid())
+  nome         String     @unique
+  descricao    String?
+  ativo        Boolean    @default(true)
+  geradoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+  chamados     OrdemDeServico[]
 }
 
 model Chamado {
-  id                    String            @id @default(cuid())
-  OS                    String            @unique   // Ex: INC0001, INC0002...
+  id                    String                @id @default(cuid())
+  OS                    String                @unique
   descricao             String
   descricaoEncerramento String?
-  status                ChamadoStatus     @default(ABERTO)
-  geradoEm              DateTime          @default(now())
-  atualizadoEm          DateTime          @updatedAt
+  status                ChamadoStatus         @default(ABERTO)
+  geradoEm              DateTime              @default(now())
+  atualizadoEm          DateTime              @updatedAt
   encerradoEm           DateTime?
 
-  usuario               Usuario            @relation("UsuarioChamado", fields: [usuarioId], references: [id])
+  usuario               Usuario               @relation("UsuarioChamado", fields: [usuarioId], references: [id])
   usuarioId             String
 
-  tecnico               Usuario?           @relation("TecnicoResponsavel", fields: [tecnicoId], references: [id])
+  tecnico               Usuario?              @relation("TecnicoResponsavel", fields: [tecnicoId], references: [id])
   tecnicoId             String?
 
   servicos              OrdemDeServico[]
+
+  atualizacoes          ChamadoAtualizacao[]   // Histórico de atualizações do chamado
 }
 
 model OrdemDeServico {
-  id         String   @id @default(cuid())
-  chamado    Chamado  @relation(fields: [chamadoId], references: [id])
+  id         String    @id @default(cuid())
+  chamado    Chamado   @relation(fields: [chamadoId], references: [id])
   chamadoId  String
-  servico    Servico  @relation(fields: [servicoId], references: [id])
+  servico    Servico   @relation(fields: [servicoId], references: [id])
   servicoId  String
+}
+
+model ChamadoAtualizacao {
+  id         String    @id @default(cuid())
+  chamado    Chamado   @relation(fields: [chamadoId], references: [id])
+  chamadoId  String
+
+  dataHora   DateTime  @default(now())
+  tipo       String    // Ex: "STATUS", "DESCRICAO", "TECNICO"
+  de         String?
+  para       String?
+  descricao  String?   // Mensagem livre sobre atualização
+
+  autor      Usuario   @relation("AutorAtualizacao", fields: [autorId], references: [id])
+  autorId    String
 }

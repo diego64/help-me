@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { PrismaClient, Setor } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
-import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 
 const prisma = new PrismaClient();

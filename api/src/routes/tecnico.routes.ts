@@ -3,50 +3,12 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
-import { generateTokenPair, verifyToken } from '../auth/jwt';
 
 const prisma = new PrismaClient();
 const router = Router();
 
 // Configuração de upload
 const upload = multer({ dest: 'uploads/' });
-
-router.get(
-  '/me',
-  authMiddleware,
-  authorizeRoles('ADMIN', 'TECNICO'),
-  async (req: AuthRequest, res) => {
-    try {
-      if (!req.usuario) {
-        return res.status(401).json({ error: 'Não autorizado.' });
-      }
-
-      const usuario = await prisma.usuario.findUnique({
-        where: { id: req.usuario.id },
-        select: {
-          id: true,
-          nome: true,
-          sobrenome: true,
-          email: true,
-          telefone: true,
-          ramal: true,
-          setor: true,
-          regra: true,
-          avatarUrl: true,
-          geradoEm: true,
-        },
-      });
-
-      if (!usuario) {
-        return res.status(404).json({ error: 'Usuário não encontrado.' });
-      }
-
-      res.json(usuario);
-    } catch (err: any) {
-      res.status(500).json({ error: 'Erro ao buscar perfil do usuário.' });
-    }
-  }
-);
 
 // Criar Técnico
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
