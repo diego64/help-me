@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
+import { salvarHistoricoChamado, listarHistoricoChamado } from '../repositories/chamadoAtualizacao.repository';
+import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -35,48 +37,30 @@ async function gerarNumeroOS(): Promise<string> {
   });
 }
 
-/**
- * Abertura do chamado
- * - Apenas USUARIO e ADMIN podem abrir
- * - Status padrão: ABERTO
- */
-router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
+router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { descricao, servico } = req.body;
-
     if (!descricao || typeof descricao !== 'string' || descricao.trim().length === 0) {
       return res.status(400).json({ error: 'A descrição do chamado é obrigatória.' });
     }
-
-    // Agrupamento do "servico"
     let servicosArray: string[] = [];
-
-    if (servico == null) {
-      // null ou undefined → nenhum serviço informado
-      servicosArray = [];
-    } else if (Array.isArray(servico)) {
-      // array → filtra apenas strings não vazias
+    if (servico == null) servicosArray = [];
+    else if (Array.isArray(servico)) {
       servicosArray = servico
         .filter((s): s is string => typeof s === 'string')
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
     } else if (typeof servico === 'string') {
-      // string única → transforma em array com 1 item
       const nome = servico.trim();
       servicosArray = nome.length > 0 ? [nome] : [];
     } else {
-      // tipo inválido (ex: número, objeto, etc)
       servicosArray = [];
     }
-
-    // Não permitir chamado sem serviço
     if (!servicosArray.length) {
       return res.status(400).json({
         error: 'É obrigatório informar pelo menos um serviço válido para abrir o chamado.',
       });
     }
-
-    // Busca serviços ativos pelo nome
     const encontrarServico = await prisma.servico.findMany({
       where: {
         nome: { in: servicosArray },
@@ -84,20 +68,14 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
       },
       select: { id: true, nome: true },
     });
-
     const nomesEncontrados = encontrarServico.map((s) => s.nome);
-    const nomesNaoEncontrados = servicosArray.filter(
-      (n) => !nomesEncontrados.includes(n)
-    );
-
+    const nomesNaoEncontrados = servicosArray.filter((n) => !nomesEncontrados.includes(n));
     if (nomesNaoEncontrados.length > 0) {
       return res.status(400).json({
         error: `Os seguintes serviços não foram encontrados ou estão inativos: ${nomesNaoEncontrados.join(', ')}`,
       });
     }
-
     const OS = await gerarNumeroOS();
-
     const chamado = await prisma.chamado.create({
       data: {
         OS,
@@ -112,21 +90,24 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
       },
       include: {
         usuario: {
-          select: {
-            id: true,
-            email: true,
-          },
+          select: { id: true, email: true },
         },
         servicos: {
-          include: {
-            servico: {
-              select: {
-                nome: true,
-              },
-            },
-          },
+          include: { servico: { select: { nome: true } } },
         },
       },
+    });
+
+    // Opcional: Salvar histórico da abertura no MongoDB
+    await salvarHistoricoChamado({
+      chamadoId: chamado.id,
+      tipo: "ABERTURA",
+      de: undefined,
+      para: "ABERTO",
+      descricao: chamado.descricao,
+      autorId: req.usuario!.id,
+      autorNome: req.usuario!.nome,
+      autorEmail: req.usuario!.email
     });
 
     const response = {
@@ -152,13 +133,6 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMI
   }
 });
 
-/**
- * Atualizar status do chamado
- * - ADMIN e TECNICO podem alterar
- * - TECNICO não pode cancelar
- * - Status válidos: EM_ATENDIMENTO | ENCERRADO | CANCELADO
- * - Quando o técnico muda para EM_ATENDIMENTO, o chamado é atribuído a ele
- */
 router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -173,7 +147,6 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       return res.status(400).json({ error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}` });
     }
 
-    // Busca chamado atual
     const chamado = await prisma.chamado.findUnique({
       where: { id },
       include: {
@@ -185,12 +158,10 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
 
     if (!chamado) return res.status(404).json({ error: 'Chamado não encontrado.' });
 
-    // Bloqueio: Não permitir alteração/reabertura de chamados cancelados
     if (chamado.status === 'CANCELADO') {
       return res.status(400).json({ error: 'Chamados cancelados não podem ser reabertos ou alterados.' });
     }
 
-    // Regras adicionais
     if (chamado.status === 'ENCERRADO' && req.usuario!.regra === 'TECNICO') {
       return res.status(403).json({ error: 'Chamados encerrados não podem ser alterados por técnicos.' });
     }
@@ -212,7 +183,6 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       dataToUpdate.descricaoEncerramento = descricaoEncerramento.trim();
     }
 
-    // Validação de horário do técnico ao assumir chamado
     if (status === 'EM_ATENDIMENTO' && req.usuario!.regra === 'TECNICO') {
       if (!req.usuario) {
         return res.status(401).json({ error: 'Usuário não autenticado.' });
@@ -243,7 +213,6 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       dataToUpdate.tecnicoId = req.usuario!.id;
     }
 
-    // Atualiza chamado
     const chamadoAtualizado = await prisma.chamado.update({
       where: { id },
       data: dataToUpdate,
@@ -254,64 +223,66 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       },
     });
 
-    // Salva histórico usando descrição do body (se houver)
-    await prisma.chamadoAtualizacao.create({
-      data: {
-        chamadoId: chamadoAtualizado.id,
-        dataHora: new Date(),
-        tipo: "STATUS",
-        de: chamado.status,
-        para: status,
-        descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0
-          ? atualizacaoDescricao.trim()
-          : (
-              status === "EM_ATENDIMENTO"
-                ? "Chamado assumido pelo técnico"
-                : status === "ENCERRADO"
-                ? "Chamado encerrado"
-                : status === "CANCELADO"
-                ? "Chamado cancelado"
-                : "Alteração de status"
-            ),
-        autorId: req.usuario!.id,
-      }
+    // Salva histórico no MongoDB
+    await salvarHistoricoChamado({
+      chamadoId: chamadoAtualizado.id,
+      tipo: "STATUS",
+      de: chamado.status,
+      para: status,
+      descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0
+        ? atualizacaoDescricao.trim()
+        : (
+            status === "EM_ATENDIMENTO"
+              ? "Chamado assumido pelo técnico"
+              : status === "ENCERRADO"
+              ? "Chamado encerrado"
+              : status === "CANCELADO"
+              ? "Chamado cancelado"
+              : "Alteração de status"
+          ),
+      autorId: req.usuario!.id,
+      autorNome: req.usuario!.nome,
+      autorEmail: req.usuario!.email
     });
 
-    // Busca somente o registro mais recente do histórico
-    const historicoMaisRecente = await prisma.chamadoAtualizacao.findFirst({
-      where: { chamadoId: chamadoAtualizado.id },
-      orderBy: { dataHora: 'desc' },
-      include: {
-        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
-      }
-    });
+    // Buscar o histórico mais recente (Mongo)
+    const historicoArr = await listarHistoricoChamado(chamadoAtualizado.id);
+    const historicoMaisRecente = historicoArr.length > 0 ? historicoArr[historicoArr.length - 1] : null;
 
     const response = {
       id: chamadoAtualizado.id,
       OS: chamadoAtualizado.OS,
       descricao: chamadoAtualizado.descricao,
-      descricaoEncerramento: chamadoAtualizado.descricaoEncerramento,
-      status: chamadoAtualizado.status,
+      status: chamadoAtualizado.status, // vai ser "REABERTO" se mudou!
       geradoEm: chamadoAtualizado.geradoEm,
       atualizadoEm: chamadoAtualizado.atualizadoEm,
       encerradoEm: chamadoAtualizado.encerradoEm,
-      usuario: chamadoAtualizado.usuario,
-      tecnico: chamadoAtualizado.tecnico,
-      servico: chamadoAtualizado.servicos.length
+      usuario: chamadoAtualizado.usuario
         ? {
-            id: chamadoAtualizado.servicos[0].servico.id,
-            nome: chamadoAtualizado.servicos[0].servico.nome,
+            nome: chamadoAtualizado.usuario.nome,
+            email: chamadoAtualizado.usuario.email
           }
         : null,
-      ultimaAtualizacao: historicoMaisRecente ? {
-        id: historicoMaisRecente.id,
-        dataHora: historicoMaisRecente.dataHora,
-        tipo: historicoMaisRecente.tipo,
-        de: historicoMaisRecente.de,
-        para: historicoMaisRecente.para,
-        descricao: historicoMaisRecente.descricao,
-        autor: historicoMaisRecente.autor
-      } : null
+      tecnico: chamadoAtualizado.tecnico
+        ? {
+            nome: chamadoAtualizado.tecnico.nome,
+            email: chamadoAtualizado.tecnico.email
+          }
+        : null,
+      ultimaAtualizacao: historicoMaisRecente
+        ? {
+            id: historicoMaisRecente._id,
+            dataHora: historicoMaisRecente.dataHora,
+            tipo: historicoMaisRecente.tipo,
+            de: historicoMaisRecente.de,
+            para: historicoMaisRecente.para,
+            descricao: historicoMaisRecente.descricao,
+            autor: {
+              id: historicoMaisRecente.autorId,
+              email: historicoMaisRecente.autorEmail
+            }
+          }
+        : null
     };
 
     return res.status(200).json(response);
@@ -324,15 +295,7 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
 router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-
-    const historico = await prisma.chamadoAtualizacao.findMany({
-      where: { chamadoId: id },
-      orderBy: { dataHora: 'asc' },
-      include: {
-        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
-      }
-    });
-
+    const historico = await listarHistoricoChamado(id);
     return res.status(200).json(historico);
   } catch (err: any) {
     console.error('Erro ao buscar histórico do chamado:', err);
@@ -343,14 +306,9 @@ router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
 router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { atualizacaoDescricao } = req.body as {
-      atualizacaoDescricao?: string;
-    };
+    const { atualizacaoDescricao } = req.body as { atualizacaoDescricao?: string };
 
-    // Busca o chamado e o técnico atual
-    const chamado = await prisma.chamado.findUnique({
-      where: { id },
-    });
+    const chamado = await prisma.chamado.findUnique({ where: { id } });
 
     if (!chamado)
       return res.status(404).json({ error: 'Chamado não encontrado.' });
@@ -374,25 +332,22 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
     // Descobre o último técnico ativo antes do encerramento, caso tecnicoId esteja nulo
     let tecnicoId = chamado.tecnicoId;
     if (!tecnicoId) {
-      // Busca última atualização histórica em que chamado estava EM_ATENDIMENTO
-      const historicoTecnico = await prisma.chamadoAtualizacao.findFirst({
-        where: {
+      // Busca última atualização histórica EM_ATENDIMENTO no MongoDB
+      const historicoTecnico = await ChamadoAtualizacaoModel.findOne(
+        {
           chamadoId: chamado.id,
           tipo: 'STATUS',
-          para: 'EM_ATENDIMENTO',
+          para: 'EM_ATENDIMENTO'
         },
-        orderBy: { dataHora: 'desc' },
-        include: {
-          autor: true
-        }
-      });
-      // Se existir, autorId = tecnicoId
+        null,
+        { sort: { dataHora: -1 } }
+      );
       if (historicoTecnico) {
         tecnicoId = historicoTecnico.autorId;
       }
     }
 
-    // Atualiza chamado: status REABERTO, zera encerradoEm, volta para o técnico anterior (se existir)
+    // Atualiza chamado
     const chamadoAtualizado = await prisma.chamado.update({
       where: { id },
       data: {
@@ -405,33 +360,31 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
       include: {
         tecnico: { select: { nome: true, email: true } },
         usuario: { select: { id: true, nome: true, sobrenome: true, email: true } },
-        servicos: { include: { servico: { select: { id: true, nome: true } } } },
+        servicos: { include: { servico: { select: { id: true, nome: true } } } }
       }
     });
 
-    // Salva histórico da reabertura
-    await prisma.chamadoAtualizacao.create({
-      data: {
-        chamadoId: chamadoAtualizado.id,
-        dataHora: new Date(),
-        tipo: "REABERTURA",
-        de: 'ENCERRADO',
-        para: 'REABERTO',
-        descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0 
-          ? atualizacaoDescricao.trim() 
-          : 'Chamado reaberto pelo usuário dentro do prazo',
-        autorId: req.usuario!.id,
-      }
+    // Salva histórico da reabertura no MongoDB
+    await ChamadoAtualizacaoModel.create({
+      chamadoId: chamadoAtualizado.id,
+      dataHora: new Date(),
+      tipo: "REABERTURA",
+      de: "ENCERRADO",
+      para: "REABERTO",
+      descricao: atualizacaoDescricao && atualizacaoDescricao.trim().length > 0
+        ? atualizacaoDescricao.trim()
+        : "Chamado reaberto pelo usuário dentro do prazo",
+      autorId: req.usuario!.id,
+      autorNome: req.usuario!.nome,
+      autorEmail: req.usuario!.email
     });
 
-    // Última atualização histórica
-    const historicoMaisRecente = await prisma.chamadoAtualizacao.findFirst({
-      where: { chamadoId: chamadoAtualizado.id },
-      orderBy: { dataHora: 'desc' },
-      include: {
-        autor: { select: { id: true, nome: true, sobrenome: true, email: true } }
-      }
-    });
+    // Busca último histórico no MongoDB
+    const historicoMaisRecente = await ChamadoAtualizacaoModel.findOne(
+      { chamadoId: chamadoAtualizado.id },
+      null,
+      { sort: { dataHora: -1 } }
+    );
 
     const response = {
       id: chamadoAtualizado.id,
@@ -446,18 +399,24 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
       servico: chamadoAtualizado.servicos.length
         ? {
             id: chamadoAtualizado.servicos[0].servico.id,
-            nome: chamadoAtualizado.servicos[0].servico.nome,
+            nome: chamadoAtualizado.servicos[0].servico.nome
           }
         : null,
-      ultimaAtualizacao: historicoMaisRecente ? {
-        id: historicoMaisRecente.id,
-        dataHora: historicoMaisRecente.dataHora,
-        tipo: historicoMaisRecente.tipo,
-        de: historicoMaisRecente.de,
-        para: historicoMaisRecente.para,
-        descricao: historicoMaisRecente.descricao,
-        autor: historicoMaisRecente.autor
-      } : null
+      ultimaAtualizacao: historicoMaisRecente
+        ? {
+            id: historicoMaisRecente._id,
+            dataHora: historicoMaisRecente.dataHora,
+            tipo: historicoMaisRecente.tipo,
+            de: historicoMaisRecente.de,
+            para: historicoMaisRecente.para,
+            descricao: historicoMaisRecente.descricao,
+            autor: {
+              id: historicoMaisRecente.autorId,
+              nome: historicoMaisRecente.autorNome,
+              email: historicoMaisRecente.autorEmail
+            }
+          }
+        : null
     };
 
     return res.status(200).json(response);

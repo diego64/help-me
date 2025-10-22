@@ -7,8 +7,10 @@ import adminRoutes from './routes/admin.routes';
 import tecnicoRoutes from './routes/tecnico.routes';
 import usuarioRoutes from './routes/usuario.routes';
 import servicoRoutes from './routes/servico..routes';
-import chamadoRoutes from './routes/chamado.routes'
+import chamadoRoutes from './routes/chamado.routes';
 import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
+
+import mongoose from 'mongoose';
 
 const app = express();
 app.use(express.json());
@@ -22,4 +24,15 @@ app.use('/chamado', chamadoRoutes);
 app.use('/filadechamados', filaDeChamadosRoutes);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+
+(async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_INITDB_URI!);
+    console.log('Banco de dados MongoDB conectado!');
+
+    app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+  } catch (err) {
+    console.error('Erro ao inicializar o servidor:', err);
+    process.exit(1);
+  }
+})();

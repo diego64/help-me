@@ -43,7 +43,7 @@ model Usuario {
   email                  String         @unique
   password               String
   regra                  Regra
-  setor                  Setor?         // Só para usuários
+  setor                  Setor?
   telefone               String?
   ramal                  String?
   avatarUrl              String?
@@ -52,20 +52,17 @@ model Usuario {
   ativo                  Boolean        @default(true)
   refreshToken           String?
 
-  // Relacionamentos
   chamadoOS              Chamado[]      @relation("UsuarioChamado")
   tecnicoChamados        Chamado[]      @relation("TecnicoResponsavel")
   tecnicoDisponibilidade Expediente[]
-
-  chamadoAtualizacoes    ChamadoAtualizacao[] @relation("AutorAtualizacao") // Histórico de atualizações feitas pelo usuário
 }
 
 model Expediente {
   id           String     @id @default(cuid())
   usuario      Usuario    @relation(fields: [usuarioId], references: [id])
   usuarioId    String
-  entrada      String     // Ex: '08:00'
-  saida        String     // Ex: '09:00'
+  entrada      String
+  saida        String
 }
 
 model Servico {
@@ -95,8 +92,6 @@ model Chamado {
   tecnicoId             String?
 
   servicos              OrdemDeServico[]
-
-  atualizacoes          ChamadoAtualizacao[]   // Histórico de atualizações do chamado
 }
 
 model OrdemDeServico {
@@ -105,19 +100,4 @@ model OrdemDeServico {
   chamadoId  String
   servico    Servico   @relation(fields: [servicoId], references: [id])
   servicoId  String
-}
-
-model ChamadoAtualizacao {
-  id         String    @id @default(cuid())
-  chamado    Chamado   @relation(fields: [chamadoId], references: [id])
-  chamadoId  String
-
-  dataHora   DateTime  @default(now())
-  tipo       String    // Ex: "STATUS", "DESCRICAO", "TECNICO"
-  de         String?
-  para       String?
-  descricao  String?   // Mensagem livre sobre atualização
-
-  autor      Usuario   @relation("AutorAtualizacao", fields: [autorId], references: [id])
-  autorId    String
 }

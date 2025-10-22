@@ -58,6 +58,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  mongodb_helpme:
+    image: mongo:latest
+    container_name: mongodb_helpme
+    hostname: mongodb_helpme
+
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+
+    volumes:
+      - mongodb_data:/data/db
+
+    networks:
+      - helpme_network
+
+    restart: unless-stopped
+
 networks:
   helpme_network:
     driver: bridge
@@ -73,3 +94,6 @@ volumes:
   postgresql_archive:
     driver: local
     name: postgresql_helpme_archive
+  mongodb_data:
+    driver: local
+    name: mongodb_helpme_data
