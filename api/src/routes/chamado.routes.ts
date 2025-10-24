@@ -7,7 +7,6 @@ import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 const prisma = new PrismaClient();
 const router = Router();
 
-// Função auxiliar para gerar número de OS
 async function gerarNumeroOS(): Promise<string> {
   return await prisma.$transaction(async (tx) => {
     const ultimoChamado = await tx.chamado.findFirst({

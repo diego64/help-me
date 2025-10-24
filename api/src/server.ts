@@ -1,6 +1,9 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+import { PrismaClient } from '@prisma/client';
+import mongoose from 'mongoose';
+
 import express from 'express';
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
@@ -9,8 +12,6 @@ import usuarioRoutes from './routes/usuario.routes';
 import servicoRoutes from './routes/servico..routes';
 import chamadoRoutes from './routes/chamado.routes';
 import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
-import mongoose from 'mongoose';
-import { PrismaClient } from '@prisma/client';
 
 const app = express();
 app.use(express.json());

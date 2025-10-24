@@ -5,21 +5,17 @@ services:
     hostname: postgresql_helpme
 
     environment:
-      # Autenticação
       POSTGRESQL_USERNAME: ${DB_USER}
       POSTGRESQL_PASSWORD: ${DB_PASSWORD}
       POSTGRESQL_DATABASE: ${DB_NAME}
 
-      # Configurações Regionais
       POSTGRESQL_TIMEZONE: America/Sao_Paulo
       TZ: America/Sao_Paulo
 
-      # Segurança
       POSTGRESQL_ENABLE_LDAP: "no"
       POSTGRESQL_ENABLE_TLS: "no"
       POSTGRESQL_PASSWORD_ENCRYPTION: scram-sha-256
 
-      # Performance & Otimizações
       POSTGRESQL_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
       POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-100}
 
