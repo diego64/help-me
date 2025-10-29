@@ -5,7 +5,7 @@ import 'dotenv/config';
 const prisma = new PrismaClient();
 
 async function main() {
-  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@sistema.com';
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@helpme.com';
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin123!';
 
   const procurarAdministrator = await prisma.usuario.findUnique({ where: { email: ADMIN_EMAIL } });

@@ -3,42 +3,32 @@ services:
     image: bitnami/postgresql:latest
     container_name: postgresql_helpme
     hostname: postgresql_helpme
-
     environment:
       POSTGRESQL_USERNAME: ${DB_USER}
       POSTGRESQL_PASSWORD: ${DB_PASSWORD}
       POSTGRESQL_DATABASE: ${DB_NAME}
-
       POSTGRESQL_TIMEZONE: America/Sao_Paulo
       TZ: America/Sao_Paulo
-
       POSTGRESQL_ENABLE_LDAP: "no"
       POSTGRESQL_ENABLE_TLS: "no"
       POSTGRESQL_PASSWORD_ENCRYPTION: scram-sha-256
-
       POSTGRESQL_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
       POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-100}
-
     ports:
       - "${DB_PORT:-5432}:5432"
-
     volumes:
       - postgresql_data:/bitnami/postgresql
       - postgresql_backups:/backups
       - postgresql_archive:/bitnami/postgresql/archive
-
     networks:
       - helpme_network
-
     restart: unless-stopped
-
     healthcheck:
       test: ["CMD-SHELL", "PGPASSWORD=${DB_PASSWORD} pg_isready -U ${DB_USER} -d ${DB_NAME} && PGPASSWORD=${DB_PASSWORD} psql -U ${DB_USER} -d ${DB_NAME} -c 'SELECT 1' > /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-
     deploy:
       resources:
         limits:
@@ -47,7 +37,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
     logging:
       driver: "json-file"
       options:
@@ -58,12 +47,10 @@ services:
     image: mongo:latest
     container_name: mongodb_helpme
     hostname: mongodb_helpme
-
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
-
     healthcheck:
       test: |
         mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} \
@@ -74,17 +61,56 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 5
-
     ports:
       - "${MONGO_PORT:-27017}:27017"
-
     volumes:
       - mongodb_data:/data/db
-
     networks:
       - helpme_network
-
     restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper_helpme
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - helpme_network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.1
+    container_name: kafka_helpme
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper_helpme:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    networks:
+      - helpme_network
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka_ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka_helpme:9092
+    networks:
+      - helpme_network
+    depends_on:
+      - kafka
 
 networks:
   helpme_network:

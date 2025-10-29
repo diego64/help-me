@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Abertura de Chamado - Atendimento Help Me</title>
+    <style>
+      .badge {
+        display: inline-block;
+        background: #2546f2;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .info-table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 24px;
+      }
+      .info-table td {
+        padding: 4px 0;
+        font-size: 15px;
+      }
+      .footer {
+        color: #8f97a2;
+        font-size: 12px;
+        margin-top: 32px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body style="background: #f6f8fa; margin: 0; padding: 0;">
+    <table width="100%" bgcolor="#f6f8fa" style="padding: 0; margin: 0;">
+      <tr>
+        <td align="center">
+          <table style="max-width: 490px; background: #fff; border-radius: 12px; margin: 36px auto; padding: 32px; box-shadow: 0 2px 16px 0 #e3e6ee; font-family: Arial, sans-serif;">
+            <tr>
+              <td style="text-align: center;">
+                <img src="https://i.imgur.com/kFtvJ6C.png" alt="Help Me - Logo" style="max-height: 48px; margin-bottom:18px;">
+                <h2 style="color: #2546f2; margin-top:0; margin-bottom:20px;">Chamado Registrado com Sucesso!</h2>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <p>Olá <strong>{{nomeUsuario}}</strong>,</p>
+                <p>
+                  Informamos que seu chamado <span class="badge">#{{idChamado}}</span> foi <strong>registrado</strong> na nossa central de atendimento.<br>
+                  Agora, nossa equipe irá analisar sua solicitação.
+                </p>
+                <table class="info-table">
+                  <tr>
+                    <td><b>Assunto:</b></td><td>{{assuntoChamado}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Data de Abertura:</b></td><td>{{dataAbertura}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Status Atual:</b></td><td><span style="color:#2546f2; font-weight:bold;">Aberto</span></td>
+                  </tr>
+                </table>
+                <p>
+                  <strong>Você receberá notificações por e-mail sempre que houver atualização no status do chamado.</strong>
+                </p>
+                <p>
+                  Se precisar anexar detalhes novos ou conversar com o técnico, acesse o portal de chamados ou responda este e-mail.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                <hr style="margin-bottom:18px;opacity:0.3;">
+                Help Me &copy; 2025 &mdash; Central de Suporte.<br>
+                <span style="font-size:11px;">Por favor, não responda este e-mail caso não tenha solicitado suporte.</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
