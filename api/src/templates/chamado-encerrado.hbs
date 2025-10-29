@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Encerramento de Chamado - Atendimento Help Me</title>
+    <style>
+      .badge {
+        display: inline-block;
+        background: #26ab3c;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .info-table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 24px;
+      }
+      .info-table td {
+        padding: 4px 0;
+        font-size: 15px;
+      }
+      .footer {
+        color: #8f97a2;
+        font-size: 12px;
+        margin-top: 32px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body style="background: #f6f8fa; margin: 0; padding: 0;">
+    <table width="100%" bgcolor="#f6f8fa" style="padding: 0; margin: 0;">
+      <tr>
+        <td align="center">
+          <table style="max-width: 490px; background: #fff; border-radius: 12px; margin: 36px auto; padding: 32px; box-shadow: 0 2px 16px 0 #e3e6ee; font-family: Arial, sans-serif;">
+            <tr>
+              <td style="text-align: center;">
+                <img src="https://i.imgur.com/kFtvJ6C.png" alt="Help Me - Logo" style="max-height: 48px; margin-bottom:18px;">
+                <h2 style="color: #26ab3c; margin-top:0; margin-bottom:20px;">Chamado Encerrado!</h2>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <p>Olá <strong>{{nomeUsuario}}</strong>,</p>
+                <p>
+                  Seu chamado <span class="badge">#{{idChamado}}</span> foi <strong>encerrado</strong> pelo nosso time de atendimento.<br>
+                  Esperamos que sua solicitação tenha sido totalmente resolvida!
+                </p>
+                <table class="info-table">
+                  <tr>
+                    <td><b>Assunto:</b></td><td>{{assuntoChamado}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Data de Abertura:</b></td><td>{{dataAbertura}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Data de Encerramento:</b></td><td>{{dataEncerramento}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Status Final:</b></td><td><span style="color:#26ab3c; font-weight:bold;">Encerrado</span></td>
+                  </tr>
+                </table>
+                <p>
+                  Caso sua dúvida/problema persista ou tenha uma nova solicitação, você pode abrir outro chamado no sistema ou responder este e-mail.<br>
+                  Sua opinião é muito importante para nós!
+                </p>
+                <p>
+                  <em>Nosso canal segue aberto para qualquer necessidade extra.</em>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                <hr style="margin-bottom:18px;opacity:0.3;">
+                Help Me &copy; 2025 &mdash; Central de Suporte.<br>
+                <span style="font-size:11px;">Se não solicitou o encerramento do chamado, favor contatar imediatamente o time de suporte.</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
