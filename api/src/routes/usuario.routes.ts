@@ -3,6 +3,7 @@ import { PrismaClient, Setor } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
+import { cacheSet, cacheGet } from '../services/redisClient';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -52,27 +53,38 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
 
 // Listar todos os usuários
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
-  try {
-    const usuarios = await prisma.usuario.findMany({
-      where: { regra: 'USUARIO' },
-      select: {
-        id: true,
-        nome: true,
-        sobrenome: true,
-        email: true,
-        telefone: true,
-        ramal: true,
-        setor: true,
-        avatarUrl: true,
-        geradoEm: true,
-      },
-    });
+    try {
+      const cacheKey = 'usuarios:list:admin'; // Chave descritiva
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        return res.json(JSON.parse(cached)); // Retorno acelerado do cache
+      }
 
-    res.json(usuarios);
-  } catch (err: any) {
-    res.status(500).json({ error: 'Erro ao listar usuários.' });
+      // Consulta ao banco apenas se o cache não existe
+      const usuarios = await prisma.usuario.findMany({
+        where: { regra: 'USUARIO' },
+        select: {
+          id: true,
+          nome: true,
+          sobrenome: true,
+          email: true,
+          telefone: true,
+          ramal: true,
+          setor: true,
+          avatarUrl: true,
+          geradoEm: true,
+        },
+      });
+
+      // Salva resultado no cache por 60 segundos (pode ajustar o TTL)
+      await cacheSet(cacheKey, JSON.stringify(usuarios), 60);
+
+      res.json(usuarios);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Erro ao listar usuários.' });
+    }
   }
-});
+);
 
 // Buscar um usuário específico pelo e-mail
 router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {

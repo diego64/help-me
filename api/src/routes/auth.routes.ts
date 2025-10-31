@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { cacheSet } from '../services/redisClient';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -27,11 +29,18 @@ router.post('/login', async (req, res) => {
 
     const { accessToken, refreshToken, expiresIn } = generateTokenPair(usuario);
 
-    // Salva o refreshToken no banco após login!
     await prisma.usuario.update({
       where: { id: usuario.id },
       data: { refreshToken },
     });
+
+    (req.session as any).usuario = {
+      id: usuario.id,
+      nome: usuario.nome,
+      sobrenome: usuario.sobrenome,
+      email: usuario.email,
+      regra: usuario.regra
+    };
 
     return res.json({
       usuario: {
@@ -56,12 +65,29 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     return res.status(401).json({ error: 'Não autorizado.' });
   }
 
+  // Blacklist do JWT
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) {
+    const decoded = jwt.decode(token);
+    if (decoded && typeof decoded === 'object' && decoded.jti && decoded.exp) {
+      const ttl = decoded.exp - Math.floor(Date.now() / 1000); // TTL segundos
+      await cacheSet(`jwt:blacklist:${decoded.jti}`, 'revogado', ttl);
+    }
+  }
+
+  // Remove refreshToken do usuário
   await prisma.usuario.update({
     where: { id: req.usuario.id },
     data: { refreshToken: null },
   });
 
-  res.json({ message: 'Logout realizado com sucesso.' });
+  // Invalida a sessão do usuário no Redis
+  req.session.destroy(err => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao encerrar a sessão.' });
+    }
+    res.json({ message: 'Logout realizado com sucesso.' });
+  });
 });
 
 router.post('/refresh-token', async (req, res) => {
