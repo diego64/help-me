@@ -113,6 +113,18 @@ services:
       - helpme_network
     restart: unless-stopped
 
+  redis_helpme:
+    image: redis:latest
+    container_name: redis_helpme
+    hostname: redis_helpme
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - helpme_network
+    restart: unless-stopped
+
 networks:
   helpme_network:
     driver: bridge
@@ -131,3 +143,6 @@ volumes:
   mongodb_data:
     driver: local
     name: mongodb_helpme_data
+  redis_data:
+    driver: local
+    name: redis_helpme_data

@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, TokenPayload, extractTokenFromHeader } from '../auth/jwt';
 import { Regra } from '@prisma/client';
+import { cacheGet } from '../services/redisClient';
 
 export interface AuthRequest extends Request {
   usuario?: TokenPayload;
 }
 
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    // tenta extrair token usando helper; se helper não retornar, faz fallback simples
     const token = extractTokenFromHeader(req.headers.authorization) ?? (() => {
       const header = req.headers.authorization;
       if (!header || typeof header !== 'string') return null;
@@ -21,13 +21,19 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
       return res.status(401).json({ error: 'Token não fornecido.' });
     }
 
-    //Verifica token de acesso
     const decoded = verifyToken(token, 'access');
+
+    // >>> VERIFICAR BLACKLIST NO REDIS <<<
+    if (decoded && decoded.jti) {
+      const blacklisted = await cacheGet(`jwt:blacklist:${decoded.jti}`);
+      if (blacklisted) {
+        return res.status(401).json({ error: 'Token revogado. Faça login novamente.' });
+      }
+    }
 
     req.usuario = decoded;
     return next();
   } catch (err: any) {
-
     console.error('authMiddleware error:', err);
 
     const msg = err instanceof Error ? err.message : 'Invalid token';
