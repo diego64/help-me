@@ -10,21 +10,19 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 const JWT_EXPIRATION: ms.StringValue = (process.env.JWT_EXPIRATION || '8h') as ms.StringValue;
 const JWT_REFRESH_EXPIRATION: ms.StringValue = (process.env.JWT_REFRESH_EXPIRATION || '7d') as ms.StringValue;
 
-function validateSecrets(): void {
+export function validateSecrets(): void {
+  const JWT_SECRET = process.env.JWT_SECRET!;
+  const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
   if (!JWT_SECRET || JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET deve estar definido e conter pelo menos 32 caracteres.');
   }
-
   if (!JWT_REFRESH_SECRET || JWT_REFRESH_SECRET.length < 32) {
     throw new Error('JWT_REFRESH_SECRET deve estar definido e conter pelo menos 32 caracteres.');
   }
-
   if (JWT_SECRET === JWT_REFRESH_SECRET) {
     throw new Error('JWT_SECRET e JWT_REFRESH_SECRET devem ser diferentes.');
   }
 }
-
-validateSecrets();
 
 export interface TokenPayload extends JwtPayload {
   id: string;

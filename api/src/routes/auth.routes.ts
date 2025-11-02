@@ -65,29 +65,38 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     return res.status(401).json({ error: 'Não autorizado.' });
   }
 
-  // Blacklist do JWT
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token) {
-    const decoded = jwt.decode(token);
-    if (decoded && typeof decoded === 'object' && decoded.jti && decoded.exp) {
-      const ttl = decoded.exp - Math.floor(Date.now() / 1000); // TTL segundos
-      await cacheSet(`jwt:blacklist:${decoded.jti}`, 'revogado', ttl);
+  try {
+    // Blacklist do JWT
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      const decoded = jwt.decode(token);
+      if (decoded && typeof decoded === 'object' && decoded.jti && decoded.exp) {
+        const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+        await cacheSet(`jwt:blacklist:${decoded.jti}`, 'revogado', ttl);
+      }
     }
+
+    // Remove refreshToken do usuário
+    await prisma.usuario.update({
+      where: { id: req.usuario.id },
+      data: { refreshToken: null },
+    });
+
+    // Invalida a sessão do usuário no Redis — TRANSFORME EM PROMISE!
+    await new Promise<void>((resolve, reject) => {
+      req.session.destroy((err: any) => {
+        if (err) {
+          res.status(500).json({ error: 'Erro ao encerrar a sessão.' });
+          return reject(err);
+        }
+        res.json({ message: 'Logout realizado com sucesso.' });
+        resolve();
+      });
+    });
+  } catch (err: any) {
+    console.error('Erro no logout:', err);
+    return res.status(500).json({ error: 'Erro ao realizar logout.' });
   }
-
-  // Remove refreshToken do usuário
-  await prisma.usuario.update({
-    where: { id: req.usuario.id },
-    data: { refreshToken: null },
-  });
-
-  // Invalida a sessão do usuário no Redis
-  req.session.destroy(err => {
-    if (err) {
-      return res.status(500).json({ error: 'Erro ao encerrar a sessão.' });
-    }
-    res.json({ message: 'Logout realizado com sucesso.' });
-  });
 });
 
 router.post('/refresh-token', async (req, res) => {

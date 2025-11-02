@@ -16,7 +16,7 @@ import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import tecnicoRoutes from './routes/tecnico.routes';
 import usuarioRoutes from './routes/usuario.routes';
-import servicoRoutes from './routes/servico..routes';
+import servicoRoutes from './routes/servico.routes';
 import chamadoRoutes from './routes/chamado.routes';
 import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
 import envioDeEmailTeste from './routes/envio-email-teste.routes';
