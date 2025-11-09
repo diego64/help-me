@@ -9,21 +9,17 @@ export interface AuthRequest extends Request {
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const token = extractTokenFromHeader(req.headers.authorization) ?? (() => {
-      const header = req.headers.authorization;
-      if (!header || typeof header !== 'string') return null;
-      const parts = header.trim().split(/\s+/);
-      if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') return null;
-      return parts[1];
-    })();
+    // Extrair token do header
+    const token = extractTokenFromHeader(req.headers.authorization);
 
     if (!token) {
       return res.status(401).json({ error: 'Token não fornecido.' });
     }
 
+    // Verificar e decodificar token
     const decoded = verifyToken(token, 'access');
 
-    // >>> VERIFICAR BLACKLIST NO REDIS <<<
+    // Verificar blacklist no Redis
     if (decoded && decoded.jti) {
       const blacklisted = await cacheGet(`jwt:blacklist:${decoded.jti}`);
       if (blacklisted) {

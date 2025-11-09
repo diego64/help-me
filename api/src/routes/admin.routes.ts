@@ -19,7 +19,10 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
       const admin = await prisma.usuario.create({
         data: { nome, sobrenome, email, password: hashedPassword, regra: 'ADMIN' },
       });
-      res.json(admin);
+      
+      const { password: _, ...adminSemSenha } = admin;
+      res.json(adminSemSenha);
+      
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }

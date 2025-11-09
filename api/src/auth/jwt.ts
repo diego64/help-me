@@ -5,11 +5,6 @@ import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
 import type ms from 'ms';
 import { Usuario, Regra } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
-const JWT_EXPIRATION: ms.StringValue = (process.env.JWT_EXPIRATION || '8h') as ms.StringValue;
-const JWT_REFRESH_EXPIRATION: ms.StringValue = (process.env.JWT_REFRESH_EXPIRATION || '7d') as ms.StringValue;
-
 export function validateSecrets(): void {
   const JWT_SECRET = process.env.JWT_SECRET!;
   const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
@@ -31,7 +26,6 @@ export interface TokenPayload extends JwtPayload {
   type: 'access' | 'refresh';
 }
 
-// Exporta generateToken para uso direto se necessário
 export function generateToken(usuario: Usuario, type: 'access' | 'refresh'): string {
   const payload: TokenPayload = {
     id: usuario.id,
@@ -40,8 +34,12 @@ export function generateToken(usuario: Usuario, type: 'access' | 'refresh'): str
     type,
   };
 
-  const secret = type === 'access' ? JWT_SECRET : JWT_REFRESH_SECRET;
-  const expiresIn = type === 'access' ? JWT_EXPIRATION : JWT_REFRESH_EXPIRATION;
+  const secret = type === 'access'
+    ? process.env.JWT_SECRET
+    : process.env.JWT_REFRESH_SECRET;
+  const expiresIn = (type === 'access'
+    ? process.env.JWT_EXPIRATION || '8h'
+    : process.env.JWT_REFRESH_EXPIRATION || '7d') as ms.StringValue;
 
   const options: SignOptions = {
     algorithm: 'HS256',
@@ -50,22 +48,22 @@ export function generateToken(usuario: Usuario, type: 'access' | 'refresh'): str
     audience: 'helpme-client',
   };
 
-  return jwt.sign(payload, secret, options);
+  return jwt.sign(payload, secret!, options);
 }
 
-// Gera par de tokens (access + refresh)
 export function generateTokenPair(usuario: Usuario) {
   const accessToken = generateToken(usuario, 'access');
   const refreshToken = generateToken(usuario, 'refresh');
-  return { accessToken, refreshToken, expiresIn: JWT_EXPIRATION };
+  return { accessToken, refreshToken, expiresIn: process.env.JWT_EXPIRATION || '8h' };
 }
 
-// Verifica token e garante que seja do tipo correto
 export function verifyToken(token: string, type: 'access' | 'refresh' = 'access'): TokenPayload {
-  const secret = type === 'access' ? JWT_SECRET : JWT_REFRESH_SECRET;
+  const secret = type === 'access'
+    ? process.env.JWT_SECRET
+    : process.env.JWT_REFRESH_SECRET;
 
   try {
-    const decoded = jwt.verify(token, secret, {
+    const decoded = jwt.verify(token, secret!, {
       algorithms: ['HS256'],
       issuer: 'helpme-api',
       audience: 'helpme-client',
@@ -83,7 +81,6 @@ export function verifyToken(token: string, type: 'access' | 'refresh' = 'access'
   }
 }
 
-// Decodifica token sem validar
 export function decodeToken(token: string): TokenPayload | null {
   try {
     const decoded = jwt.decode(token) as TokenPayload | null;
@@ -93,7 +90,6 @@ export function decodeToken(token: string): TokenPayload | null {
   }
 }
 
-// Verifica se token expirou
 export function isTokenExpired(token: string): boolean {
   try {
     const decoded = jwt.decode(token) as JwtPayload;
@@ -104,8 +100,26 @@ export function isTokenExpired(token: string): boolean {
   }
 }
 
-// Extrai token do header Authorization
 export function extractTokenFromHeader(authHeader?: string): string | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  return authHeader.split(' ')[1];
+  // Validar se o header existe e é uma string
+  if (!authHeader || typeof authHeader !== 'string') {
+    return null;
+  }
+  
+  // Remover espaços extras e dividir em partes
+  const parts = authHeader.trim().split(/\s+/);
+  
+  // Validar formato: deve ter exatamente 2 partes e começar com "Bearer"
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+    return null;
+  }
+  
+  const token = parts[1];
+  
+  // Validar que o token não está vazio e não contém espaços
+  if (!token || token.trim() === '' || token.includes(' ')) {
+    return null;
+  }
+  
+  return token;
 }

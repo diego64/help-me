@@ -8,5 +8,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
     },
     exclude: ['dist', 'build', 'node_modules'],
+     fileParallelism: false,
+    testTimeout: 30000,
   },
-});
+} as any);

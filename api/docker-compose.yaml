@@ -18,6 +18,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgresql_data:/bitnami/postgresql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
       - postgresql_backups:/backups
       - postgresql_archive:/bitnami/postgresql/archive
     networks:
@@ -52,6 +53,7 @@ services:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongodb_data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
     networks:
       - helpme_network
     restart: unless-stopped
