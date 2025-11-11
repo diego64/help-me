@@ -186,6 +186,48 @@ describe('authMiddleware (middleware de autenticação)', () => {
       jti: 'ABC123'
     });
   });
+
+  it('deve retornar status 401 com mensagem de Token inválido quando ocorrer erro desconhecido na verificação', async () => {
+    const req = { 
+      headers: { authorization: 'Bearer error-token' } 
+    } as AuthRequest;
+    const res = mockRes();
+    
+    const { verifyToken } = await import('../auth/jwt');
+    (verifyToken as any).mockImplementationOnce(() => { 
+      throw new Error('Erro inesperado no servidor'); 
+    });
+    
+    await authMiddleware(req, res, next);
+    
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('deve permitir acesso quando token válido não tiver JTI na blacklist', async () => {
+    const req = { 
+      headers: { authorization: 'Bearer valid-token-no-jti' } 
+    } as AuthRequest;
+    const res = mockRes();
+    
+    const { verifyToken } = await import('../auth/jwt');
+    const { cacheGet } = await import('../services/redisClient');
+    
+    (verifyToken as any).mockReturnValueOnce({
+      id: 'id',
+      email: 'u@t.com',
+      regra: 'USUARIO',
+      type: 'access',
+      jti: 'XYZ789'
+    });
+    (cacheGet as any).mockResolvedValueOnce(null);
+    
+    await authMiddleware(req, res, next);
+    
+    expect(next).toHaveBeenCalled();
+    expect(cacheGet).toHaveBeenCalledWith('jwt:blacklist:XYZ789');
+  });
 });
 
 describe('authorizeRoles (middleware de autorização por role)', () => {
@@ -267,5 +309,33 @@ describe('authorizeRoles (middleware de autorização por role)', () => {
     
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('deve retornar status 401 quando req.usuario for undefined', () => {
+    const req = { 
+      usuario: undefined 
+    } as AuthRequest;
+    const res = mockRes();
+    const middleware = authorizeRoles(Regra.USUARIO);
+    
+    middleware(req, res, next);
+    
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Não autorizado.' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('deve retornar status 403 quando req.usuario.regra for undefined', () => {
+    const req = { 
+      usuario: { regra: undefined as any } 
+    } as AuthRequest;
+    const res = mockRes();
+    const middleware = authorizeRoles(Regra.USUARIO);
+    
+    middleware(req, res, next);
+    
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
+    expect(next).not.toHaveBeenCalled();
   });
 });

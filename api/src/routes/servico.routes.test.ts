@@ -274,4 +274,14 @@ describe('DELETE /:id/excluir (hard delete)', () => {
     const res = await request(getApp()).delete('/serv1/excluir');
     expect(res.status).toBe(403);
   });
+
+  it('deve cobrir o branch alternativo quando incluirInativos não é "true"', async () => {
+    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock]);
+    const res = await request(getApp()).get('/?incluirInativos=false');
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
+      where: { ativo: true },
+      orderBy: { nome: 'asc' }
+    });
+  });
 });
