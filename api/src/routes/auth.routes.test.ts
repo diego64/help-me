@@ -297,6 +297,37 @@ describe('POST /auth/login', () => {
     expect(resposta.status).toBe(500);
     expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
   });
+
+  it('Deve retornar status 500 quando falhar ao atualizar refreshToken no banco durante login', async () => {
+    // Arrange
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    prismaMock.usuario.update.mockRejectedValue(new Error('Update failed'));
+    bcryptCompareMock.mockResolvedValue(true);
+    const credenciaisValidas = { email: usuarioBase.email, password: 'senhaCorreta' };
+
+    // Act
+    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
+
+    // Assert
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
+  });
+
+  it('Deve retornar status 500 quando bcrypt.compare lançar exceção', async () => {
+    // Arrange
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    bcryptCompareMock.mockRejectedValue(new Error('Bcrypt error'));
+    const credenciaisValidas = { email: usuarioBase.email, password: 'senhaCorreta' };
+
+    // Act
+    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
+
+    // Assert
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
+  });
 });
 
 describe('POST /auth/logout', () => {
@@ -359,6 +390,97 @@ describe('POST /auth/logout', () => {
     // Assert
     expect(resposta.status).toBe(500);
     expect(resposta.body).toHaveProperty('error');
+  });
+
+  it('Deve retornar status 500 quando falhar ao adicionar token na blacklist', async () => {
+    // Arrange
+    deveAutenticar = true;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    cacheSetMock.mockRejectedValueOnce(new Error('Redis error'));
+
+    // Act
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    // Assert
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toHaveProperty('error');
+  });
+
+  it('Deve retornar status 200 mesmo quando session.destroy não existir', async () => {
+    // Arrange
+    deveAutenticar = true;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = undefined;
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+
+    // Act
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    // Assert
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('Deve retornar status 200 e realizar logout mesmo sem JTI no token', async () => {
+    // Arrange
+    deveAutenticar = true;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce({ exp: Math.floor(Date.now() / 1000) + 3600 });
+
+    // Act
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    // Assert
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('Deve retornar status 200 mesmo quando jwt.decode retornar null', async () => {
+    // Arrange
+    deveAutenticar = true;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce(null);
+
+    // Act
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    // Assert
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
   });
 });
 
