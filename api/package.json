@@ -13,7 +13,9 @@
     "test:unit": "vitest run --reporter=verbose src/**/*.test.ts",
     "test:e2e": "vitest run --reporter=verbose src/__tests__/e2e/*.e2e.test.ts",
     "test:watch": "vitest",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "extracao-de-rotas": "node extracao-de-rotas.js",
+    "seed": "tsx prisma/seed.ts"
   },
   "keywords": [],
   "author": "Diego Ferreira L.G.Oliveira",
