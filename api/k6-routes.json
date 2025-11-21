@@ -1,0 +1,120 @@
+{
+  "generatedAt": "2025-11-21T14:13:26.080Z",
+  "routes": {
+    "filadechamados": {
+      "basePrefix": "/filadechamados",
+      "routes": {
+        "_meus-chamados": {
+          "method": "GET",
+          "path": "/meus-chamados",
+          "description": "(Apenas o próprio usuário)"
+        },
+        "_chamados-atribuidos": {
+          "method": "GET",
+          "path": "/chamados-atribuidos",
+          "description": "Listar chamados atribuídos ao técnico logado"
+        },
+        "_todos-chamados": {
+          "method": "GET",
+          "path": "/todos-chamados",
+          "description": "Listar todos os chamados aplicando filtros no status"
+        },
+        "_abertos": {
+          "method": "GET",
+          "path": "/abertos",
+          "description": "Listar chamados ABERTOS"
+        }
+      }
+    },
+    "servico": {
+      "basePrefix": "/servico",
+      "routes": {
+        "_": {
+          "method": "POST",
+          "path": "/",
+          "description": "Criar um novo serviço"
+        },
+        "_id": {
+          "method": "GET",
+          "path": "/:id",
+          "description": "Buscar serviço específico por ID"
+        },
+        "_id_desativar": {
+          "method": "DELETE",
+          "path": "/:id/desativar",
+          "description": "Desativar serviço (Soft Delete)"
+        },
+        "_id_reativar": {
+          "method": "PATCH",
+          "path": "/:id/reativar",
+          "description": "Reativar serviço (opcional)"
+        },
+        "_id_excluir": {
+          "method": "DELETE",
+          "path": "/:id/excluir",
+          "description": "Excluir serviço permanentemente (Hard Delete)"
+        }
+      }
+    },
+    "tecnico": {
+      "basePrefix": "/tecnico",
+      "routes": {
+        "_": {
+          "method": "POST",
+          "path": "/",
+          "description": "Criar Técnico"
+        },
+        "_id": {
+          "method": "PUT",
+          "path": "/:id",
+          "description": "Editar Perfil"
+        },
+        "_id_password": {
+          "method": "PUT",
+          "path": "/:id/password",
+          "description": "Alterar senha do Técnico"
+        },
+        "_id_horarios": {
+          "method": "PUT",
+          "path": "/:id/horarios",
+          "description": "Alterar horários de disponibilidade do Técnico"
+        },
+        "_id_avatar": {
+          "method": "POST",
+          "path": "/:id/avatar",
+          "description": "Upload de avatar do Técnico"
+        }
+      }
+    },
+    "usuario": {
+      "basePrefix": "/usuario",
+      "routes": {
+        "_": {
+          "method": "POST",
+          "path": "/",
+          "description": "Criar conta de usuário"
+        },
+        "_email": {
+          "method": "POST",
+          "path": "/email",
+          "description": "Buscar um usuário específico pelo e-mail"
+        },
+        "_id": {
+          "method": "PUT",
+          "path": "/:id",
+          "description": "Editar usuário"
+        },
+        "_id_senha": {
+          "method": "PUT",
+          "path": "/:id/senha",
+          "description": "Alterar senha"
+        },
+        "_id_avatar": {
+          "method": "POST",
+          "path": "/:id/avatar",
+          "description": "Upload de avatar"
+        }
+      }
+    }
+  }
+}

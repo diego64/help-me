@@ -113,7 +113,7 @@ export function getProducerInstanceForTest(): Producer | null {
 export async function conectarKafkaProducer(): Promise<void> {
   const prod = getProducerInstance();
   await prod.connect();
-  console.log('Kafka Producer conectado');
+  console.log('[Kafka][Producer] Kafka Producer conectado');
 }
 
 /**
