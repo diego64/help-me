@@ -8,10 +8,16 @@ import { cacheSet, cacheGet } from '../services/redisClient';
 const prisma = new PrismaClient();
 const router = Router();
 
-// Configuração de upload
+// ============================================================================
+// CONFIGURÇÃO DE UPLOAD DE IMAGEM DO AVATAR
+// ============================================================================
+
 const upload = multer({ dest: 'uploads/' });
 
-// Interface para criação e edição de usuários
+// ============================================================================
+// DADOS NECESSARIOS PARA CRIAÇÃO DO USUARIO
+// ============================================================================
+
 interface usuarioInput {
   nome: string;
   sobrenome: string;
@@ -22,7 +28,10 @@ interface usuarioInput {
   setor: Setor;
 }
 
-// Criar conta de usuário
+// ============================================================================
+// CRIAÇÃO DO PERFIL USUARIO
+// ============================================================================
+
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
     try {
       const { nome, sobrenome, email, password, telefone, ramal, setor } = req.body as usuarioInput;
@@ -51,7 +60,10 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   }
 );
 
-// Listar todos os usuários
+// ============================================================================
+// LISTAGEM DE TODOS OS USUARIOS
+// ============================================================================
+
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
     try {
       const cacheKey = 'usuarios:list:admin'; // Chave descritiva
@@ -86,7 +98,10 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   }
 );
 
-// Buscar um usuário específico pelo e-mail
+// ============================================================================
+// BUSCA PELO USUARIO ATRAVÉS DO EMAIL
+// ============================================================================
+
 router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { email } = req.body;
@@ -123,7 +138,10 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
   }
 );
 
-// Editar usuário
+// ============================================================================
+// EDIÇÃO DO PERFIL DO USUARIO
+// ============================================================================
+
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -140,7 +158,10 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
   }
 });
 
-// Alterar senha
+// ============================================================================
+// ALTERAÇÃO DE SENHA
+// ============================================================================
+
 router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -161,7 +182,10 @@ router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), asy
   }
 });
 
-// Excluir usuário
+// ============================================================================
+// EXCLUÃO DA CONTA DO USUARIO 
+// ============================================================================
+
 router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -175,7 +199,10 @@ router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async 
   }
 });
 
-// Upload de avatar
+// ============================================================================
+// ENVIO DA FOTO DE PERFIL DO USUARIO 
+// ============================================================================
+
 router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), upload.single('avatar'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const file = req.file;

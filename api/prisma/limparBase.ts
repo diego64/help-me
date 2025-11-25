@@ -1,19 +1,23 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../src/lib/prisma';
 import mongoose from 'mongoose';
 import ChamadoAtualizacaoModel from '../src/models/chamadoAtualizacao.model';
 
-const prisma = new PrismaClient();
-
 async function main() {
-  // Limpa histórico no MongoDB
+// ============================================================================
+// LIMPEZA DO BANCO DE DADOS MONGODB
+// ============================================================================
+
   await mongoose.connect(process.env.MONGO_URI!);
   await ChamadoAtualizacaoModel.deleteMany({});
   await mongoose.disconnect();
 
-  // Limpa dados nas tabelas SQL
+// ============================================================================
+// LIMPEZA DO BANCO DE DADOS POSTGRESQL
+// ============================================================================
+
   await prisma.ordemDeServico.deleteMany();
   await prisma.chamado.deleteMany();
   await prisma.servico.deleteMany();

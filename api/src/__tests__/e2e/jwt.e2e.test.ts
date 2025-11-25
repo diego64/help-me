@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { Regra, Setor } from '@prisma/client';
-
 import {
   validateSecrets,
   generateToken,

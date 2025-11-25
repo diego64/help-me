@@ -1,14 +1,14 @@
 import { Router } from 'express';
-import { PrismaClient, ChamadoStatus } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { ChamadoStatus } from '@prisma/client';
 import { authMiddleware, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
-/**
- * Listar chamados do usuário logado
- * (Apenas o próprio usuário)
- */
+// ============================================================================
+// LISTAGEM DOS CHAMADOS DO USUARIO LOGADO
+// ============================================================================
+
 router.get('/meus-chamados',
   authMiddleware,
   authorizeRoles('USUARIO'),
@@ -32,11 +32,11 @@ router.get('/meus-chamados',
   }
 );
 
-/**
- * Listar chamados atribuídos ao técnico logado
- */
-router.get(
-  '/chamados-atribuidos',
+// ============================================================================
+// LISTAGEM DOS CHAMADOS ATRIBUIDO AO TECNICO LOGADO
+// ============================================================================
+
+router.get('/chamados-atribuidos',
   authMiddleware,
   authorizeRoles('TECNICO'),
   async (req: any, res) => {
@@ -81,11 +81,11 @@ router.get(
   }
 );
 
-/**
- * Listar todos os chamados aplicando filtros no status
- */
-router.get(
-  '/todos-chamados',
+// ============================================================================
+// LISTAGEM DE TODOS OS CHAMADOS APLICANDO FILTROS NO STATUS
+// ============================================================================
+
+router.get('/todos-chamados',
   authMiddleware,
   authorizeRoles('ADMIN'),
   async (req, res) => {
@@ -125,11 +125,11 @@ router.get(
   }
 );
 
-/**
- * Listar chamados ABERTOS
- */
-router.get(
-  '/abertos',
+// ============================================================================
+// LISTAGEM DE TODOS OS CHAMADOS COM STATUS ABERTO
+// ============================================================================
+
+router.get('/abertos',
   authMiddleware,
   authorizeRoles('ADMIN', 'TECNICO'),
   async (_req, res) => {

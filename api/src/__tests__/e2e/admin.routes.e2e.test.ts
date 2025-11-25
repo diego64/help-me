@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 20000 });
-
-const prisma = new PrismaClient();
 
 describe('E2E - Rotas de Técnicos', () => {
   let adminToken: string;
@@ -18,15 +16,12 @@ describe('E2E - Rotas de Técnicos', () => {
   let senhaOriginal: string;
 
   beforeAll(async () => {
-    // Arrange: Conectar Mongo (caso necessário)
     const mongoUri = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
     await mongoose.connect(mongoUri);
 
-    // Arrange: Limpa banco
     await prisma.expediente.deleteMany({});
     await prisma.usuario.deleteMany({});
 
-    // Arrange: Cria admin e técnico base
     senhaOriginal = 'SenhaSegura';
     const hashed = await bcrypt.hash(senhaOriginal, 10);
 
@@ -55,7 +50,6 @@ describe('E2E - Rotas de Técnicos', () => {
 
     await prisma.expediente.create({ data: { usuarioId: tecnicoId, entrada: '09:00', saida: '17:00' } });
 
-    // CORREÇÃO: Gerar tokens no formato correto (igual ao login)
     const secret = process.env.JWT_SECRET || 'testsecret';
     adminToken = jwt.sign(
       { 

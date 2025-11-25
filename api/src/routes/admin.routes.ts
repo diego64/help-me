@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import bcrypt from 'bcrypt';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 
-const prisma = new PrismaClient();
 const router = Router();
 
-// Criar ADMIN
+// ============================================================================
+// CRIAÇÃO DE USUARIO COM PERFIL ADMIN
+// ============================================================================
+
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { nome, sobrenome, email, password } = req.body;
   if (!email || !password || !nome || !sobrenome) {
@@ -29,7 +31,10 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
   }
 );
 
-// Listar todos os ADMINS
+// ============================================================================
+// LISTAGEM DE TODOS OS USUÁRIOS COM A REGRA DE PERFIL ADMIN
+// ============================================================================
+
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const admins = await prisma.usuario.findMany({ where: { regra: 'ADMIN' } });
@@ -39,7 +44,10 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   }
 });
 
-// Editar ADMIN
+// ============================================================================
+// EDIÇÃO DE USUÁRIOS COM A REGRA DE PERFIL ADMIN
+// ============================================================================
+
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { nome, sobrenome, email, password } = req.body;
@@ -58,7 +66,10 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequ
   }
 });
 
-// Excluir ADMIN
+// ============================================================================
+// EXCLUSÃO DOS USUÁRIOS COM A REGRA DE PERFIL ADMIN
+// ============================================================================
+
 router.delete('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { id } = req.params;
 

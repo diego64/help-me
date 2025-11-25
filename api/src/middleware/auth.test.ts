@@ -1,341 +1,477 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { authMiddleware, authorizeRoles, AuthRequest } from './auth';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Response, NextFunction } from 'express';
 import { Regra } from '@prisma/client';
 
 // ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Factory para criar mock de resposta Express
- */
-const mockRes = () => {
-  const res: any = {};
-  res.status = vi.fn().mockReturnValue(res);
-  res.json = vi.fn().mockReturnValue(res);
-  return res;
-};
-
-/**
- * Mock da função next do Express
- */
-const next = vi.fn();
-
-// ============================================================================
-// TEST FIXTURES
-// ============================================================================
-
-const tokenPayload = {
-  id: 'id',
-  email: 'u@t.com',
-  regra: Regra.USUARIO,
-  type: 'access',
-  jti: 'ABC123'
-};
-
-// ============================================================================
-// MODULE MOCKS
+// MOCKS
 // ============================================================================
 
 vi.mock('../auth/jwt', () => ({
-  extractTokenFromHeader: vi.fn((h) => h?.split(' ')[1]),
-  verifyToken: vi.fn(() => ({
-    id: 'id',
-    email: 'u@t.com',
-    regra: 'USUARIO',
-    type: 'access',
-    jti: 'ABC123'
-  })),
+  verifyToken: vi.fn(),
+  extractTokenFromHeader: vi.fn(),
 }));
 
 vi.mock('../services/redisClient', () => ({
-  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheGet: vi.fn(),
 }));
 
+import { authMiddleware, authorizeRoles, AuthRequest } from './auth';
+import * as jwtModule from '../auth/jwt';
+import * as redisModule from '../services/redisClient';
+
+const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
+const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);
+const cacheGetMock = vi.mocked(redisModule.cacheGet);
+
 // ============================================================================
-// SETUP & TEARDOWN
+// SETUP E HELPERS
 // ============================================================================
 
-beforeEach(async () => {
+function createMockRequest(authorization?: string): Partial<AuthRequest> {
+  return {
+    headers: {
+      authorization,
+    },
+  } as Partial<AuthRequest>;
+}
+
+function createMockResponse(): Partial<Response> {
+  const res: Partial<Response> = {
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  };
+  return res;
+}
+
+function createMockNext(): NextFunction {
+  return vi.fn() as NextFunction;
+}
+
+beforeEach(() => {
   vi.clearAllMocks();
-  next.mockClear();
-  
-  // Reset mocks para comportamento padrão
-  const { verifyToken } = await import('../auth/jwt');
-  const { cacheGet } = await import('../services/redisClient');
-  
-  (verifyToken as any).mockReturnValue(tokenPayload);
-  (cacheGet as any).mockResolvedValue(null);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 // ============================================================================
-// TEST SUITES
+// TESTES DO authMiddleware
 // ============================================================================
 
-describe('authMiddleware (middleware de autenticação)', () => {
-  it('deve permitir acesso e chamar next() quando o token for válido e não estiver na blacklist', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer valid-token' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    await authMiddleware(req, res, next);
-    
-    expect(next).toHaveBeenCalled();
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(req.usuario).toEqual(tokenPayload);
-  });
+describe('authMiddleware', () => {
+  it('Deve retornar 401 quando token não for fornecido', async () => {
+    // Arrange
+    extractTokenFromHeaderMock.mockReturnValue(null);
+    const req = createMockRequest() as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
 
-  it('deve retornar status 401 com mensagem de erro quando o token não for fornecido no header', async () => {
-    const req = { 
-      headers: {} 
-    } as AuthRequest;
-    const res = mockRes();
-    
+    // Act
     await authMiddleware(req, res, next);
-    
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 401 quando o token estiver na blacklist (revogado)', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer revoked-token' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    const { cacheGet } = await import('../services/redisClient');
-    (cacheGet as any).mockResolvedValueOnce('revogado');
-    
+  it('Deve retornar 401 quando extractTokenFromHeader retornar null', async () => {
+    // Arrange
+    extractTokenFromHeaderMock.mockReturnValue(null);
+    const req = createMockRequest('Bearer invalid') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     await authMiddleware(req, res, next);
-    
+
+    // Assert
+    expect(extractTokenFromHeaderMock).toHaveBeenCalledWith('Bearer invalid');
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ 
-      error: 'Token revogado. Faça login novamente.' 
-    });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
+  });
+
+  it('Deve retornar 401 quando token estiver na blacklist', async () => {
+    // Arrange
+    const mockToken = 'valid-token';
+    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockReturnValue(mockDecoded);
+    cacheGetMock.mockResolvedValue('revogado');
+    
+    const req = createMockRequest('Bearer valid-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(cacheGetMock).toHaveBeenCalledWith('jwt:blacklist:token-jti');
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token revogado. Faça login novamente.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 401 quando o token estiver expirado', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer expired-token' } 
-    } as AuthRequest;
-    const res = mockRes();
+  it('Deve chamar next quando token for válido e não estiver na blacklist', async () => {
+    // Arrange
+    const mockToken = 'valid-token';
+    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockReturnValue(mockDecoded);
+    cacheGetMock.mockResolvedValue(null);
     
-    const { verifyToken } = await import('../auth/jwt');
-    (verifyToken as any).mockImplementationOnce(() => { 
-      throw new Error('Token expirado.'); 
+    const req = createMockRequest('Bearer valid-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(req.usuario).toEqual(mockDecoded);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('Deve chamar next quando token não tiver jti', async () => {
+    // Arrange
+    const mockToken = 'valid-token';
+    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockReturnValue(mockDecoded);
+    
+    const req = createMockRequest('Bearer valid-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(cacheGetMock).not.toHaveBeenCalled();
+    expect(req.usuario).toEqual(mockDecoded);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('Deve retornar 401 com mensagem de token expirado quando erro contiver "expir"', async () => {
+    // Arrange
+    const mockToken = 'expired-token';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw new Error('Token expirado');
     });
     
+    const req = createMockRequest('Bearer expired-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     await authMiddleware(req, res, next);
-    
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 401 quando o token for inválido', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer invalid-token' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    const { verifyToken } = await import('../auth/jwt');
-    (verifyToken as any).mockImplementationOnce(() => { 
-      throw new Error('Token inválido.'); 
+  it('Deve retornar 401 com mensagem de token expirado quando erro contiver "expire" (case insensitive)', async () => {
+    // Arrange
+    const mockToken = 'expired-token';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw new Error('JWT EXPIRED at 2024');
     });
     
+    const req = createMockRequest('Bearer expired-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     await authMiddleware(req, res, next);
+
+    // Assert
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
+  });
+
+  it('Deve retornar 401 com mensagem genérica quando token for inválido', async () => {
+    // Arrange
+    const mockToken = 'invalid-token';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw new Error('Token inválido');
+    });
     
+    const req = createMockRequest('Bearer invalid-token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 401 quando o header Authorization estiver malformado', async () => {
-    const req = { 
-      headers: { authorization: 'InvalidFormat' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    const { extractTokenFromHeader } = await import('../auth/jwt');
-    (extractTokenFromHeader as any).mockReturnValueOnce(null);
-    
-    await authMiddleware(req, res, next);
-    
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('deve anexar os dados do usuário à requisição quando a autenticação for bem-sucedida', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer valid-token' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    await authMiddleware(req, res, next);
-    
-    expect(req.usuario).toBeDefined();
-    expect(req.usuario).toMatchObject({
-      id: 'id',
-      email: 'u@t.com',
-      regra: Regra.USUARIO,
-      type: 'access',
-      jti: 'ABC123'
-    });
-  });
-
-  it('deve retornar status 401 com mensagem de Token inválido quando ocorrer erro desconhecido na verificação', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer error-token' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    const { verifyToken } = await import('../auth/jwt');
-    (verifyToken as any).mockImplementationOnce(() => { 
-      throw new Error('Erro inesperado no servidor'); 
+  it('Deve retornar 401 quando erro não for instância de Error (linha 35)', async () => {
+    // Arrange
+    const mockToken = 'token-com-erro-estranho';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw 'String de erro não estruturado';
     });
     
+    const req = createMockRequest('Bearer token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     await authMiddleware(req, res, next);
-    
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve permitir acesso quando token válido não tiver JTI na blacklist', async () => {
-    const req = { 
-      headers: { authorization: 'Bearer valid-token-no-jti' } 
-    } as AuthRequest;
-    const res = mockRes();
-    
-    const { verifyToken } = await import('../auth/jwt');
-    const { cacheGet } = await import('../services/redisClient');
-    
-    (verifyToken as any).mockReturnValueOnce({
-      id: 'id',
-      email: 'u@t.com',
-      regra: 'USUARIO',
-      type: 'access',
-      jti: 'XYZ789'
+  it('Deve retornar 401 quando erro for null', async () => {
+    // Arrange
+    const mockToken = 'token-com-erro-null';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw null;
     });
-    (cacheGet as any).mockResolvedValueOnce(null);
     
+    const req = createMockRequest('Bearer token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     await authMiddleware(req, res, next);
+
+    // Assert
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
+  });
+
+  it('Deve retornar 401 quando erro for objeto sem message', async () => {
+    // Arrange
+    const mockToken = 'token-com-erro-objeto';
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw { code: 500, detail: 'Erro desconhecido' };
+    });
     
+    const req = createMockRequest('Bearer token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
+  });
+
+  it('Deve pular verificação de blacklist quando decoded não tiver jti', async () => {
+    // Arrange
+    const mockToken = 'valid-token-sem-jti';
+    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockReturnValue(mockDecoded);
+    
+    const req = createMockRequest('Bearer valid-token-sem-jti') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(cacheGetMock).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
-    expect(cacheGet).toHaveBeenCalledWith('jwt:blacklist:XYZ789');
+  });
+
+  it('Deve logar erro no console quando ocorrer exceção', async () => {
+    // Arrange
+    const consoleErrorSpy = vi.spyOn(console, 'error');
+    const mockToken = 'token-com-erro';
+    const mockError = new Error('Erro de verificação');
+    extractTokenFromHeaderMock.mockReturnValue(mockToken);
+    verifyTokenMock.mockImplementation(() => {
+      throw mockError;
+    });
+    
+    const req = createMockRequest('Bearer token') as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    await authMiddleware(req, res, next);
+
+    // Assert
+    expect(consoleErrorSpy).toHaveBeenCalledWith('authMiddleware error:', mockError);
   });
 });
 
-describe('authorizeRoles (middleware de autorização por role)', () => {
-  it('deve permitir acesso e chamar next() quando o usuário possuir uma das roles permitidas', () => {
-    const req = { 
-      usuario: { regra: Regra.USUARIO } 
-    } as AuthRequest;
-    const res = mockRes();
-    const middleware = authorizeRoles(Regra.USUARIO, Regra.ADMIN);
-    
-    middleware(req, res, next);
-    
-    expect(next).toHaveBeenCalled();
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
-  });
+// ============================================================================
+// TESTES DO authorizeRoles
+// ============================================================================
 
-  it('deve permitir acesso quando o usuário for ADMIN e ADMIN estiver nas roles permitidas', () => {
-    const req = { 
-      usuario: { regra: Regra.ADMIN } 
-    } as AuthRequest;
-    const res = mockRes();
+describe('authorizeRoles', () => {
+  it('Deve retornar 401 quando req.usuario não estiver definido', () => {
+    // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
-    
-    middleware(req, res, next);
-    
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
-  });
-
-  it('deve retornar status 401 quando o usuário não estiver autenticado (req.usuario não existe)', () => {
     const req = {} as AuthRequest;
-    const res = mockRes();
-    const middleware = authorizeRoles(Regra.USUARIO);
-    
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     middleware(req, res, next);
-    
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Não autorizado.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 403 quando o usuário estiver autenticado mas não possuir a role necessária', () => {
-    const req = { 
-      usuario: { regra: Regra.USUARIO } 
-    } as AuthRequest;
-    const res = mockRes();
+  it('Deve retornar 403 quando usuário não tiver permissão', () => {
+    // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
-    
+    const req = {
+      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
+    } as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     middleware(req, res, next);
-    
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 403 quando o usuário for TECNICO mas apenas ADMIN for permitido', () => {
-    const req = { 
-      usuario: { regra: Regra.TECNICO } 
-    } as AuthRequest;
-    const res = mockRes();
+  it('Deve chamar next quando usuário tiver permissão adequada', () => {
+    // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
-    
-    middleware(req, res, next);
-    
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('deve permitir acesso quando múltiplas roles forem permitidas e o usuário possuir uma delas', () => {
-    const req = { 
-      usuario: { regra: Regra.TECNICO } 
+    const req = {
+      usuario: { id: 'user1', regra: Regra.ADMIN, type: 'access' as const }
     } as AuthRequest;
-    const res = mockRes();
-    const middleware = authorizeRoles(Regra.USUARIO, Regra.TECNICO, Regra.ADMIN);
-    
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     middleware(req, res, next);
-    
+
+    // Assert
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 401 quando req.usuario for undefined', () => {
-    const req = { 
-      usuario: undefined 
+  it('Deve aceitar múltiplas regras e permitir acesso se usuário tiver uma delas', () => {
+    // Arrange
+    // Usando string explícita para garantir que funciona
+    const middleware = authorizeRoles('ADMIN', 'USUARIO');
+    const req = {
+      usuario: { id: 'user1', regra: 'USUARIO' as any, type: 'access' as const }
     } as AuthRequest;
-    const res = mockRes();
-    const middleware = authorizeRoles(Regra.USUARIO);
-    
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     middleware(req, res, next);
-    
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Não autorizado.' });
-    expect(next).not.toHaveBeenCalled();
+
+    // Assert
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('deve retornar status 403 quando req.usuario.regra for undefined', () => {
-    const req = { 
-      usuario: { regra: undefined as any } 
+  it('Deve aceitar regras como strings', () => {
+    // Arrange
+    const middleware = authorizeRoles('ADMIN', 'USUARIO');
+    const req = {
+      usuario: { id: 'user1', regra: 'ADMIN' as any, type: 'access' as const }
     } as AuthRequest;
-    const res = mockRes();
-    const middleware = authorizeRoles(Regra.USUARIO);
-    
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
     middleware(req, res, next);
-    
+
+    // Assert
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('Deve negar acesso quando usuário não tiver nenhuma das regras permitidas', () => {
+    // Arrange
+    const middleware = authorizeRoles(Regra.ADMIN);
+    const req = {
+      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
+    } as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    middleware(req, res, next);
+
+    // Assert
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
-    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('Deve converter todas as regras para string antes de comparar', () => {
+    // Arrange
+    const middleware = authorizeRoles(Regra.ADMIN);
+    const req = {
+      usuario: { id: 'user1', regra: 'ADMIN' as any, type: 'access' as const }
+    } as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    middleware(req, res, next);
+
+    // Assert
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('Deve funcionar com uma única regra', () => {
+    // Arrange
+    const middleware = authorizeRoles(Regra.USUARIO);
+    const req = {
+      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
+    } as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    middleware(req, res, next);
+
+    // Assert
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('Deve funcionar com duas ou mais regras', () => {
+    // Arrange
+    const middleware = authorizeRoles(Regra.ADMIN, Regra.USUARIO);
+    const req = {
+      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
+    } as AuthRequest;
+    const res = createMockResponse() as Response;
+    const next = createMockNext();
+
+    // Act
+    middleware(req, res, next);
+
+    // Assert
+    expect(next).toHaveBeenCalled();
   });
 });

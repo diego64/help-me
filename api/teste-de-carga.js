@@ -17,6 +17,12 @@ const MOCK_CHAMADO_ID = __ENV.MOCK_CHAMADO_ID || null;
 
 const ROUTES_CONFIG = JSON.parse(open('./k6-routes.json'));
 
+// ====== FUNÇÕES AUXILIARES ======
+
+function randomString(length) {
+  return Math.random().toString(36).substring(2, 2 + length);
+}
+
 function getRouteURL(module, routePath, params = {}) {
   if (typeof routePath === 'undefined') {
     routePath = module;
@@ -49,31 +55,43 @@ function addQueryParams(url, params = {}) {
 function getServicoURL(routePath, params = {}) {
   return getRouteURL('servico', routePath, params);
 }
+
 function getFilaDeChamadosURL(routePath, params = {}) {
   return getRouteURL('filadechamados', routePath, params);
 }
 
+// ====== CONFIGURAÇÃO DE CENÁRIOS ======
+
 export let options = {
   scenarios: {
     // [CENARIO 01] TESTE DE LOGIN E OPERAÇÕES AUTENTICADAS
-    operacoes_autenticadas: {
+    OPERACOES_COM_USUARIOS_AUTENTICADOS: {
       executor: 'constant-vus',
       vus: 1,
       duration: '30s',
       exec: 'authenticatedOps',
     },
     // [CENARIO 02] TESTE DE REFRESH TOKEN
-    refresh_token: {
+    TESTE_DO_REFRESH_TOKEN: {
       executor: 'constant-vus',
       vus: 1,
       duration: '10s',
       exec: 'refreshTokenTest',
       startTime: '35s',
     },
+    // [CENARIO 03] TESTE CRUD DE USUÁRIOS
+    TESTE_CRUD_DE_USUARIOS: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '20s',
+      exec: 'userCrudTest',
+      startTime: '50s',
+    },
   },
 };
 
-// TESTES DE OPERAÇÕES AUTENTICADAS (SEM REFRESH/LOGOUT)
+// ====== CENÁRIO 01: OPERAÇÕES AUTENTICADAS ======
+
 export function authenticatedOps() {
   let adminToken;
   let adminHeaders;
@@ -162,7 +180,7 @@ export function authenticatedOps() {
     }
   });
 
-  // INTERROMPE SE NÃO CONSEGUIU LOGINS ESSENCIAIS
+  // INTERROMPE 0 TESTE CASO NÃO CONSEGUIU LOGINS ESSENCIAIS
   if (!adminToken || !userToken) {
     console.log('❌ Logins essenciais falharam. Abortando testes.');
     return;
@@ -170,7 +188,6 @@ export function authenticatedOps() {
 
   // ====== PERFIL DO USUÁRIO AUTENTICADO ======
   
-  // Verifica se o ADMIN consegue obter seus próprios dados de perfil
   group('Autenticação - Obter Perfil do Usuário Logado', function () {
     const meRes = http.get(`${BASE_URL}/auth/me`, { headers: adminHeaders });
 
@@ -181,11 +198,10 @@ export function authenticatedOps() {
   });
 
   // ====== OPERAÇÕES CRUD DE ADMINISTRADORES ======
-  // Apenas usuários com perfil ADMIN podem executar estas operações
+  
   group('Administração - CRUD de Administradores', function () {
     let adminId = null;
 
-    // GET - Lista todos os administradores cadastrados
     group('GET /admin - Listar Todos os Administradores', function () {
       let res = http.get(`${BASE_URL}/admin`, { headers: adminHeaders });
       check(res, {
@@ -193,7 +209,6 @@ export function authenticatedOps() {
       });
     });
 
-    // POST - Cria um novo administrador no sistema
     group('POST /admin - Criar Novo Administrador', function () {
       const payloadPost = JSON.stringify({
         nome: 'Teste',
@@ -212,7 +227,6 @@ export function authenticatedOps() {
       }
     });
 
-    // PUT - Atualiza dados de um administrador existente
     if (adminId) {
       group('PUT /admin/:id - Atualizar Dados do Administrador', function () {
         const payloadPut = JSON.stringify({
@@ -227,7 +241,6 @@ export function authenticatedOps() {
         });
       });
 
-      // DELETE - Remove permanentemente um administrador do sistema
       group('DELETE /admin/:id - Excluir Administrador', function () {
         let res = http.del(`${BASE_URL}/admin/${adminId}`, null, { headers: adminHeaders });
         check(res, {
@@ -238,13 +251,12 @@ export function authenticatedOps() {
   });
 
   // ====== OPERAÇÕES CRUD DE SERVIÇOS ======
-  // Testes completos para o módulo de serviços usando helpers atualizados
+  
   group('Serviços - CRUD Completo', function () {
     let servicoId = null;
     let servicoIdParaDesativar = null;
     let servicoNomeCriado = null;
 
-    // GET - Lista todos os serviços ativos
     group('GET /servico - Listar Serviços Ativos', function () {
       const url = getServicoURL('/');
       let res = http.get(url, { headers: adminHeaders });
@@ -267,7 +279,6 @@ export function authenticatedOps() {
       }
     });
 
-    // GET - Lista todos os serviços (incluindo inativos)
     group('GET /servico?incluirInativos=true - Listar Todos os Serviços', function () {
       const url = addQueryParams(getServicoURL('/'), { incluirInativos: 'true' });
       let res = http.get(url, { headers: adminHeaders });
@@ -291,7 +302,6 @@ export function authenticatedOps() {
       }
     });
 
-    // POST - Criar novo serviço
     group('POST /servico - Criar Novo Serviço', function () {
       const timestamp = Math.random().toString(36).substring(7);
       servicoNomeCriado = `Serviço Teste K6 ${timestamp}`;
@@ -334,14 +344,12 @@ export function authenticatedOps() {
       }
     });
 
-    // POST - Tentar criar serviço com nome duplicado (deve falhar)
     group('POST /servico - Validação de Nome Duplicado', function () {
       if (!servicoId || !servicoNomeCriado) {
         console.log('⏭️  Pulando teste de duplicação (serviço não foi criado)');
         return;
       }
 
-      // Tenta criar com o MESMO nome que foi criado anteriormente
       const payloadDuplicado = JSON.stringify({
         nome: servicoNomeCriado,
         descricao: 'Tentativa de criar serviço duplicado',
@@ -366,7 +374,6 @@ export function authenticatedOps() {
       }
     });
 
-    // POST - Validação de campos obrigatórios
     group('POST /servico - Validação de Campos Obrigatórios', function () {
       const payloadSemNome = JSON.stringify({
         descricao: 'Serviço sem nome',
@@ -399,7 +406,6 @@ export function authenticatedOps() {
       });
     });
 
-    // GET - Buscar serviço específico por ID
     if (servicoId) {
       group('GET /servico/:id - Buscar Serviço por ID', function () {
         const url = getServicoURL('/:id', { id: servicoId });
@@ -422,7 +428,6 @@ export function authenticatedOps() {
         }
       });
 
-      // GET - Buscar serviço inexistente
       group('GET /servico/:id - Validação de ID Inexistente', function () {
         const idInexistente = '00000000-0000-0000-0000-000000000000';
         const url = getServicoURL('/:id', { id: idInexistente });
@@ -441,7 +446,6 @@ export function authenticatedOps() {
       });
     }
 
-    // PUT - Atualizar serviço
     if (servicoId) {
       group('PUT /servico/:id - Atualizar Serviço', function () {
         const payloadPut = JSON.stringify({
@@ -471,7 +475,6 @@ export function authenticatedOps() {
         }
       });
 
-      // PUT - Atualização parcial (apenas descrição)
       group('PUT /servico/:id - Atualização Parcial', function () {
         const payloadParcial = JSON.stringify({
           descricao: 'Nova descrição (atualização parcial)',
@@ -486,7 +489,6 @@ export function authenticatedOps() {
       });
     }
 
-    // Criar segundo serviço para teste de desativação
     group('POST /servico - Criar Serviço para Desativação', function () {
       const payloadPost = JSON.stringify({
         nome: `Serviço Para Desativar ${Math.random().toString(36).substring(7)}`,
@@ -502,7 +504,6 @@ export function authenticatedOps() {
       }
     });
 
-    // DELETE - Desativar serviço (Soft Delete)
     if (servicoIdParaDesativar) {
       group('DELETE /servico/:id/desativar - Desativar Serviço', function () {
         const url = getServicoURL('/:id/desativar', { id: servicoIdParaDesativar });
@@ -524,7 +525,6 @@ export function authenticatedOps() {
         }
       });
 
-      // DELETE - Tentar desativar novamente (deve falhar)
       group('DELETE /servico/:id/desativar - Validação de Serviço Já Desativado', function () {
         const url = getServicoURL('/:id/desativar', { id: servicoIdParaDesativar });
         let res = http.del(url, null, { headers: adminHeaders });
@@ -542,7 +542,6 @@ export function authenticatedOps() {
         });
       });
 
-      // PATCH - Reativar serviço
       group('PATCH /servico/:id/reativar - Reativar Serviço', function () {
         const url = getServicoURL('/:id/reativar', { id: servicoIdParaDesativar });
         let res = http.patch(url, null, { headers: adminHeaders });
@@ -563,7 +562,6 @@ export function authenticatedOps() {
         }
       });
 
-      // PATCH - Tentar reativar serviço já ativo
       group('PATCH /servico/:id/reativar - Validação de Serviço Já Ativo', function () {
         const url = getServicoURL('/:id/reativar', { id: servicoIdParaDesativar });
         let res = http.patch(url, null, { headers: adminHeaders });
@@ -582,7 +580,6 @@ export function authenticatedOps() {
       });
     }
 
-    // DELETE - Excluir serviço permanentemente (Hard Delete)
     if (servicoId) {
       group('DELETE /servico/:id/excluir - Excluir Serviço Permanentemente', function () {
         const url = getServicoURL('/:id/excluir', { id: servicoId });
@@ -607,7 +604,6 @@ export function authenticatedOps() {
         }
       });
 
-      // GET - Verificar se serviço foi realmente excluído
       group('GET /servico/:id - Verificar Exclusão Permanente', function () {
         const url = getServicoURL('/:id', { id: servicoId });
         let res = http.get(url, { headers: adminHeaders });
@@ -618,9 +614,7 @@ export function authenticatedOps() {
       });
     }
 
-    // Testes de Autorização - USUARIO pode listar mas não gerenciar
     group('Serviços - Testes de Autorização (USUARIO)', function () {
-      // USUARIO pode listar serviços
       group('GET /servico - USUARIO Pode Listar Serviços', function () {
         const url = getServicoURL('/');
         let res = http.get(url, { headers: userHeaders });
@@ -630,7 +624,6 @@ export function authenticatedOps() {
         });
       });
 
-      // USUARIO não pode criar serviços
       group('POST /servico - USUARIO Não Pode Criar Serviços', function () {
         const payload = JSON.stringify({
           nome: 'Teste Sem Permissão',
@@ -645,7 +638,6 @@ export function authenticatedOps() {
         });
       });
 
-      // USUARIO não pode atualizar serviços
       if (servicoIdParaDesativar) {
         group('PUT /servico/:id - USUARIO Não Pode Atualizar Serviços', function () {
           const payload = JSON.stringify({
@@ -660,7 +652,6 @@ export function authenticatedOps() {
           });
         });
 
-        // USUARIO não pode desativar serviços
         group('DELETE /servico/:id/desativar - USUARIO Não Pode Desativar', function () {
           const url = getServicoURL('/:id/desativar', { id: servicoIdParaDesativar });
           let res = http.del(url, null, { headers: userHeaders });
@@ -670,7 +661,6 @@ export function authenticatedOps() {
           });
         });
 
-        // USUARIO não pode excluir serviços
         group('DELETE /servico/:id/excluir - USUARIO Não Pode Excluir', function () {
           const url = getServicoURL('/:id/excluir', { id: servicoIdParaDesativar });
           let res = http.del(url, null, { headers: userHeaders });
@@ -682,7 +672,6 @@ export function authenticatedOps() {
       }
     });
 
-    // Limpar serviços criados durante os testes
     if (servicoIdParaDesativar) {
       group('Limpeza - Excluir Serviço Remanescente', function () {
         const url = getServicoURL('/:id/excluir', { id: servicoIdParaDesativar });
@@ -695,6 +684,7 @@ export function authenticatedOps() {
   });
 
   // ====== DESCOBRIR SERVIÇOS DISPONÍVEIS ======
+  
   let servicoNome = SERVICO_NOME;
 
   if (!servicoNome) {
@@ -728,10 +718,10 @@ export function authenticatedOps() {
   }
 
   // ====== FLUXO COMPLETO DE GERENCIAMENTO DE CHAMADOS ======
+  
   group('Chamados - Ciclo de Vida Completo', function () {
     let chamadoId = MOCK_CHAMADO_ID;
 
-    // POST - Abertura de chamado (apenas usuários com perfil USUARIO)
     if (!SKIP_CHAMADO_CREATION) {
       group('POST chamado/abertura-chamado - Usuário Abre Novo Chamado', function () {
         if (!servicoNome) {
@@ -781,7 +771,6 @@ export function authenticatedOps() {
     }
 
     if (chamadoId) {
-      // GET - Consulta o histórico completo de atualizações do chamado
       group('GET /chamado/:id - Consultar Histórico de Atualizações', function () {
         let res = http.get(`${BASE_URL}/chamado/${chamadoId}/historico`, { headers: userHeaders });
         check(res, {
@@ -789,7 +778,6 @@ export function authenticatedOps() {
         });
       });
 
-      // PATCH - Técnico ou Admin inicia atendimento do chamado
       group('PATCH /chamado/:id/status - Iniciar Atendimento do Chamado', function () {
         const payloadStatus = JSON.stringify({
           status: 'EM_ATENDIMENTO',
@@ -824,7 +812,6 @@ export function authenticatedOps() {
         }
       });
 
-      // PATCH - Encerra o chamado após resolução do problema
       group('PATCH /chamado/:id/status - Encerrar Chamado Resolvido', function () {
         const payloadEncerrar = JSON.stringify({
           status: 'ENCERRADO',
@@ -844,7 +831,6 @@ export function authenticatedOps() {
         }
       });
 
-      // PATCH - Usuário reabre chamado se problema não foi resolvido
       group('PATCH /chamado/:id/reabrir-chamado - Usuário Reabre Chamado', function () {
         const payloadReabrir = JSON.stringify({
           atualizacaoDescricao: 'Problema não foi resolvido',
@@ -862,7 +848,6 @@ export function authenticatedOps() {
         }
       });
 
-      // PATCH - Usuário ou Admin cancela o chamado
       group('PATCH /chamado/:id/cancelar-chamado - Cancelar Chamado', function () {
         const payloadCancelar = JSON.stringify({
           descricaoEncerramento: 'Chamado cancelado por teste',
@@ -880,7 +865,6 @@ export function authenticatedOps() {
         }
       });
 
-      // DELETE - Admin remove permanentemente o chamado do sistema
       group('DELETE /chamado/:id/excluir-chamado - Excluir Chamado Permanentemente', function () {
         let res = http.del(`${BASE_URL}/chamado/${chamadoId}/excluir-chamado`, null, { headers: adminHeaders });
         const checkExcluir = check(res, {
@@ -896,10 +880,9 @@ export function authenticatedOps() {
     }
   });
 
-  // ====== NOVAS ROTAS: LISTAGEM DE CHAMADOS ======
+  // ====== ROTAS DE LISTAGEM DE CHAMADOS ======
+  
   group('Chamados - Rotas de Listagem', function () {
-    
-    // USUARIO - Lista seus próprios chamados
     group('GET /filadechamados/meus-chamados - Listar Meus Chamados', function () {
       const url = getFilaDeChamadosURL('/meus-chamados');
       let res = http.get(url, { headers: userHeaders });
@@ -927,7 +910,6 @@ export function authenticatedOps() {
       }
     });
 
-    // TECNICO - Lista chamados atribuídos (se técnico existir)
     if (tecnicoHeaders) {
       group('GET /filadechamados/chamados-atribuidos - Listar Chamados Atribuídos ao Técnico', function () {
         const url = getFilaDeChamadosURL('/chamados-atribuidos');
@@ -957,7 +939,6 @@ export function authenticatedOps() {
       });
     }
 
-    // ADMIN - Lista todos os chamados por status
     group('GET /filadechamados/todos-chamados?status= - Listar Chamados por Status (ADMIN)', function () {
       const statusList = ['ABERTO', 'EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO', 'REABERTO'];
       
@@ -995,9 +976,7 @@ export function authenticatedOps() {
       }
     });
 
-    // ADMIN - Testa chamada sem parâmetro status (deve retornar erro 400)
     group('GET /filadechamados/todos-chamados - Testes de Validação', function () {
-      // Teste sem parâmetro status
       const urlSemStatus = getFilaDeChamadosURL('/todos-chamados');
       let resSemStatus = http.get(urlSemStatus, { headers: adminHeaders });
       
@@ -1018,7 +997,6 @@ export function authenticatedOps() {
         },
       });
 
-      // Teste com status inválido
       const urlStatusInvalido = addQueryParams(getFilaDeChamadosURL('/todos-chamados'), { status: 'INVALIDO' });
       let resStatusInvalido = http.get(urlStatusInvalido, { headers: adminHeaders });
       
@@ -1039,9 +1017,7 @@ export function authenticatedOps() {
       });
     });
 
-    // ADMIN/TECNICO - Lista chamados abertos
     group('GET /filadechamados/abertos - Listar Chamados Abertos', function () {
-      // Teste com ADMIN
       const urlAbertos = getFilaDeChamadosURL('/abertos');
       let resAdmin = http.get(urlAbertos, { headers: adminHeaders });
       
@@ -1067,7 +1043,6 @@ export function authenticatedOps() {
         console.log(`✓ [ADMIN] Encontrados ${chamados.length} chamados abertos/reabertos`);
       }
 
-      // Teste com TECNICO (se existir)
       if (tecnicoHeaders) {
         let resTecnico = http.get(urlAbertos, { headers: tecnicoHeaders });
         
@@ -1094,23 +1069,19 @@ export function authenticatedOps() {
       }
     });
 
-    // Teste de permissões negadas (USUARIO não pode acessar rotas de ADMIN/TECNICO)
     group('Testes de Autorização - Permissões Negadas', function () {
-      // USUARIO tentando acessar todos os chamados
       const urlTodosChamados = addQueryParams(getFilaDeChamadosURL('/todos-chamados'), { status: 'ABERTO' });
       let res1 = http.get(urlTodosChamados, { headers: userHeaders });
       check(res1, {
         'USUARIO - Acesso negado a /todos-chamados (403)': (r) => r.status === 403,
       });
 
-      // USUARIO tentando acessar chamados abertos
       const urlAbertos = getFilaDeChamadosURL('/abertos');
       let res2 = http.get(urlAbertos, { headers: userHeaders });
       check(res2, {
         'USUARIO - Acesso negado a /abertos (403)': (r) => r.status === 403,
       });
 
-      // USUARIO tentando acessar chamados atribuídos
       const urlAtribuidos = getFilaDeChamadosURL('/chamados-atribuidos');
       let res3 = http.get(urlAtribuidos, { headers: userHeaders });
       check(res3, {
@@ -1122,11 +1093,12 @@ export function authenticatedOps() {
   sleep(1);
 }
 
-// Cenário separado: Testa renovação de token e logout
-// Cenário separado: Testa renovação de token e logout
+// ====== CENÁRIO 02: TESTE DE REFRESH TOKEN ======
+
 export function refreshTokenTest() {
   let token;
   let refreshToken;
+  let adminHeaders;
 
   group('Autenticação - Renovação de Token e Logout', function () {
     // 1. FAZ SEU PRÓPRIO LOGIN
@@ -1210,241 +1182,156 @@ export function refreshTokenTest() {
     }
   });
 
-  sleep(2);
+  sleep(1);
+}
 
-  // ====== OPERAÇÕES CRUD DE USUÁRIOS ======
-// Testes completos para o módulo de gerenciamento de usuários
-group('Usuários - CRUD Completo', function () {
+// ====== CENÁRIO 03: CRUD DE USUÁRIOS ======
+
+export function userCrudTest() {
+  let adminHeaders;
+  let userHeaders;
   let usuarioId = null;
   let usuarioEmail = null;
   let usuarioIdParaExcluir = null;
 
-  // GET - Listar todos os usuários (apenas ADMIN)
-  group('GET /usuario - Listar Todos os Usuários', function () {
-    const url = `${BASE_URL}/usuario`;
-    let res = http.get(url, { headers: adminHeaders });
-    
-    const checkListaUsuarios = check(res, {
-      'ADMIN - Lista de usuários obtida (200)': (r) => r.status === 200,
-      'ADMIN - Resposta é um array': (r) => {
-        try {
-          return Array.isArray(r.json());
-        } catch (e) {
-          if (DEBUG_MODE) console.log(`[DEBUG] Erro ao parsear JSON: ${e}`);
-          return false;
-        }
-      },
+  // LOGIN DO ADMIN
+  group('Login ADMIN para CRUD Usuários', function () {
+    const payload = JSON.stringify({
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
     });
 
-    if (checkListaUsuarios && res.status === 200) {
-      const usuarios = JSON.parse(res.body);
-      console.log(`✓ [ADMIN] Encontrados ${usuarios.length} usuários cadastrados`);
-    }
-  });
-
-  // POST - Criar novo usuário
-  group('POST /usuario - Criar Novo Usuário', function () {
-    const timestamp = Math.random().toString(36).substring(7);
-    usuarioEmail = `usuario.teste.${timestamp}@exemplo.com`;
-    
-    const payloadPost = JSON.stringify({
-      nome: 'Teste',
-      sobrenome: 'Usuario K6',
-      email: usuarioEmail,
-      password: 'SenhaSegura123!',
-      telefone: '(11) 98765-4321',
-      ramal: '1234',
-      setor: 'TI', // Ajuste conforme enum Setor do Prisma
+    const res = http.post(`${BASE_URL}/auth/login`, payload, {
+      headers: { 'Content-Type': 'application/json' },
     });
 
-    if (DEBUG_MODE) {
-      console.log(`[DEBUG] Payload: ${payloadPost}`);
-    }
-
-    const url = `${BASE_URL}/usuario`;
-    let res = http.post(url, payloadPost, { headers: adminHeaders });
-    
-    const checkCriar = check(res, {
-      'ADMIN - Novo usuário criado com sucesso (201)': (r) => r.status === 201,
-      'ADMIN - Usuário retorna ID': (r) => {
-        try {
-          return r.json('id') !== undefined;
-        } catch (e) {
-          return false;
-        }
-      },
-      'ADMIN - Usuário tem regra USUARIO': (r) => {
-        try {
-          return r.json('regra') === 'USUARIO';
-        } catch (e) {
-          return false;
-        }
-      },
+    check(res, {
+      'Login ADMIN OK (200)': (r) => r.status === 200,
     });
 
-    if (checkCriar && res.status === 201) {
-      const usuario = JSON.parse(res.body);
-      usuarioId = usuario.id;
-      console.log(`✓ [ADMIN] Usuário criado: ID=${usuarioId}, Email="${usuario.email}"`);
+    if (res.status === 200) {
+      const token = res.json('accessToken');
+      adminHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
     } else {
-      console.log(`✗ [ADMIN] Falha ao criar usuário: ${res.status} - ${res.body}`);
-    }
-  });
-
-  // POST - Tentar criar usuário com email duplicado (deve falhar)
-  group('POST /usuario - Validação de Email Duplicado', function () {
-    if (!usuarioId || !usuarioEmail) {
-      console.log('⏭️  Pulando teste de duplicação (usuário não foi criado)');
+      console.log('❌ Falha no login ADMIN - abortando testes de usuário');
       return;
     }
+  });
 
-    const payloadDuplicado = JSON.stringify({
-      nome: 'Outro',
-      sobrenome: 'Usuario',
-      email: usuarioEmail, // Email duplicado
-      password: 'OutraSenha123!',
-      setor: 'TI',
+  // LOGIN DO USUARIO
+  group('Login USUARIO para testes de permissão', function () {
+    const payload = JSON.stringify({
+      email: USER_EMAIL,
+      password: USER_PASSWORD,
     });
 
-    const url = `${BASE_URL}/usuario`;
-    let res = http.post(url, payloadDuplicado, { headers: adminHeaders });
-    
-    check(res, {
-      'ADMIN - Rejeita email duplicado (400)': (r) => r.status === 400,
-      'ADMIN - Mensagem de erro presente': (r) => {
-        try {
-          return r.json('error') !== undefined;
-        } catch (e) {
-          return false;
-        }
-      },
+    const res = http.post(`${BASE_URL}/auth/login`, payload, {
+      headers: { 'Content-Type': 'application/json' },
     });
-    
-    if (res.status !== 400) {
-      console.log(`✗ [ADMIN] Esperado 400, recebido ${res.status} - ${res.body}`);
+
+    if (res.status === 200) {
+      const token = res.json('accessToken');
+      userHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
     }
   });
 
-  // POST - Validação de campos obrigatórios
-  group('POST /usuario - Validação de Campos Obrigatórios', function () {
-    // Teste sem senha
-    const payloadSemSenha = JSON.stringify({
-      nome: 'Teste',
-      sobrenome: 'Sem Senha',
-      email: `sem.senha.${Math.random().toString(36).substring(7)}@exemplo.com`,
-      setor: 'TI',
-    });
-
-    const url = `${BASE_URL}/usuario`;
-    let res1 = http.post(url, payloadSemSenha, { headers: adminHeaders });
-    
-    check(res1, {
-      'ADMIN - Rejeita usuário sem senha (400)': (r) => r.status === 400,
-      'ADMIN - Mensagem sobre senha obrigatória': (r) => {
-        try {
-          const error = r.json('error');
-          return error && error.toLowerCase().includes('senha');
-        } catch (e) {
-          return false;
-        }
-      },
-    });
-
-    // Teste sem email
-    const payloadSemEmail = JSON.stringify({
-      nome: 'Teste',
-      sobrenome: 'Sem Email',
-      password: 'Senha123!',
-      setor: 'TI',
-    });
-
-    let res2 = http.post(url, payloadSemEmail, { headers: adminHeaders });
-    
-    check(res2, {
-      'ADMIN - Rejeita usuário sem email (400)': (r) => r.status === 400,
-    });
-
-    // Teste sem nome
-    const payloadSemNome = JSON.stringify({
-      sobrenome: 'Sem Nome',
-      email: `sem.nome.${Math.random().toString(36).substring(7)}@exemplo.com`,
-      password: 'Senha123!',
-      setor: 'TI',
-    });
-
-    let res3 = http.post(url, payloadSemNome, { headers: adminHeaders });
-    
-    check(res3, {
-      'ADMIN - Rejeita usuário sem nome (400)': (r) => r.status === 400,
-    });
-  });
-
-  // POST /email - Buscar usuário específico por email
-  if (usuarioEmail) {
-    group('POST /usuario/email - Buscar Usuário por Email', function () {
-      const payloadBusca = JSON.stringify({
-        email: usuarioEmail,
-      });
-
-      const url = `${BASE_URL}/usuario/email`;
-      let res = http.post(url, payloadBusca, { headers: adminHeaders });
+  // CRUD DE USUÁRIOS
+  group('Usuários - CRUD Completo', function () {
+    group('GET /usuario - Listar Todos os Usuários', function () {
+      const url = `${BASE_URL}/usuario`;
+      let res = http.get(url, { headers: adminHeaders });
       
-      const checkBuscar = check(res, {
-        'ADMIN - Usuário encontrado por email (200)': (r) => r.status === 200,
-        'ADMIN - Email corresponde ao buscado': (r) => {
+      const checkListaUsuarios = check(res, {
+        'ADMIN - Lista de usuários obtida (200)': (r) => r.status === 200,
+        'ADMIN - Resposta é um array': (r) => {
           try {
-            return r.json('email') === usuarioEmail;
+            return Array.isArray(r.json());
           } catch (e) {
-            return false;
-          }
-        },
-        'ADMIN - Retorna dados completos': (r) => {
-          try {
-            const data = r.json();
-            return data.id && data.nome && data.sobrenome && data.setor;
-          } catch (e) {
+            if (DEBUG_MODE) console.log(`[DEBUG] Erro ao parsear JSON: ${e}`);
             return false;
           }
         },
       });
 
-      if (checkBuscar) {
-        const usuario = JSON.parse(res.body);
-        console.log(`✓ [ADMIN] Usuário encontrado: "${usuario.nome} ${usuario.sobrenome}"`);
+      if (checkListaUsuarios && res.status === 200) {
+        const usuarios = JSON.parse(res.body);
+        console.log(`✓ [ADMIN] Encontrados ${usuarios.length} usuários cadastrados`);
       }
     });
 
-    // POST /email - Validação de email não fornecido
-    group('POST /usuario/email - Validação de Email Obrigatório', function () {
-      const payloadVazio = JSON.stringify({});
-
-      const url = `${BASE_URL}/usuario/email`;
-      let res = http.post(url, payloadVazio, { headers: adminHeaders });
+    group('POST /usuario - Criar Novo Usuário', function () {
+      const timestamp = randomString(6);
+      usuarioEmail = `usuario.teste.${timestamp}@exemplo.com`;
       
-      check(res, {
-        'ADMIN - Rejeita busca sem email (400)': (r) => r.status === 400,
-        'ADMIN - Mensagem sobre email obrigatório': (r) => {
+      const payloadPost = JSON.stringify({
+        nome: 'Teste',
+        sobrenome: 'Usuario K6',
+        email: usuarioEmail,
+        password: 'SenhaSegura123!',
+        telefone: '(11) 98765-4321',
+        ramal: '1234',
+       setor: 'RECURSOS_HUMANOS',
+      });
+
+      if (DEBUG_MODE) {
+        console.log(`[DEBUG] Payload: ${payloadPost}`);
+      }
+
+      const url = `${BASE_URL}/usuario`;
+      let res = http.post(url, payloadPost, { headers: adminHeaders });
+      
+      const checkCriar = check(res, {
+        'ADMIN - Novo usuário criado com sucesso (201)': (r) => r.status === 201,
+        'ADMIN - Usuário retorna ID': (r) => {
           try {
-            const error = r.json('error');
-            return error && error.toLowerCase().includes('obrigatório');
+            return r.json('id') !== undefined;
+          } catch (e) {
+            return false;
+          }
+        },
+        'ADMIN - Usuário tem regra USUARIO': (r) => {
+          try {
+            return r.json('regra') === 'USUARIO';
           } catch (e) {
             return false;
           }
         },
       });
+
+      if (checkCriar && res.status === 201) {
+        const usuario = JSON.parse(res.body);
+        usuarioId = usuario.id;
+        console.log(`✓ [ADMIN] Usuário criado: ID=${usuarioId}, Email="${usuario.email}"`);
+      } else {
+        console.log(`✗ [ADMIN] Falha ao criar usuário: ${res.status} - ${res.body}`);
+      }
     });
 
-    // POST /email - Buscar usuário inexistente
-    group('POST /usuario/email - Validação de Email Inexistente', function () {
-      const payloadInexistente = JSON.stringify({
-        email: 'nao.existe.12345@exemplo.com',
+    group('POST /usuario - Validação de Email Duplicado', function () {
+      if (!usuarioId || !usuarioEmail) {
+        console.log('⏭️  Pulando teste de duplicação (usuário não foi criado)');
+        return;
+      }
+
+      const payloadDuplicado = JSON.stringify({
+        nome: 'Outro',
+        sobrenome: 'Usuario',
+        email: usuarioEmail,
+        password: 'OutraSenha123!',
+       setor: 'RECURSOS_HUMANOS',
       });
 
-      const url = `${BASE_URL}/usuario/email`;
-      let res = http.post(url, payloadInexistente, { headers: adminHeaders });
+      const url = `${BASE_URL}/usuario`;
+      let res = http.post(url, payloadDuplicado, { headers: adminHeaders });
       
       check(res, {
-        'ADMIN - Retorna 404 para email inexistente': (r) => r.status === 404,
+        'ADMIN - Rejeita email duplicado (400)': (r) => r.status === 400,
         'ADMIN - Mensagem de erro presente': (r) => {
           try {
             return r.json('error') !== undefined;
@@ -1453,264 +1340,368 @@ group('Usuários - CRUD Completo', function () {
           }
         },
       });
-    });
-  }
-
-  // PUT - Atualizar dados do usuário
-  if (usuarioId) {
-    group('PUT /usuario/:id - Atualizar Dados do Usuário', function () {
-      const payloadPut = JSON.stringify({
-        nome: 'Teste Atualizado',
-        sobrenome: 'Usuario K6 Modificado',
-        telefone: '(11) 91234-5678',
-        ramal: '5678',
-        setor: 'FINANCEIRO', // Ajuste conforme enum
-      });
-
-      const url = `${BASE_URL}/usuario/${usuarioId}`;
-      let res = http.put(url, payloadPut, { headers: adminHeaders });
       
-      const checkAtualizar = check(res, {
-        'ADMIN - Usuário atualizado com sucesso (200)': (r) => r.status === 200,
-        'ADMIN - Retorna dados atualizados': (r) => {
-          try {
-            return r.json('nome') === 'Teste Atualizado';
-          } catch (e) {
-            return false;
-          }
-        },
-      });
-
-      if (checkAtualizar) {
-        const usuario = JSON.parse(res.body);
-        console.log(`✓ [ADMIN] Usuário atualizado: "${usuario.nome} ${usuario.sobrenome}"`);
-      } else {
-        console.log(`✗ [ADMIN] Falha ao atualizar: ${res.status} - ${res.body}`);
+      if (res.status !== 400) {
+        console.log(`✗ [ADMIN] Esperado 400, recebido ${res.status} - ${res.body}`);
       }
     });
 
-    // PUT - Atualização parcial (apenas telefone)
-    group('PUT /usuario/:id - Atualização Parcial', function () {
-      const payloadParcial = JSON.stringify({
-        telefone: '(11) 99999-8888',
-      });
-
-      const url = `${BASE_URL}/usuario/${usuarioId}`;
-      let res = http.put(url, payloadParcial, { headers: adminHeaders });
-      
-      check(res, {
-        'ADMIN - Aceita atualização parcial (200)': (r) => r.status === 200,
-      });
-    });
-
-    // PUT - Validação de ID inexistente
-    group('PUT /usuario/:id - Validação de ID Inexistente', function () {
-      const idInexistente = '00000000-0000-0000-0000-000000000000';
-      const payload = JSON.stringify({
+    group('POST /usuario - Validação de Campos Obrigatórios', function () {
+      const payloadSemSenha = JSON.stringify({
         nome: 'Teste',
+        sobrenome: 'Sem Senha',
+        email: `sem.senha.${randomString(6)}@exemplo.com`,
+        setor: 'RECURSOS_HUMANOS',
       });
 
-      const url = `${BASE_URL}/usuario/${idInexistente}`;
-      let res = http.put(url, payload, { headers: adminHeaders });
+      const url = `${BASE_URL}/usuario`;
+      let res1 = http.post(url, payloadSemSenha, { headers: adminHeaders });
       
-      check(res, {
-        'ADMIN - Retorna erro para ID inexistente (400)': (r) => r.status === 400,
-      });
-    });
-  }
-
-  // PUT /senha - Alterar senha do usuário
-  if (usuarioId) {
-    group('PUT /usuario/:id/senha - Alterar Senha do Usuário', function () {
-      const payloadSenha = JSON.stringify({
-        password: 'NovaSenhaSegura123!',
-      });
-
-      const url = `${BASE_URL}/usuario/${usuarioId}/senha`;
-      let res = http.put(url, payloadSenha, { headers: adminHeaders });
-      
-      const checkSenha = check(res, {
-        'ADMIN - Senha alterada com sucesso (200)': (r) => r.status === 200,
-        'ADMIN - Mensagem de confirmação': (r) => {
-          try {
-            const msg = r.json('message');
-            return msg && msg.toLowerCase().includes('senha');
-          } catch (e) {
-            return false;
-          }
-        },
-      });
-
-      if (checkSenha) {
-        console.log(`✓ [ADMIN] Senha do usuário alterada com sucesso`);
-      }
-    });
-
-    // PUT /senha - Validação de senha obrigatória
-    group('PUT /usuario/:id/senha - Validação de Senha Obrigatória', function () {
-      const payloadVazio = JSON.stringify({});
-
-      const url = `${BASE_URL}/usuario/${usuarioId}/senha`;
-      let res = http.put(url, payloadVazio, { headers: adminHeaders });
-      
-      check(res, {
-        'ADMIN - Rejeita alteração sem senha (400)': (r) => r.status === 400,
+      check(res1, {
+        'ADMIN - Rejeita usuário sem senha (400)': (r) => r.status === 400,
         'ADMIN - Mensagem sobre senha obrigatória': (r) => {
           try {
             const error = r.json('error');
-            return error && error.toLowerCase().includes('obrigatória');
-          } catch (e) {
-            return false;
-          }
-        },
-      });
-    });
-  }
-
-  // POST /avatar - Upload de avatar (teste básico)
-  if (usuarioId) {
-    group('POST /usuario/:id/avatar - Upload de Avatar', function () {
-      // Nota: K6 tem limitações com multipart/form-data
-      // Este é um teste simplificado que verifica a rota
-      console.log(`ℹ️  [INFO] Endpoint de avatar disponível em: /usuario/${usuarioId}/avatar`);
-      console.log(`ℹ️  [INFO] Testes de upload de arquivo devem ser feitos manualmente ou com ferramentas específicas`);
-    });
-  }
-
-  // Criar segundo usuário para teste de exclusão
-  group('POST /usuario - Criar Usuário para Exclusão', function () {
-    const timestamp = Math.random().toString(36).substring(7);
-    const payloadPost = JSON.stringify({
-      nome: 'Usuario',
-      sobrenome: 'Para Excluir',
-      email: `usuario.excluir.${timestamp}@exemplo.com`,
-      password: 'SenhaParaExcluir123!',
-      setor: 'TI',
-    });
-
-    const url = `${BASE_URL}/usuario`;
-    let res = http.post(url, payloadPost, { headers: adminHeaders });
-    
-    if (res.status === 201) {
-      usuarioIdParaExcluir = JSON.parse(res.body).id;
-      console.log(`✓ [ADMIN] Usuário criado para exclusão: ID=${usuarioIdParaExcluir}`);
-    }
-  });
-
-  // DELETE - Excluir usuário e chamados associados
-  if (usuarioIdParaExcluir) {
-    group('DELETE /usuario/:id - Excluir Usuário Permanentemente', function () {
-      const url = `${BASE_URL}/usuario/${usuarioIdParaExcluir}`;
-      let res = http.del(url, null, { headers: adminHeaders });
-      
-      const checkExcluir = check(res, {
-        'ADMIN - Usuário excluído com sucesso (200)': (r) => r.status === 200,
-        'ADMIN - Mensagem de confirmação': (r) => {
-          try {
-            const msg = r.json('message');
-            return msg && msg.includes('excluídos');
+            return error && error.toLowerCase().includes('senha');
           } catch (e) {
             return false;
           }
         },
       });
 
-      if (checkExcluir) {
-        console.log(`✓ [ADMIN] Usuário e chamados associados excluídos com sucesso`);
-      } else {
-        console.log(`✗ [ADMIN] Falha ao excluir: ${res.status} - ${res.body}`);
-      }
-    });
-
-    // DELETE - Tentar excluir usuário já excluído
-    group('DELETE /usuario/:id - Validação de Usuário Já Excluído', function () {
-      const url = `${BASE_URL}/usuario/${usuarioIdParaExcluir}`;
-      let res = http.del(url, null, { headers: adminHeaders });
-      
-      check(res, {
-        'ADMIN - Retorna erro ao excluir usuário inexistente (400)': (r) => r.status === 400,
-      });
-    });
-  }
-
-  // Testes de Autorização - Permissões de USUARIO comum
-  group('Usuários - Testes de Autorização (USUARIO)', function () {
-    // USUARIO não pode listar todos os usuários
-    group('GET /usuario - USUARIO Não Pode Listar Usuários', function () {
-      const url = `${BASE_URL}/usuario`;
-      let res = http.get(url, { headers: userHeaders });
-      
-      check(res, {
-        'USUARIO - Acesso negado ao listar usuários (403)': (r) => r.status === 403,
-      });
-    });
-
-    // USUARIO não pode criar outros usuários
-    group('POST /usuario - USUARIO Não Pode Criar Usuários', function () {
-      const payload = JSON.stringify({
+      const payloadSemEmail = JSON.stringify({
         nome: 'Teste',
-        sobrenome: 'Sem Permissao',
-        email: `sem.permissao.${Math.random().toString(36).substring(7)}@exemplo.com`,
+        sobrenome: 'Sem Email',
         password: 'Senha123!',
-        setor: 'TI',
+        setor: 'RECURSOS_HUMANOS',
+      });
+
+      let res2 = http.post(url, payloadSemEmail, { headers: adminHeaders });
+      
+      check(res2, {
+        'ADMIN - Rejeita usuário sem email (400)': (r) => r.status === 400,
+      });
+
+      const payloadSemNome = JSON.stringify({
+        sobrenome: 'Sem Nome',
+        email: `sem.nome.${randomString(6)}@exemplo.com`,
+        password: 'Senha123!',
+        setor: 'RECURSOS_HUMANOS',
+      });
+
+      let res3 = http.post(url, payloadSemNome, { headers: adminHeaders });
+      
+      check(res3, {
+        'ADMIN - Rejeita usuário sem nome (400)': (r) => r.status === 400,
+      });
+    });
+
+    if (usuarioEmail) {
+      group('POST /usuario/email - Buscar Usuário por Email', function () {
+        const payloadBusca = JSON.stringify({
+          email: usuarioEmail,
+        });
+
+        const url = `${BASE_URL}/usuario/email`;
+        let res = http.post(url, payloadBusca, { headers: adminHeaders });
+        
+        const checkBuscar = check(res, {
+          'ADMIN - Usuário encontrado por email (200)': (r) => r.status === 200,
+          'ADMIN - Email corresponde ao buscado': (r) => {
+            try {
+              return r.json('email') === usuarioEmail;
+            } catch (e) {
+              return false;
+            }
+          },
+          'ADMIN - Retorna dados completos': (r) => {
+            try {
+              const data = r.json();
+              return data.id && data.nome && data.sobrenome && data.setor;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+
+        if (checkBuscar) {
+          const usuario = JSON.parse(res.body);
+          console.log(`✓ [ADMIN] Usuário encontrado: "${usuario.nome} ${usuario.sobrenome}"`);
+        }
+      });
+
+      group('POST /usuario/email - Validação de Email Obrigatório', function () {
+        const payloadVazio = JSON.stringify({});
+
+        const url = `${BASE_URL}/usuario/email`;
+        let res = http.post(url, payloadVazio, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Rejeita busca sem email (400)': (r) => r.status === 400,
+          'ADMIN - Mensagem sobre email obrigatório': (r) => {
+            try {
+              const error = r.json('error');
+              return error && error.toLowerCase().includes('obrigatório');
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      group('POST /usuario/email - Validação de Email Inexistente', function () {
+        const payloadInexistente = JSON.stringify({
+          email: 'nao.existe.12345@exemplo.com',
+        });
+
+        const url = `${BASE_URL}/usuario/email`;
+        let res = http.post(url, payloadInexistente, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Retorna 404 para email inexistente': (r) => r.status === 404,
+          'ADMIN - Mensagem de erro presente': (r) => {
+            try {
+              return r.json('error') !== undefined;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+    }
+
+    if (usuarioId) {
+      group('PUT /usuario/:id - Atualizar Dados do Usuário', function () {
+        const payloadPut = JSON.stringify({
+          nome: 'Teste Atualizado',
+          sobrenome: 'Usuario K6 Modificado',
+          telefone: '(11) 91234-5678',
+          ramal: '5678',
+          setor: 'FINANCEIRO',
+        });
+
+        const url = `${BASE_URL}/usuario/${usuarioId}`;
+        let res = http.put(url, payloadPut, { headers: adminHeaders });
+        
+        const checkAtualizar = check(res, {
+          'ADMIN - Usuário atualizado com sucesso (200)': (r) => r.status === 200,
+          'ADMIN - Retorna dados atualizados': (r) => {
+            try {
+              return r.json('nome') === 'Teste Atualizado';
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+
+        if (checkAtualizar) {
+          const usuario = JSON.parse(res.body);
+          console.log(`✓ [ADMIN] Usuário atualizado: "${usuario.nome} ${usuario.sobrenome}"`);
+        } else {
+          console.log(`✗ [ADMIN] Falha ao atualizar: ${res.status} - ${res.body}`);
+        }
+      });
+
+      group('PUT /usuario/:id - Atualização Parcial', function () {
+        const payloadParcial = JSON.stringify({
+          telefone: '(11) 99999-8888',
+        });
+
+        const url = `${BASE_URL}/usuario/${usuarioId}`;
+        let res = http.put(url, payloadParcial, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Aceita atualização parcial (200)': (r) => r.status === 200,
+        });
+      });
+
+      group('PUT /usuario/:id - Validação de ID Inexistente', function () {
+        const idInexistente = '00000000-0000-0000-0000-000000000000';
+        const payload = JSON.stringify({
+          nome: 'Teste',
+        });
+
+        const url = `${BASE_URL}/usuario/${idInexistente}`;
+        let res = http.put(url, payload, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Retorna erro para ID inexistente (400)': (r) => r.status === 400,
+        });
+      });
+    }
+
+    if (usuarioId) {
+      group('PUT /usuario/:id/senha - Alterar Senha do Usuário', function () {
+        const payloadSenha = JSON.stringify({
+          password: 'NovaSenhaSegura123!',
+        });
+
+        const url = `${BASE_URL}/usuario/${usuarioId}/senha`;
+        let res = http.put(url, payloadSenha, { headers: adminHeaders });
+        
+        const checkSenha = check(res, {
+          'ADMIN - Senha alterada com sucesso (200)': (r) => r.status === 200,
+          'ADMIN - Mensagem de confirmação': (r) => {
+            try {
+              const msg = r.json('message');
+              return msg && msg.toLowerCase().includes('senha');
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+
+        if (checkSenha) {
+          console.log(`✓ [ADMIN] Senha do usuário alterada com sucesso`);
+        }
+      });
+
+      group('PUT /usuario/:id/senha - Validação de Senha Obrigatória', function () {
+        const payloadVazio = JSON.stringify({});
+
+        const url = `${BASE_URL}/usuario/${usuarioId}/senha`;
+        let res = http.put(url, payloadVazio, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Rejeita alteração sem senha (400)': (r) => r.status === 400,
+          'ADMIN - Mensagem sobre senha obrigatória': (r) => {
+            try {
+              const error = r.json('error');
+              return error && error.toLowerCase().includes('obrigatória');
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+    }
+
+    if (usuarioId) {
+      group('POST /usuario/:id/avatar - Info sobre Upload de Avatar', function () {
+        console.log(`ℹ️  [INFO] Endpoint de avatar disponível em: /usuario/${usuarioId}/avatar`);
+        console.log(`ℹ️  [INFO] Testes de upload de arquivo devem ser feitos manualmente ou com ferramentas específicas`);
+      });
+    }
+
+    group('POST /usuario - Criar Usuário para Exclusão', function () {
+      const timestamp = randomString(6);
+      const payloadPost = JSON.stringify({
+        nome: 'Usuario',
+        sobrenome: 'Para Excluir',
+        email: `usuario.excluir.${timestamp}@exemplo.com`,
+        password: 'SenhaParaExcluir123!',
+        setor: 'RECURSOS_HUMANOS',
       });
 
       const url = `${BASE_URL}/usuario`;
-      let res = http.post(url, payload, { headers: userHeaders });
+      let res = http.post(url, payloadPost, { headers: adminHeaders });
       
-      check(res, {
-        'USUARIO - Acesso negado ao criar usuário (403)': (r) => r.status === 403,
-      });
+      if (res.status === 201) {
+        usuarioIdParaExcluir = JSON.parse(res.body).id;
+        console.log(`✓ [ADMIN] Usuário criado para exclusão: ID=${usuarioIdParaExcluir}`);
+      }
     });
 
-    // USUARIO não pode buscar outros usuários por email
-    group('POST /usuario/email - USUARIO Não Pode Buscar Usuários', function () {
-      const payload = JSON.stringify({
-        email: ADMIN_EMAIL,
+    if (usuarioIdParaExcluir) {
+      group('DELETE /usuario/:id - Excluir Usuário Permanentemente', function () {
+        const url = `${BASE_URL}/usuario/${usuarioIdParaExcluir}`;
+        let res = http.del(url, null, { headers: adminHeaders });
+        
+        const checkExcluir = check(res, {
+          'ADMIN - Usuário excluído com sucesso (200)': (r) => r.status === 200,
+          'ADMIN - Mensagem de confirmação': (r) => {
+            try {
+              const msg = r.json('message');
+              return msg && msg.includes('excluídos');
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+
+        if (checkExcluir) {
+          console.log(`✓ [ADMIN] Usuário e chamados associados excluídos com sucesso`);
+        } else {
+          console.log(`✗ [ADMIN] Falha ao excluir: ${res.status} - ${res.body}`);
+        }
       });
 
-      const url = `${BASE_URL}/usuario/email`;
-      let res = http.post(url, payload, { headers: userHeaders });
-      
-      check(res, {
-        'USUARIO - Acesso negado ao buscar por email (403)': (r) => r.status === 403,
+      group('DELETE /usuario/:id - Validação de Usuário Já Excluído', function () {
+        const url = `${BASE_URL}/usuario/${usuarioIdParaExcluir}`;
+        let res = http.del(url, null, { headers: adminHeaders });
+        
+        check(res, {
+          'ADMIN - Retorna erro ao excluir usuário inexistente (400)': (r) => r.status === 400,
+        });
       });
+    }
+
+    group('Usuários - Testes de Autorização (USUARIO)', function () {
+      if (!userHeaders) {
+        console.log('⏭️  Pulando testes de autorização (usuário não logado)');
+        return;
+      }
+
+      group('GET /usuario - USUARIO Não Pode Listar Usuários', function () {
+        const url = `${BASE_URL}/usuario`;
+        let res = http.get(url, { headers: userHeaders });
+        
+        check(res, {
+          'USUARIO - Acesso negado ao listar usuários (403)': (r) => r.status === 403,
+        });
+      });
+
+      group('POST /usuario - USUARIO Não Pode Criar Usuários', function () {
+        const payload = JSON.stringify({
+          nome: 'Teste',
+          sobrenome: 'Sem Permissao',
+          email: `sem.permissao.${randomString(6)}@exemplo.com`,
+          password: 'Senha123!',
+          setor: 'RECURSOS_HUMANOS',
+        });
+
+        const url = `${BASE_URL}/usuario`;
+        let res = http.post(url, payload, { headers: userHeaders });
+        
+        check(res, {
+          'USUARIO - Acesso negado ao criar usuário (403)': (r) => r.status === 403,
+        });
+      });
+
+      group('POST /usuario/email - USUARIO Não Pode Buscar Usuários', function () {
+        const payload = JSON.stringify({
+          email: ADMIN_EMAIL,
+        });
+
+        const url = `${BASE_URL}/usuario/email`;
+        let res = http.post(url, payload, { headers: userHeaders });
+        
+        check(res, {
+          'USUARIO - Acesso negado ao buscar por email (403)': (r) => r.status === 403,
+        });
+      });
+
+      if (usuarioId) {
+        group('Permissões USUARIO - Editar Próprios Dados', function () {
+          console.log(`ℹ️  [INFO] USUARIO pode editar seus próprios dados (autorizado por authorizeRoles)`);
+          console.log(`ℹ️  [INFO] Validação completa requer autenticação como o usuário específico`);
+        });
+      }
     });
 
-    // USUARIO pode editar apenas seus próprios dados
     if (usuarioId) {
-      group('PUT /usuario/:id - USUARIO Pode Editar Próprios Dados', function () {
-        // Nota: Este teste assume que userToken pertence ao usuário criado
-        // Em cenário real, seria necessário criar um token para este usuário específico
-        console.log(`ℹ️  [INFO] USUARIO pode editar seus próprios dados (autorizado por authorizeRoles)`);
-        console.log(`ℹ️  [INFO] Validação completa requer autenticação como o usuário específico`);
-      });
-
-      group('PUT /usuario/:id/senha - USUARIO Pode Alterar Própria Senha', function () {
-        console.log(`ℹ️  [INFO] USUARIO pode alterar sua própria senha (autorizado por authorizeRoles)`);
-      });
-
-      group('DELETE /usuario/:id - USUARIO Pode Excluir Própria Conta', function () {
-        console.log(`ℹ️  [INFO] USUARIO pode excluir sua própria conta (autorizado por authorizeRoles)`);
+      group('Limpeza - Excluir Usuário de Teste', function () {
+        const url = `${BASE_URL}/usuario/${usuarioId}`;
+        let res = http.del(url, null, { headers: adminHeaders });
+        if (res.status === 200) {
+          console.log(`✓ [CLEANUP] Usuário de teste removido`);
+        }
       });
     }
   });
 
-  // Limpar usuário de teste remanescente
-  if (usuarioId) {
-    group('Limpeza - Excluir Usuário de Teste', function () {
-      const url = `${BASE_URL}/usuario/${usuarioId}`;
-      let res = http.del(url, null, { headers: adminHeaders });
-      if (res.status === 200) {
-        console.log(`✓ [CLEANUP] Usuário de teste removido`);
-      }
-    });
-  }
-});
-
-  // ====== TESTES DE CACHE REDIS (USUÁRIOS) ======
+  // TESTES DE CACHE REDIS
   group('Usuários - Validação de Cache (Redis)', function () {
-    // Primeira chamada: deve consultar o banco
     group('GET /usuario - Primeira Chamada (Miss de Cache)', function () {
       const url = `${BASE_URL}/usuario`;
       const inicio = Date.now();
@@ -1724,7 +1715,6 @@ group('Usuários - CRUD Completo', function () {
       console.log(`✓ [CACHE] Primeira chamada: ${duracao}ms (cache miss esperado)`);
     });
 
-    // Segunda chamada: deve vir do cache (mais rápida)
     group('GET /usuario - Segunda Chamada (Hit de Cache)', function () {
       const url = `${BASE_URL}/usuario`;
       const inicio = Date.now();
@@ -1739,5 +1729,5 @@ group('Usuários - CRUD Completo', function () {
     });
   });
 
-  sleep(2);
+  sleep(1);
 }

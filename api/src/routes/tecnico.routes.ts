@@ -1,16 +1,21 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 
-const prisma = new PrismaClient();
 const router = Router();
 
-// Configuração de upload
+// ============================================================================
+// CONFIGURÇÃO DE UPLOAD DE IMAGEM DO AVATAR
+// ============================================================================
+
 const upload = multer({ dest: 'uploads/' });
 
-// Criar Técnico
+// ============================================================================
+// CRIAÇÃO DO PERFIL TECNICO
+// ============================================================================
+
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { nome, sobrenome, email, password, telefone, ramal } = req.body;
   if (!password) return res.status(400).json({ error: 'Senha obrigatória.' });
@@ -40,7 +45,10 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
   }
 });
 
-// Listar todos os Técnicos
+// ============================================================================
+// LISTAGEM DE TODOS OS TECNICOS
+// ============================================================================
+
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const tecnicos = await prisma.usuario.findMany({
     where: { regra: 'TECNICO' },
@@ -49,7 +57,10 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   res.json(tecnicos);
 });
 
-// Editar Perfil
+// ============================================================================
+// EDIÇÃO DO PERFIL DO TECNICO
+// ============================================================================
+
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { nome, sobrenome, email, telefone, ramal } = req.body;
@@ -65,7 +76,10 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (re
   }
 });
 
-// Alterar senha do Técnico
+// ============================================================================
+// ALTERAÇÃO DE SENHA
+// ============================================================================
+
 router.put('/:id/password', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { password } = req.body;
@@ -81,7 +95,10 @@ router.put('/:id/password', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
   }
 });
 
-// Alterar horários de disponibilidade do Técnico
+// ============================================================================
+// ALTEAÇÃO DE HOÁRIO DE DISPONIBILIDADE PARA ATENDIMENTO
+// ============================================================================
+
 router.put('/:id/horarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { entrada, saida }: { entrada: string; saida: string } = req.body;
@@ -101,7 +118,10 @@ router.put('/:id/horarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
   }
 });
 
-// Upload de avatar do Técnico
+// ============================================================================
+// UPLOAD DO AVATAR (FOTO DE PERFIL)
+// ============================================================================
+
 router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), upload.single('avatar'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const file = req.file;
@@ -115,7 +135,10 @@ router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), u
   }
 });
 
-// Excluir Técnico e horários
+// ============================================================================
+// EXCLUSÃO DO TECNICO (COM OS HORÁRIOS DE ATENDIMENTO INCLUSO)
+// ============================================================================
+
 router.delete('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   const { id } = req.params;
 

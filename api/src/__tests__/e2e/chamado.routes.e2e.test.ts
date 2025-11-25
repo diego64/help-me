@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 15000 });
 
-const prisma = new PrismaClient();
+
 const BASE_URL = '/chamado';
 
 describe('E2E - Rotas de Chamados', () => {
