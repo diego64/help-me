@@ -24,6 +24,10 @@ vi.mock('@prisma/client', () => ({
   PrismaClient: function () { return prismaMock; }
 }));
 
+vi.mock('../lib/prisma.js', () => ({
+  prisma: prismaMock,
+}));
+
 vi.mock('../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { id: 'uid', regra: Regra };
@@ -84,6 +88,18 @@ describe('POST / (criação de serviço)', () => {
     const res = await request(getApp()).post('/').send(servicoMock);
     expect(res.status).toBe(403);
   });
+
+  it('deve retornar status 400 quando nome for string vazia', async () => {
+    const res = await request(getApp()).post('/').send({ nome: '', descricao: 'Qualquer' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('nome do serviço');
+  });
+
+  it('deve retornar status 400 quando nome for apenas espaços em branco', async () => {
+    const res = await request(getApp()).post('/').send({ nome: '   ', descricao: 'Qualquer' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('nome do serviço');
+  });
 });
 
 describe('GET / (listar serviços)', () => {
@@ -113,6 +129,16 @@ describe('GET / (listar serviços)', () => {
     Regra = 'TECNICO';
     const res = await request(getApp()).get('/');
     expect(res.status).toBe(403);
+  });
+
+  it('deve cobrir o branch alternativo quando incluirInativos não é "true"', async () => {
+    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock]);
+    const res = await request(getApp()).get('/?incluirInativos=false');
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
+      where: { ativo: true },
+      orderBy: { nome: 'asc' }
+    });
   });
 });
 
@@ -171,6 +197,134 @@ describe('PUT /:id (editar serviço)', () => {
     Regra = 'USUARIO';
     const res = await request(getApp()).put('/serv1').send({ nome: 'Novo' });
     expect(res.status).toBe(403);
+  });
+
+  // -------------------------------------------------------------------------
+  // TESTES PARA COBERTURA 100% - Linha 90 (branches de nome e descricao)
+  // -------------------------------------------------------------------------
+
+  it('deve manter a descrição original quando descricao não for enviada (undefined - linha 90)', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Novo Nome' });
+    
+    // Enviar apenas nome, sem descricao
+    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo Nome' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: 'Novo Nome',
+        descricao: servicoMock.descricao, // Deve usar a descrição original
+      },
+    });
+  });
+
+  it('deve manter a descrição original quando descricao for null (linha 90)', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Novo Nome' });
+    
+    // Enviar descricao como null explicitamente
+    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo Nome', descricao: null });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: 'Novo Nome',
+        descricao: servicoMock.descricao, // null ?? servico.descricao = servico.descricao
+      },
+    });
+  });
+
+  it('deve atualizar a descrição quando descricao for enviada como string vazia (linha 90)', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, descricao: '' });
+    
+    // Enviar descricao como string vazia (não é null/undefined, então usa o valor)
+    const res = await request(getApp()).put('/serv1').send({ nome: 'Email', descricao: '' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: 'Email',
+        descricao: '', // String vazia é um valor válido para ??
+      },
+    });
+  });
+
+  it('deve manter o nome original quando nome não for enviado (undefined)', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, descricao: 'Nova Descricao' });
+    
+    // Enviar apenas descricao, sem nome
+    const res = await request(getApp()).put('/serv1').send({ descricao: 'Nova Descricao' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: servicoMock.nome, // Deve usar o nome original
+        descricao: 'Nova Descricao',
+      },
+    });
+  });
+
+  it('deve manter o nome original quando nome for string vazia após trim', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce(servicoMock);
+    
+    // Enviar nome como string vazia ou apenas espaços
+    const res = await request(getApp()).put('/serv1').send({ nome: '   ', descricao: 'Desc' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: servicoMock.nome, // '' || servico.nome = servico.nome
+        descricao: 'Desc',
+      },
+    });
+  });
+
+  it('deve atualizar ambos nome e descricao quando enviados com valores válidos', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ 
+      ...servicoMock, 
+      nome: 'Novo Nome', 
+      descricao: 'Nova Descricao' 
+    });
+    
+    const res = await request(getApp()).put('/serv1').send({ 
+      nome: 'Novo Nome', 
+      descricao: 'Nova Descricao' 
+    });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: 'Novo Nome',
+        descricao: 'Nova Descricao',
+      },
+    });
+  });
+
+  it('deve fazer trim do nome quando enviado com espaços nas extremidades', async () => {
+    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
+    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Nome Com Espacos' });
+    
+    const res = await request(getApp()).put('/serv1').send({ nome: '  Nome Com Espacos  ' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        nome: 'Nome Com Espacos',
+        descricao: servicoMock.descricao,
+      },
+    });
   });
 });
 
@@ -273,15 +427,5 @@ describe('DELETE /:id/excluir (hard delete)', () => {
     Regra = 'USUARIO';
     const res = await request(getApp()).delete('/serv1/excluir');
     expect(res.status).toBe(403);
-  });
-
-  it('deve cobrir o branch alternativo quando incluirInativos não é "true"', async () => {
-    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock]);
-    const res = await request(getApp()).get('/?incluirInativos=false');
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
-      where: { ativo: true },
-      orderBy: { nome: 'asc' }
-    });
   });
 });

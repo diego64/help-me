@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { cacheSet } from '../services/redisClient';
 
-const prisma = new PrismaClient();
 const router = Router();
+
+// ============================================================================
+// LOGIN
+// ============================================================================
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -60,6 +63,10 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ============================================================================
+// LOGOUT
+// ============================================================================
+
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {
     return res.status(401).json({ error: 'Não autorizado.' });
@@ -99,6 +106,10 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
+// ============================================================================
+// REFRESH TOKEN
+// ============================================================================
+
 router.post('/refresh-token', async (req, res) => {
   const { refreshToken } = req.body as { refreshToken: string };
   if (!refreshToken)
@@ -124,6 +135,10 @@ router.post('/refresh-token', async (req, res) => {
     return res.status(401).json({ error: err.message || 'Refresh token inválido.' });
   }
 });
+
+// ============================================================================
+// ME
+// ============================================================================
 
 router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {

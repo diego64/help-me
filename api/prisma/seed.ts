@@ -6,7 +6,10 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Iniciando seed do banco de dados...');
 
-  // ====== CRIAR ADMIN ======
+// ============================================================================
+// CRIAÇÃO DE USUARIO COM REGRA DE ADMIN
+// ============================================================================
+
   const adminPassword = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.usuario.upsert({
     where: { email: 'admin@helpme.com' },
@@ -28,7 +31,10 @@ async function main() {
   });
   console.log('Admin criado:', admin.email);
 
-  // ====== CRIAR USUARIO ======
+// ============================================================================
+// CRIAÇÃO DE USUARIO COM REGRA DE USUARIO
+// ============================================================================
+
   const userPassword = await bcrypt.hash('User123!', 10);
   const usuario = await prisma.usuario.upsert({
     where: { email: 'user@helpme.com' },
@@ -50,7 +56,10 @@ async function main() {
   });
   console.log('Usuario criado:', usuario.email);
 
-  // ====== CRIAR TECNICO ======
+// ============================================================================
+// CRIAÇÃO DE USUARIO COM REGRA DE TECNICO
+// ============================================================================
+
   const tecnicoPassword = await bcrypt.hash('Tecnico123!', 10);
   const tecnico = await prisma.usuario.upsert({
     where: { email: 'tecnico@helpme.com' },
@@ -72,7 +81,10 @@ async function main() {
   });
   console.log('Tecnico criado:', tecnico.email);
 
-  // ====== CRIAR EXPEDIENTE PARA O TÉCNICO ======
+// ============================================================================
+// CRIAÇÃO DE EXPEDIENTE PARA O TÉCNICO
+// ============================================================================
+
   const expediente = await prisma.expediente.upsert({
     where: { id: tecnico.id + '-expediente' },
     update: {
@@ -88,7 +100,10 @@ async function main() {
   });
   console.log('Expediente do técnico configurado: 08:00 - 17:00');
 
-  // ====== CRIAR SERVIÇOS DE TESTE ======
+// ============================================================================
+// CRIAÇÃO DE SERVIÇOS
+// ============================================================================
+
   const servicos = [
     {
       nome: 'Serviço Teste K6',
@@ -129,7 +144,10 @@ async function main() {
     console.log(`Serviço criado: ${servico.nome} (${servico.ativo ? 'ativo' : 'inativo'})`);
   }
 
-  // ====== CRIAR CHAMADOS DE EXEMPLO (OPCIONAL) ======
+// ============================================================================
+// CRIAÇÃO DE CHAMADOS
+// ============================================================================
+
   const servicoTeste = await prisma.servico.findUnique({
     where: { nome: 'Serviço Teste K6' },
   });
@@ -153,7 +171,7 @@ async function main() {
     });
     console.log('Chamado de teste criado: INC0001 (ABERTO)');
 
-    // Criar um chamado EM_ATENDIMENTO
+    // STATUS = EM_ATENDIMENTO
     const chamadoEmAtendimento = await prisma.chamado.create({
       data: {
         OS: 'INC0002',
@@ -172,7 +190,7 @@ async function main() {
     });
     console.log('Chamado de teste criado: INC0002 (EM_ATENDIMENTO)');
 
-    // Criar um chamado ENCERRADO
+    // STATUS = ENCERRADO
     const chamadoEncerrado = await prisma.chamado.create({
       data: {
         OS: 'INC0003',

@@ -1,11 +1,13 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 
-const prisma = new PrismaClient();
 const router = Router();
 
-// Criar um novo serviço
+// ============================================================================
+// CRIAÇÃO DE SERVIÇO
+// ============================================================================
+
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { nome, descricao } = req.body;
@@ -29,7 +31,10 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
   }
 });
 
-// Listar os serviços ativos
+// ============================================================================
+// LISTGEM DOS SERVIÇOS ATIVOS
+// ============================================================================
+
 router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req, res) => {
   try {
     const { incluirInativos } = req.query;
@@ -46,7 +51,10 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req, 
   }
 });
 
-// Buscar serviço específico por ID
+// ============================================================================
+// BUSCA DE UM CHAMDO ESPECIFICO
+// ============================================================================
+
 router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -62,7 +70,10 @@ router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
   }
 });
 
-// Editar serviço
+// ============================================================================
+// EDIÇÃO DE UM SERVIÇO
+// ============================================================================
+
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -87,7 +98,10 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => 
   }
 });
 
-// Desativar serviço (Soft Delete)
+// ============================================================================
+// DESATIVAÇÃO DO SERVIÇO (SOFT DELETE)
+// ============================================================================
+
 router.delete('/:id/desativar', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -112,7 +126,10 @@ router.delete('/:id/desativar', authMiddleware, authorizeRoles('ADMIN'), async (
   }
 });
 
-// Reativar serviço (opcional)
+// ============================================================================
+// REATIVAÇÃO DO SERVIÇO (OPCIONAL)
+// ============================================================================
+
 router.patch('/:id/reativar', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -137,7 +154,10 @@ router.patch('/:id/reativar', authMiddleware, authorizeRoles('ADMIN'), async (re
   }
 });
 
-// Excluir serviço permanentemente (Hard Delete)
+// ============================================================================
+// EXCLUSÃO DO SERVIÇO (HARD DELETE)
+// ============================================================================
+
 router.delete('/:id/excluir', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;

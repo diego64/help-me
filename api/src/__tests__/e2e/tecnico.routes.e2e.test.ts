@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 20000 });
-
-const prisma = new PrismaClient();
 
 describe('E2E - Rotas de Técnicos', () => {
   let adminToken: string;

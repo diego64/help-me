@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 import { salvarHistoricoChamado, listarHistoricoChamado } from '../repositories/chamadoAtualizacao.repository';
 import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 
-const prisma = new PrismaClient();
 const router = Router();
 
 async function gerarNumeroOS(): Promise<string> {
@@ -35,6 +34,10 @@ async function gerarNumeroOS(): Promise<string> {
     return novoOS;
   });
 }
+
+// ============================================================================
+// BERTURA DE CHAMADO
+// ============================================================================
 
 router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
@@ -132,6 +135,10 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), asyn
   }
 });
 
+// ============================================================================
+// STATUS DO CHAMADO
+// ============================================================================
+
 router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -183,11 +190,8 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
     }
 
     if (status === 'EM_ATENDIMENTO' && req.usuario!.regra === 'TECNICO') {
-      if (!req.usuario) {
-        return res.status(401).json({ error: 'Usuário não autenticado.' });
-      }
       const expedientes = await prisma.expediente.findMany({
-        where: { usuarioId: req.usuario.id }
+        where: { usuarioId: req.usuario!.id }
       });
 
       if (!expedientes.length) {
@@ -291,6 +295,10 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
   }
 });
 
+// ============================================================================
+// HISTÓRRICO DO CHAMADO
+// ============================================================================
+
 router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -301,6 +309,10 @@ router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
     return res.status(500).json({ error: 'Erro ao buscar histórico.' });
   }
 });
+
+// ============================================================================
+// REABERTURA DO CHAMADO
+// ============================================================================
 
 router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
@@ -425,6 +437,10 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
   }
 });
 
+// ============================================================================
+// CANCELAR O CHAMADO
+// ============================================================================
+
 router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -473,6 +489,10 @@ router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 
     return res.status(500).json({ error: 'Erro ao cancelar o chamado.' });
   }
 });
+
+// ============================================================================
+// EXCLUIR O CHAMADO
+// ============================================================================
 
 router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {

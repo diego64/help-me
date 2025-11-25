@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
+    "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Node",
     "esModuleInterop": true,
@@ -10,8 +10,6 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": [
-    "src",
-    "@types"
-  ]
+  "include": ["src", "@types"],
+  "exclude": ["node_modules"]
 }
