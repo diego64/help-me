@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 import { salvarHistoricoChamado, listarHistoricoChamado } from '../repositories/chamadoAtualizacao.repository';
 import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';

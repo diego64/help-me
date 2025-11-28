@@ -1,185 +1,145 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import 'dotenv/config';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 
-// Salvar NODE_ENV original
-const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-
-// Mock do PrismaClient como uma classe
-class MockPrismaClient {
-  $connect = vi.fn();
-  $disconnect = vi.fn();
+vi.mock('pg', () => {
+  const MockPool = vi.fn(function(this: any, config: any) {
+    this.end = vi.fn();
+    this.config = config;
+    return this;
+  });
   
-  constructor() {
-    // Mock constructor
-  }
-}
+  return {
+    Pool: MockPool,
+  };
+});
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: MockPrismaClient,
-}));
+vi.mock('@prisma/adapter-pg', () => {
+  const MockPrismaPg = vi.fn(function(this: any, pool: any) {
+    this.pool = pool;
+    return this;
+  });
+  
+  return {
+    PrismaPg: MockPrismaPg,
+  };
+});
 
-describe('Prisma Client Singleton', () => {
+vi.mock('@prisma/client', () => {
+  const MockPrismaClient = vi.fn(function(this: any, options: any) {
+    this.$disconnect = vi.fn();
+    this.options = options;
+    return this;
+  });
+  
+  return {
+    PrismaClient: MockPrismaClient,
+  };
+});
+
+describe('prisma factory', () => {
+  const originalEnv = process.env;
+  
   beforeEach(() => {
-    // Limpar o cache de módulos para forçar reimportação
     vi.resetModules();
-    // Limpar globalThis.prisma
-    (globalThis as any).prisma = undefined;
+    vi.clearAllMocks();
+    process.env = { ...originalEnv };
   });
 
   afterEach(() => {
-    // Restaurar NODE_ENV original
-    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
-    // Limpar globalThis.prisma
-    (globalThis as any).prisma = undefined;
+    process.env = originalEnv;
   });
 
-  it('Deve criar nova instância do PrismaClient quando não existir instância global', async () => {
-    // Arrange
-    process.env.NODE_ENV = 'development';
-    delete (globalThis as any).prisma;
-
-    // Act
-    const { prisma } = await import('../lib/prisma');
-
-    // Assert
-    expect(prisma).toBeDefined();
-    expect(prisma).toBeInstanceOf(MockPrismaClient);
-  });
-
-  it('Deve reutilizar instância global existente do PrismaClient', async () => {
-    // Arrange
-    const instanciaExistente = new MockPrismaClient();
-    (globalThis as any).prisma = instanciaExistente;
-
-    // Act
-    const { prisma } = await import('../lib/prisma');
-
-    // Assert
-    expect(prisma).toBe(instanciaExistente);
-  });
-
-  it('Deve atribuir prisma ao globalThis quando NODE_ENV não for production', async () => {
-    // Arrange
-    process.env.NODE_ENV = 'development';
-    delete (globalThis as any).prisma;
-
-    // Act
-    const { prisma } = await import('../lib/prisma');
-
-    // Assert
-    expect((globalThis as any).prisma).toBe(prisma);
-  });
-
-  it('Deve atribuir prisma ao globalThis quando NODE_ENV for test', async () => {
-    // Arrange
-    process.env.NODE_ENV = 'test';
-    delete (globalThis as any).prisma;
-
-    // Act
-    const { prisma } = await import('../lib/prisma');
-
-    // Assert
-    expect((globalThis as any).prisma).toBe(prisma);
-  });
-
-  it('NÃO deve atribuir prisma ao globalThis quando NODE_ENV for production', async () => {
-    // Arrange
+  it('deve criar Pool e PrismaClient com os valores corretos', async () => {
+    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
+    process.env.DB_MAX_CONNECTIONS = '20';
     process.env.NODE_ENV = 'production';
-    delete (globalThis as any).prisma;
 
-    // Act
-    const { prisma } = await import('../lib/prisma');
+    const { prisma } = await import('./prisma');
 
-    // Assert
+    // ======  VERIFICA SE POOL FOI CRIADO COM OS PARÂMETROS CORRETOS ======
+    expect(Pool).toHaveBeenCalledWith({
+      connectionString: 'postgres://user:pass@localhost/db',
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+
+    // ======  VERIFICA SE PRISMAPG FOI CRIADO ======
+    expect(PrismaPg).toHaveBeenCalledTimes(1);
+    expect(PrismaPg).toHaveBeenCalledWith(expect.objectContaining({
+      config: expect.objectContaining({
+        connectionString: 'postgres://user:pass@localhost/db',
+        max: 20,
+      }),
+    }));
+
+    // ======  VERIFICA SE PRISMACLIENT FOI CRIADO COM O ADAPTER E LOGS CORRETOS ======
+    expect(PrismaClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adapter: expect.anything(),
+        log: ['error'],
+      })
+    );
+
     expect(prisma).toBeDefined();
-    // Em produção, não deve adicionar ao globalThis (ou pode adicionar dependendo da implementação)
-    // Este teste cobre o branch da linha 9
+    expect(prisma.$disconnect).toBeDefined();
   });
 
-  it('Deve exportar a mesma instância como default export', async () => {
-    // Arrange
-    process.env.NODE_ENV = 'development';
-    delete (globalThis as any).prisma;
+  it('deve usar valores padrão quando DB_MAX_CONNECTIONS não está definido', async () => {
+    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
+    delete process.env.DB_MAX_CONNECTIONS;
+    process.env.NODE_ENV = 'production';
 
-    // Act
-    const module = await import('../lib/prisma');
-    const { prisma } = module;
-    const defaultExport = module.default;
+    const { prisma } = await import('./prisma');
 
-    // Assert
-    expect(defaultExport).toBe(prisma);
+    expect(Pool).toHaveBeenCalledWith({
+      connectionString: 'postgres://user:pass@localhost/db',
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+
+    expect(PrismaPg).toHaveBeenCalledTimes(1);
+    expect(prisma).toBeDefined();
   });
 
-  it('Deve criar apenas uma instância do PrismaClient em múltiplas importações (singleton)', async () => {
-    // Arrange
+  it('deve ativar logs de desenvolvimento quando NODE_ENV=development', async () => {
+    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
     process.env.NODE_ENV = 'development';
-    delete (globalThis as any).prisma;
 
-    // Act
-    const { prisma: prisma1 } = await import('../lib/prisma');
-    const { prisma: prisma2 } = await import('../lib/prisma');
+    const { prisma } = await import('./prisma');
 
-    // Assert
+    expect(PrismaClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adapter: expect.anything(),
+        log: ['error', 'warn'],
+      })
+    );
+
+    expect(prisma).toBeDefined();
+  });
+
+  it('deve lançar erro quando DATABASE_URL não está definida', async () => {
+    delete process.env.DATABASE_URL;
+
+    await expect(async () => {
+      await import('./prisma');
+    }).rejects.toThrow('DATABASE_URL não está definida ou não é uma string');
+  });
+
+  it('deve usar singleton pattern em ambiente de desenvolvimento', async () => {
+    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
+    process.env.NODE_ENV = 'development';
+
+    // ======  PRIMEIRA IMPORTAÇÃO ======
+    const { prisma: prisma1 } = await import('./prisma');
+    
+    // ======  SEGUNDA IMPORTAÇÃO DEVE RETORNAR A MESMA INSTÂNCIA ======
+    const { prisma: prisma2 } = await import('./prisma');
+
     expect(prisma1).toBe(prisma2);
-  });
-
-  it('Deve usar operador nullish coalescing (??) corretamente', async () => {
-    // Arrange
-    process.env.NODE_ENV = 'development';
-    
-    // Teste 1: globalThis.prisma é undefined
-    delete (globalThis as any).prisma;
-    vi.resetModules();
-    const { prisma: prismaQuandoUndefined } = await import('../lib/prisma');
-    expect(prismaQuandoUndefined).toBeInstanceOf(MockPrismaClient);
-    
-    // Teste 2: globalThis.prisma existe
-    const instanciaExistente = new MockPrismaClient();
-    (globalThis as any).prisma = instanciaExistente;
-    vi.resetModules();
-    const { prisma: prismaQuandoExiste } = await import('../lib/prisma');
-    expect(prismaQuandoExiste).toBe(instanciaExistente);
-  });
-
-  it('Deve funcionar corretamente quando NODE_ENV não estiver definido', async () => {
-    // Arrange
-    delete process.env.NODE_ENV;
-    delete (globalThis as any).prisma;
-
-    // Act
-    const { prisma } = await import('../lib/prisma');
-
-    // Assert
-    expect(prisma).toBeDefined();
-    expect(prisma).toBeInstanceOf(MockPrismaClient);
-    // Quando NODE_ENV é undefined, !== 'production' é true
-    expect((globalThis as any).prisma).toBe(prisma);
-  });
-
-  it('Deve cobrir todos os branches da condição NODE_ENV', async () => {
-    // Teste com diferentes valores de NODE_ENV
-    const ambientes = ['development', 'test', 'staging', 'production'];
-    
-    for (const ambiente of ambientes) {
-      // Arrange
-      process.env.NODE_ENV = ambiente;
-      delete (globalThis as any).prisma;
-      vi.resetModules();
-
-      // Act
-      const { prisma } = await import('../lib/prisma');
-
-      // Assert
-      expect(prisma).toBeDefined();
-      expect(prisma).toBeInstanceOf(MockPrismaClient);
-      
-      if (ambiente === 'production') {
-        // Em produção, a lógica pode variar
-        // Este teste garante que o código é executado
-        expect(prisma).toBeTruthy();
-      } else {
-        // Fora de produção, deve adicionar ao globalThis
-        expect((globalThis as any).prisma).toBe(prisma);
-      }
-    }
   });
 });

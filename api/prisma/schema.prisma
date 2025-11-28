@@ -4,8 +4,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
+
+// ==================== ENUMS ====================
 
 enum Regra {
   ADMIN
@@ -36,6 +37,8 @@ enum Setor {
   TECNOLOGIA_INFORMACAO
 }
 
+// ==================== MODELS ====================
+
 model Usuario {
   id                     String         @id @default(cuid())
   nome                   String
@@ -55,14 +58,24 @@ model Usuario {
   chamadoOS              Chamado[]      @relation("UsuarioChamado")
   tecnicoChamados        Chamado[]      @relation("TecnicoResponsavel")
   tecnicoDisponibilidade Expediente[]
+  
+// ==================== INDEX ====================
+
+  @@index([regra])
+  @@index([ativo])
+  @@index([setor])
+  @@map("usuarios")
 }
 
 model Expediente {
   id           String     @id @default(cuid())
-  usuario      Usuario    @relation(fields: [usuarioId], references: [id])
+  usuario      Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   usuarioId    String
   entrada      String
   saida        String
+  
+  @@index([usuarioId])
+  @@map("expedientes")
 }
 
 model Servico {
@@ -73,6 +86,9 @@ model Servico {
   geradoEm     DateTime   @default(now())
   atualizadoEm DateTime   @updatedAt
   chamados     OrdemDeServico[]
+  
+  @@index([ativo])
+  @@map("servicos")
 }
 
 model Chamado {
@@ -85,19 +101,32 @@ model Chamado {
   atualizadoEm          DateTime              @updatedAt
   encerradoEm           DateTime?
 
-  usuario               Usuario               @relation("UsuarioChamado", fields: [usuarioId], references: [id])
+  usuario               Usuario               @relation("UsuarioChamado", fields: [usuarioId], references: [id], onDelete: Cascade)
   usuarioId             String
 
-  tecnico               Usuario?              @relation("TecnicoResponsavel", fields: [tecnicoId], references: [id])
+  tecnico               Usuario?              @relation("TecnicoResponsavel", fields: [tecnicoId], references: [id], onDelete: SetNull)
   tecnicoId             String?
 
   servicos              OrdemDeServico[]
+  
+  @@index([usuarioId])
+  @@index([tecnicoId])
+  @@index([status])
+  @@index([geradoEm])
+  @@map("chamados")
 }
 
 model OrdemDeServico {
   id         String    @id @default(cuid())
-  chamado    Chamado   @relation(fields: [chamadoId], references: [id])
+  chamado    Chamado   @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   chamadoId  String
-  servico    Servico   @relation(fields: [servicoId], references: [id])
+  servico    Servico   @relation(fields: [servicoId], references: [id], onDelete: Cascade)
   servicoId  String
+
+// ==================== PREVENÇÃO DE DUPLICIDADE DE DADOS ====================
+
+  @@unique([chamadoId, servicoId])
+  @@index([chamadoId])
+  @@index([servicoId])
+  @@map("ordens_de_servico")
 }

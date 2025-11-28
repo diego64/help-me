@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma';
 import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { cacheSet } from '../services/redisClient';

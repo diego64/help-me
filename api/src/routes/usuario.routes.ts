@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { PrismaClient, Setor } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { Setor } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 import { cacheSet, cacheGet } from '../services/redisClient';
 
-const prisma = new PrismaClient();
 const router = Router();
 
 // ============================================================================

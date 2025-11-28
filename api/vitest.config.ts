@@ -1,9 +1,13 @@
+import { config } from 'dotenv';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    env: {
+      ...config({ path: '.env.test' }).parsed,
+    },
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [
@@ -17,9 +21,10 @@ export default defineConfig({
       'dist',
       'build',
       'node_modules',
-      'src/routes/envio-email-teste.routes.ts'
+      'src/routes/envio-email-teste.routes.ts',
     ],
+
     fileParallelism: false,
     testTimeout: 30000,
   },
-} as any);
+});

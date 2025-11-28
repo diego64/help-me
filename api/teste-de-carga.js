@@ -8,17 +8,15 @@ const USER_EMAIL = __ENV.USER_EMAIL || 'user@helpme.com';
 const USER_PASSWORD = __ENV.USER_PASSWORD || 'User123!';
 const TECNICO_EMAIL = __ENV.TECNICO_EMAIL || 'tecnico@helpme.com';
 const TECNICO_PASSWORD = __ENV.TECNICO_PASSWORD || 'Tecnico123!';
-const SERVICO_NOME = __ENV.SERVICO_NOME || null;
+const SERVICO_NOME = __ENV.SERVICO_NOME || 'Serviço Teste K6';
 const DEBUG_MODE = __ENV.DEBUG_MODE === 'true';
 const SKIP_CHAMADO_CREATION = __ENV.SKIP_CHAMADO_CREATION === 'true';
 const MOCK_CHAMADO_ID = __ENV.MOCK_CHAMADO_ID || null;
 
 // ====== CONFIGURAÇÃO DE ROTAS DINÂMICAS ======
-
 const ROUTES_CONFIG = JSON.parse(open('./k6-routes.json'));
 
 // ====== FUNÇÕES AUXILIARES ======
-
 function randomString(length) {
   return Math.random().toString(36).substring(2, 2 + length);
 }
