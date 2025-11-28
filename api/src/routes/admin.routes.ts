@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
 

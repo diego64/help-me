@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma';
 import { ChamadoStatus } from '@prisma/client';
 import { authMiddleware, authorizeRoles } from '../middleware/auth';
 
