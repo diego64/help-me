@@ -8,13 +8,10 @@ console.log('');
 
 const possiveisLocais = [
   '.env',
-  '../.env',
-  '../../.env',
   path.resolve(process.cwd(), '.env'),
-  path.join(process.cwd(), '.env'),
 ];
 
-console.log('🔎 Procurando arquivo .env nos seguintes locais:\n');
+console.log('🔎 Procurando arquivo .env:\n');
 
 let envEncontrado = false;
 let envPath = '';
@@ -23,15 +20,17 @@ for (const local of possiveisLocais) {
   const exists = fs.existsSync(local);
   const absolutePath = path.resolve(local);
   
-  console.log(`${exists ? '✅' : '❌'} ${local}`);
-  console.log(`   Caminho absoluto: ${absolutePath}`);
-  
-  if (exists && !envEncontrado) {
-    envEncontrado = true;
-    envPath = local;
-    console.log(`   ⭐ Este será usado!\n`);
-  } else {
-    console.log('');
+  if (exists) {
+    console.log(`✅ ${local}`);
+    console.log(`   Caminho absoluto: ${absolutePath}`);
+    
+    if (!envEncontrado) {
+      envEncontrado = true;
+      envPath = local;
+      console.log(`   ⭐ Este será usado!\n`);
+    } else {
+      console.log('');
+    }
   }
 }
 
@@ -44,7 +43,7 @@ if (!envEncontrado) {
   process.exit(1);
 }
 
-console.log('─'.repeat(60));
+console.log('════════════════════════════════════════════════════════════');
 console.log('\n📖 Carregando .env de:', path.resolve(envPath), '\n');
 
 const result = dotenv.config({ path: envPath });
@@ -55,7 +54,7 @@ if (result.error) {
 }
 
 console.log('✅ Arquivo .env carregado com sucesso!\n');
-console.log('─'.repeat(60));
+console.log('════════════════════════════════════════════════════════════');
 console.log('\n📋 Variáveis de ambiente carregadas:\n');
 
 const envVars = Object.keys(result.parsed || {});
@@ -91,7 +90,7 @@ if (envVars.length === 0) {
   });
 }
 
-console.log('\n─'.repeat(60));
+console.log('\n════════════════════════════════════════════════════════════');
 console.log('\n🎯 Verificação específica de DATABASE_URL:\n');
 
 if (process.env.DATABASE_URL) {
@@ -119,7 +118,7 @@ if (process.env.DATABASE_URL) {
   console.log('   3. Não há aspas ao redor do valor');
 }
 
-console.log('\n─'.repeat(60));
+console.log('\n════════════════════════════════════════════════════════════');
 console.log('\n✅ Diagnóstico concluído!\n');
 
 if (process.env.DATABASE_URL) {

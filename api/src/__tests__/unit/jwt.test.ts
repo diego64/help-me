@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import * as jwtUtil from './jwt';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi
+} from 'vitest';
+import * as jwtUtil from '../../auth/jwt';
 import jwt from 'jsonwebtoken';
 import { Regra } from '@prisma/client';
 

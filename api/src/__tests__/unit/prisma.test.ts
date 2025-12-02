@@ -1,5 +1,12 @@
 import 'dotenv/config';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach
+} from 'vitest';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
@@ -57,7 +64,7 @@ describe('prisma factory', () => {
     process.env.DB_MAX_CONNECTIONS = '20';
     process.env.NODE_ENV = 'production';
 
-    const { prisma } = await import('./prisma');
+    const { prisma } = await import('../../lib/prisma');
 
     // ======  VERIFICA SE POOL FOI CRIADO COM OS PARÂMETROS CORRETOS ======
     expect(Pool).toHaveBeenCalledWith({
@@ -93,7 +100,7 @@ describe('prisma factory', () => {
     delete process.env.DB_MAX_CONNECTIONS;
     process.env.NODE_ENV = 'production';
 
-    const { prisma } = await import('./prisma');
+    const { prisma } = await import('../../lib/prisma');
 
     expect(Pool).toHaveBeenCalledWith({
       connectionString: 'postgres://user:pass@localhost/db',
@@ -110,7 +117,7 @@ describe('prisma factory', () => {
     process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
     process.env.NODE_ENV = 'development';
 
-    const { prisma } = await import('./prisma');
+    const { prisma } = await import('../../lib/prisma');
 
     expect(PrismaClient).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,7 +133,7 @@ describe('prisma factory', () => {
     delete process.env.DATABASE_URL;
 
     await expect(async () => {
-      await import('./prisma');
+      await import('../../lib/prisma');
     }).rejects.toThrow('DATABASE_URL não está definida ou não é uma string');
   });
 
@@ -135,10 +142,10 @@ describe('prisma factory', () => {
     process.env.NODE_ENV = 'development';
 
     // ======  PRIMEIRA IMPORTAÇÃO ======
-    const { prisma: prisma1 } = await import('./prisma');
+    const { prisma: prisma1 } = await import('../../lib/prisma');
     
     // ======  SEGUNDA IMPORTAÇÃO DEVE RETORNAR A MESMA INSTÂNCIA ======
-    const { prisma: prisma2 } = await import('./prisma');
+    const { prisma: prisma2 } = await import('../../lib/prisma');
 
     expect(prisma1).toBe(prisma2);
   });

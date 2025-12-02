@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { 
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  vi 
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -84,12 +91,12 @@ vi.mock('@prisma/client', () => ({
   },
 }));
 
-vi.mock('../repositories/chamadoAtualizacao.repository', () => ({
+vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
   salvarHistoricoChamado: salvarHistoricoChamadoMock,
   listarHistoricoChamado: listarHistoricoChamadoMock,
 }));
 
-vi.mock('../models/chamadoAtualizacao.model', () => ({
+vi.mock('../../models/chamadoAtualizacao.model', () => ({
   default: chamadoAtualizacaoModelMock,
 }));
 
@@ -99,7 +106,7 @@ vi.mock('../models/chamadoAtualizacao.model', () => ({
 
 let Regra = 'USUARIO';
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     if (UsarUsuarioNulo) {
       req.usuario = null;
@@ -127,7 +134,7 @@ let UsarUsuarioNulo = false;
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('./chamado.routes')).default;
+  router = (await import('../../routes/chamado.routes')).default;
 });
 
 beforeEach(() => {

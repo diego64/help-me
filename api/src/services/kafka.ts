@@ -4,10 +4,7 @@ const ignoreMessages = [
   'The group is rebalancing, so a rejoin is needed'
 ];
 
-/**
- * Cria um logger customizado para o Kafka que filtra mensagens desnecessárias
- * Exportado para permitir testes unitários
- */
+// ==== CRIA UM LOGGER CUSTOMIZADO PARA O KAFKA QUE FILTRA MENSAGENS DESNECESSÁRIAS EXPORTADO PARA PERMITIR TESTES UNITÁRIOS ====
 export const customLogCreator = () => (entry: LogEntry) => {
   const errorMsg = typeof entry.log?.error === 'string' ? entry.log.error : '';
   if (
@@ -18,13 +15,11 @@ export const customLogCreator = () => (entry: LogEntry) => {
   }
 };
 
-// Variáveis privadas que serão inicializadas sob demanda
+// ===== VARIÁVEIS PRIVADAS QUE SERÃO INICIALIZADAS SOB DEMANDA ====
 let kafkaInstance: Kafka | null = null;
 let producerInstance: Producer | null = null;
 
-/**
- * Configuração do Kafka (exposta para testes)
- */
+// ==== CONFIGURAÇÃO DO KAFKA (EXPOSTA PARA TESTES) ====
 export interface KafkaConfig {
   clientId: string;
   brokers: string[];
@@ -34,9 +29,9 @@ export interface KafkaConfig {
 let kafkaConfig: KafkaConfig | null = null;
 
 /**
- * Inicializa e retorna a instância do Kafka (Lazy Loading)
- * @returns Instância do Kafka
- * @throws Error se KAFKA_BROKER_URL não estiver definida
+ * NICIALIZA E RETORNA A INSTÂNCIA DO KAFKA (LAZY LOADING)
+ * @returns INSTÂNCIA DO KAFKA
+ * @throws ERROR SE KAFKA_BROKER_URL NÃO ESTIVER DEFINIDA
  */
 function getKafkaInstance(): Kafka {
   if (kafkaInstance) return kafkaInstance;
@@ -44,7 +39,7 @@ function getKafkaInstance(): Kafka {
   const brokerUrl = process.env.KAFKA_BROKER_URL;
   if (!brokerUrl) throw new Error('KAFKA_BROKER_URL não definida!');
 
-  // Armazena config para testes
+  // ==== ARMAZENA CONFIG PARA TESTES ====
   kafkaConfig = {
     clientId: 'helpdesk-api',
     brokers: [brokerUrl],
@@ -62,22 +57,19 @@ function getKafkaInstance(): Kafka {
 }
 
 /**
- * Obtém a configuração atual do Kafka (útil para testes)
- * @returns Configuração do Kafka ou null se não inicializado
+ * OBTÉM A CONFIGURAÇÃO ATUAL DO KAFKA (ÚTIL PARA TESTES)
+ * @returns CONFIGURAÇÃO DO KAFKA OU NULL SE NÃO INICIALIZADO
  */
 export function getKafkaConfig(): KafkaConfig | null {
-  // Se já está inicializado, retorna a config
   if (kafkaConfig) {
     return kafkaConfig;
   }
   
-  // Se não há ENV, não tenta inicializar
   const brokerUrl = process.env.KAFKA_BROKER_URL;
   if (!brokerUrl) {
     return null;
   }
   
-  // Se tem ENV mas não está inicializado, tenta inicializar
   try {
     getKafkaInstance();
     return kafkaConfig;
@@ -87,8 +79,8 @@ export function getKafkaConfig(): KafkaConfig | null {
 }
 
 /**
- * Obtém a instância do producer (cria se não existir)
- * @returns Producer do Kafka
+ * OBTÉM A INSTÂNCIA DO PRODUCER (CRIA SE NÃO EXISTIR)
+ * @returns PRODUCER DO KAFKA
  */
 function getProducerInstance(): Producer {
   if (producerInstance) return producerInstance;
@@ -100,31 +92,24 @@ function getProducerInstance(): Producer {
 }
 
 /**
- * Obtém a instância real do producer (para testes)
- * @returns Producer do Kafka ou null se não inicializado
+ * OBTÉM A INSTÂNCIA REAL DO PRODUCER (PARA TESTES)
+ * @returns PRODUCER DO KAFKA OU NULL SE NÃO INICIALIZADO
  */
 export function getProducerInstanceForTest(): Producer | null {
   return producerInstance;
 }
 
-/**
- * Conecta o Kafka Producer
- */
 export async function conectarKafkaProducer(): Promise<void> {
   const prod = getProducerInstance();
   await prod.connect();
   console.log('[Kafka][Producer] Kafka Producer conectado');
 }
 
-/**
- * Desconecta o Kafka Producer (útil para testes)
- */
 export async function desconectarKafkaProducer(): Promise<void> {
   if (producerInstance) {
     await producerInstance.disconnect();
   }
   
-  // Limpa TODAS as instâncias e configurações
   producerInstance = null;
   kafkaInstance = null;
   kafkaConfig = null;

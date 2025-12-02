@@ -1,5 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyToken, TokenPayload, extractTokenFromHeader } from '../auth/jwt';
+import {
+  Request,
+  Response,
+  NextFunction
+} from 'express';
+import {
+  verifyToken,
+  TokenPayload,
+  extractTokenFromHeader
+} from '../auth/jwt';
 import { Regra } from '@prisma/client';
 import { cacheGet } from '../services/redisClient';
 

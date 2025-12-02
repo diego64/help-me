@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi
+} from 'vitest';
 
 // ============================================================================
 // CONFIGURAÇÃO DOS MOCKS
@@ -22,20 +29,20 @@ vi.mock('../src/services/redisClient', () => ({
 
 const criarMockMiddlewareRota = () => (req: any, res: any, next: any) => next();
 
-vi.mock('../src/routes/auth.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/admin.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/tecnico.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/usuario.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/servico.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/chamado.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/fila-de-chamados.routes', () => ({ default: criarMockMiddlewareRota() }));
-vi.mock('../src/routes/envio-email-teste.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/auth.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/admin.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/tecnico.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/usuario.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/servico.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/chamado.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/fila-de-chamados.routes', () => ({ default: criarMockMiddlewareRota() }));
+vi.mock('../../../src/routes/envio-email-teste.routes', () => ({ default: criarMockMiddlewareRota() }));
 
 // ============================================================================
 // FUNÇÕES AUXILIARES
 // ============================================================================
 
-const importarModuloApp = async () => await import('../src/app');
+const importarModuloApp = async () => await import('../../app');
 
 const definirJwtSecret = (secret: string | undefined) => {
   if (secret === undefined) {
