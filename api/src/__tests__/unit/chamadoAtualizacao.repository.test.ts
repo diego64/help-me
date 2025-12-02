@@ -1,12 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { salvarHistoricoChamado, listarHistoricoChamado } from './chamadoAtualizacao.repository';
-import ChamadoAtualizacao from '../models/chamadoAtualizacao.model';
+import { 
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach
+} from 'vitest';
+import {
+  salvarHistoricoChamado,
+  listarHistoricoChamado
+} from '../../repositories/chamadoAtualizacao.repository';
+import ChamadoAtualizacao from '../../models/chamadoAtualizacao.model';
 
 // ============================================================================
 // MOCK DO MODELO MONGOOSE
 // ============================================================================
 
-vi.mock('../models/chamadoAtualizacao.model', () => ({
+vi.mock('../../models/chamadoAtualizacao.model', () => ({
   default: {
     create: vi.fn(),
     find: vi.fn(),

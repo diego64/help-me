@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  vi
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -24,11 +31,11 @@ vi.mock('@prisma/client', () => ({
   PrismaClient: function () { return prismaMock; }
 }));
 
-vi.mock('../lib/prisma.js', () => ({
+vi.mock('../../lib/prisma.ts', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { id: 'uid', regra: Regra };
     next();
@@ -39,7 +46,7 @@ vi.mock('../middleware/auth', () => ({
 
 let router: any;
 beforeAll(async () => {
-  router = (await import('./servico.routes')).default;
+  router = (await import('../../routes/servico.routes')).default;
 });
 
 beforeEach(() => {

@@ -4,25 +4,32 @@
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
-  "scripts": {
+"scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsup src/server.ts --format esm,cjs --dts",
     "start": "node dist/server.js",
+    
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "prisma:reset": "prisma migrate reset --force",
+    
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "test:unit": "vitest run --reporter=verbose src/**/*.test.ts",
-    "test:setup": "docker-compose up -d postgresql_helpme_teste mongo-test && sleep 5 && DATABASE_URL=postgresql://teste:senha@localhost:5433/helpme-database-teste?schema=public pnpm prisma db push --accept-data-loss",
+    "test:unit": "vitest run --reporter=verbose src/__tests__/unit/",
+    "test:setup": "docker-compose -f docker-compose.yaml up -d postgresql_helpme_teste mongo-test && sleep 5 && DATABASE_URL=postgresql://teste:senha@localhost:5433/helpme-database-teste?schema=public pnpm prisma db push --accept-data-loss",
     "test:e2e": "pnpm test:setup && pnpm vitest run src/__tests__/e2e",
     "test:e2e:watch": "pnpm vitest watch src/__tests__/e2e",
-    "test:teardown": "docker-compose stop postgresql_helpme_teste mongo-test",
-    "test:clean": "docker-compose down postgresql_helpme_teste mongo-test -v",
-    "extracao-de-rotas": "node extracao-de-rotas.cjs",
-    "test:carga": "pnpm run extracao-de-rotas && k6 run teste-de-carga.js"
+    "test:teardown": "docker-compose -f docker-compose.yaml stop postgresql_helpme_teste mongo-test",
+    "test:clean": "docker-compose -f docker-compose.yaml down postgresql_helpme_teste mongo-test -v",
+    
+    "extracao-de-rotas": "node scripts/extracao-de-rotas.cjs",
+    "test:carga": "pnpm run extracao-de-rotas && k6 run src/__tests__/teste-de-carga/teste-de-carga.js",
+    
+    "diagnostico:env": "tsx scripts/check-env.ts",
+    "diagnostico:db": "tsx scripts/diagnostico-db.ts",
+    "diagnostico:api": "bash scripts/check-api.sh"
   },
   "keywords": [],
   "author": "Diego Ferreira L.G.Oliveira",

@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  vi
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -49,7 +56,7 @@ let UsuarioAtual: any = usuarioPadrao;
 // MODULE MOCKS
 // ============================================================================
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { ...UsuarioAtual, regra: Regra };
     next();
@@ -65,7 +72,7 @@ vi.mock('../middleware/auth', () => ({
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('./fila-de-chamados.routes')).default;
+  router = (await import('../../routes/fila-de-chamados.routes')).default;
 });
 
 beforeEach(() => {

@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  vi
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -11,7 +18,7 @@ declare global {
   }
 }
 
-// Mock Setor enum (se precisar)
+// ==== MOCK SETOR ENUM CASO SEJA NECESSÁRIO ====
 const Setor = { ADMINISTRATIVO: 'ADMINISTRATIVO', TECNOLOGIA_INFORMACAO: 'TECNOLOGIA_INFORMACAO' };
 
 const usuarioMock = {
@@ -47,7 +54,6 @@ const cacheGetMock = vi.fn();
 let Regra = 'ADMIN';
 let UsuarioAtual = { id: 'admin', regra: 'ADMIN' };
 
-// ✅ CORREÇÃO 1: Mock do bcrypt com default export
 const bcryptMock = {
   hash: vi.fn()
 };
@@ -57,12 +63,11 @@ vi.mock('@prisma/client', () => ({
   Setor
 }));
 
-// ✅ CORREÇÃO 2: Mock correto do bcrypt usando default export
 vi.mock('bcrypt', () => ({
   default: bcryptMock
 }));
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { ...UsuarioAtual, regra: Regra };
     next();
@@ -71,7 +76,7 @@ vi.mock('../middleware/auth', () => ({
     roles.includes(req.usuario.regra) ? next() : res.status(403).json({ error: 'Forbidden' }),
 }));
 
-vi.mock('../services/redisClient', () => ({
+vi.mock('../../services/redisClient', () => ({
   cacheSet: cacheSetMock,
   cacheGet: cacheGetMock
 }));
@@ -87,7 +92,7 @@ vi.mock('multer', () => ({
 
 let router: any;
 beforeAll(async () => {
-  router = (await import('./usuario.routes')).default;
+  router = (await import('../../routes/usuario.routes')).default;
 });
 
 beforeEach(() => {
@@ -96,7 +101,6 @@ beforeEach(() => {
   UsuarioAtual = { id: 'admin', regra: 'ADMIN' };
   cacheSetMock.mockResolvedValue(undefined);
   cacheGetMock.mockResolvedValue(undefined);
-  // ✅ CORREÇÃO 3: Reset do mock do bcrypt.hash
   bcryptMock.hash.mockResolvedValue('hashed_mock');
 });
 

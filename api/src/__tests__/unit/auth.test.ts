@@ -1,23 +1,34 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach
+} from 'vitest';
 import { Response, NextFunction } from 'express';
 import { Regra } from '@prisma/client';
 
 // ============================================================================
-// MOCKS
+// MOCKS - DEVEM VIR ANTES DOS IMPORTS
 // ============================================================================
 
-vi.mock('../auth/jwt', () => ({
+vi.mock('../../auth/jwt', () => ({
   verifyToken: vi.fn(),
   extractTokenFromHeader: vi.fn(),
 }));
 
-vi.mock('../services/redisClient', () => ({
+vi.mock('../../services/redisClient', () => ({
   cacheGet: vi.fn(),
 }));
 
-import { authMiddleware, authorizeRoles, AuthRequest } from './auth';
-import * as jwtModule from '../auth/jwt';
-import * as redisModule from '../services/redisClient';
+// ============================================================================
+// IMPORTS - DEPOIS DOS MOCKS
+// ============================================================================
+
+import { authMiddleware, authorizeRoles, AuthRequest } from '../../middleware/auth';
+import * as jwtModule from '../../auth/jwt';
+import * as redisModule from '../../services/redisClient';
 
 const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
 const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);
@@ -378,7 +389,6 @@ describe('authorizeRoles', () => {
 
   it('Deve aceitar múltiplas regras e permitir acesso se usuário tiver uma delas', () => {
     // Arrange
-    // Usando string explícita para garantir que funciona
     const middleware = authorizeRoles('ADMIN', 'USUARIO');
     const req = {
       usuario: { id: 'user1', regra: 'USUARIO' as any, type: 'access' as const }

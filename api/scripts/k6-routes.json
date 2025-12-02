@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-28T22:56:59.213Z",
+  "generatedAt": "2025-12-01T20:39:03.170Z",
   "routes": {
     "filadechamados": {
       "basePrefix": "/filadechamados",
@@ -112,6 +112,81 @@
         "_id_avatar": {
           "method": "POST",
           "path": "/:id/avatar",
+          "description": "============================================================================"
+        }
+      }
+    },
+    "chamado": {
+      "basePrefix": "/chamado",
+      "routes": {
+        "_abertura-chamado": {
+          "method": "POST",
+          "path": "/abertura-chamado",
+          "description": "============================================================================"
+        },
+        "_id_status": {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "description": "============================================================================"
+        },
+        "_id_historico": {
+          "method": "GET",
+          "path": "/:id/historico",
+          "description": "============================================================================"
+        },
+        "_id_reabrir-chamado": {
+          "method": "PATCH",
+          "path": "/:id/reabrir-chamado",
+          "description": "============================================================================"
+        },
+        "_id_cancelar-chamado": {
+          "method": "PATCH",
+          "path": "/:id/cancelar-chamado",
+          "description": "============================================================================"
+        },
+        "_id_excluir-chamado": {
+          "method": "DELETE",
+          "path": "/:id/excluir-chamado",
+          "description": "============================================================================"
+        }
+      }
+    },
+    "auth": {
+      "basePrefix": "/auth",
+      "routes": {
+        "_login": {
+          "method": "POST",
+          "path": "/login",
+          "description": "============================================================================"
+        },
+        "_logout": {
+          "method": "POST",
+          "path": "/logout",
+          "description": "============================================================================"
+        },
+        "_refresh-token": {
+          "method": "POST",
+          "path": "/refresh-token",
+          "description": "============================================================================"
+        },
+        "_me": {
+          "method": "GET",
+          "path": "/me",
+          "description": "============================================================================"
+        }
+      }
+    },
+    "admin": {
+      "basePrefix": "/admin",
+      "routes": {
+        "_": {
+          "method": "POST",
+          "path": "/",
+          "description": "============================================================================"
+        },
+        "_id": {
+          "method": "PUT",
+          "path": "/:id",
           "description": "============================================================================"
         }
       }

@@ -1,4 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach
+} from 'vitest';
 import { createClient } from 'redis';
 
 vi.mock('redis', () => ({
@@ -43,7 +50,7 @@ describe('Redis Client', () => {
       delete process.env.REDIS_HOST;
       delete process.env.REDIS_PORT;
 
-      await import('./redisClient');
+      await import('../../services/redisClient');
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://localhost:6379'
@@ -58,7 +65,7 @@ describe('Redis Client', () => {
       vi.resetModules();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('./redisClient');
+      await import('../../services/redisClient');
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://redis-server:6380'
@@ -68,7 +75,7 @@ describe('Redis Client', () => {
 
   describe('Dado que o cliente Redis dispara eventos, Quando conectar ou ocorrer erro, Então deve logar adequadamente', () => {
     it('deve logar mensagem de sucesso quando evento connect for disparado', async () => {
-      await import('./redisClient');
+      await import('../../services/redisClient');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('connect', expect.any(Function));
       
@@ -78,7 +85,7 @@ describe('Redis Client', () => {
     });
 
     it('deve logar erro quando evento error for disparado', async () => {
-      await import('./redisClient');
+      await import('../../services/redisClient');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
 
@@ -91,7 +98,7 @@ describe('Redis Client', () => {
 
   describe('Dado a função cacheSet, Quando armazenar valor, Então deve configurar corretamente com ou sem TTL', () => {
     it('deve armazenar valor com TTL quando TTL for fornecido', async () => {
-      const { cacheSet } = await import('./redisClient');
+      const { cacheSet } = await import('../../services/redisClient');
 
       await cacheSet('chave-teste', 'valor-teste', 3600);
 
@@ -99,7 +106,7 @@ describe('Redis Client', () => {
     });
 
     it('deve armazenar valor sem TTL quando TTL não for fornecido', async () => {
-      const { cacheSet } = await import('./redisClient');
+      const { cacheSet } = await import('../../services/redisClient');
 
       await cacheSet('chave-teste', 'valor-teste');
 
@@ -109,7 +116,7 @@ describe('Redis Client', () => {
 
   describe('Dado a função cacheGet, Quando buscar valor, Então deve retornar o valor armazenado', () => {
     it('deve retornar valor quando chave existir', async () => {
-      const { cacheGet } = await import('./redisClient');
+      const { cacheGet } = await import('../../services/redisClient');
       mockRedisClient.get.mockResolvedValue('valor-armazenado');
 
       const resultado = await cacheGet('chave-teste');
@@ -119,7 +126,7 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar null quando chave não existir', async () => {
-      const { cacheGet } = await import('./redisClient');
+      const { cacheGet } = await import('../../services/redisClient');
       mockRedisClient.get.mockResolvedValue(null);
 
       const resultado = await cacheGet('chave-inexistente');

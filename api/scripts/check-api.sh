@@ -3,13 +3,12 @@
 echo "🔍 Diagnóstico da API para Testes K6"
 echo ""
 
-# Cores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 1. Verificar se a API está rodando
+# 1. VERIFICAR SE A API ESTÁ RODANDO
 echo "1️⃣  Verificando se a API está rodando..."
 API_URL="http://localhost:3000"
 
@@ -28,7 +27,7 @@ fi
 
 echo ""
 
-# 2. Testar rota de login
+# 2. TESTAR ROTA DE LOGIN
 echo "2️⃣  Testando rota de login..."
 
 LOGIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/login" \
@@ -54,10 +53,10 @@ fi
 
 echo ""
 
-# 3. Verificar se o banco tem dados
-echo "3️⃣  Verificando dados do seed..."
+# 3. VERIFICAR SE O BANCO TEM DADOS
+echo "3️⃣  VERIFICANDO DADOS DO SEED..."
 
-# Tenta fazer login e contar usuários
+# TENTA FAZER LOGIN E CONTAR USUÁRIOS
 TOKEN=$(echo "$RESPONSE_BODY" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
 if [ -n "$TOKEN" ]; then
@@ -80,8 +79,8 @@ fi
 
 echo ""
 
-# 4. Verificar portas em uso
-echo "4️⃣  Verificando portas em uso..."
+# 4. VERIFICAR PORTAS EM USO
+echo "4️⃣  VERIFICANDO PORTAS EM USO..."
 
 if command -v lsof &> /dev/null; then
     PORT_3000=$(lsof -i :3000 -t 2>/dev/null)
@@ -96,33 +95,39 @@ fi
 
 echo ""
 
-# 5. Verificar arquivo de rotas K6
+# 5. VERIFICAR ARQUIVO DE ROTAS K6
 echo "5️⃣  Verificando arquivo k6-routes.json..."
 
-if [ -f "k6-routes.json" ]; then
+# Detectar o diretório do script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+K6_ROUTES_PATH="$SCRIPT_DIR/k6-routes.json"
+
+if [ -f "$K6_ROUTES_PATH" ]; then
     echo -e "${GREEN}✅ Arquivo k6-routes.json existe${NC}"
+    echo "   Localização: $K6_ROUTES_PATH"
     
-    # Verificar se tem conteúdo
-    if [ -s "k6-routes.json" ]; then
-        ROTAS_COUNT=$(grep -o '"method"' k6-routes.json | wc -l)
+    # VERIFICAR SE TEM CONTEÚDO
+    if [ -s "$K6_ROUTES_PATH" ]; then
+        ROTAS_COUNT=$(grep -o '"method"' "$K6_ROUTES_PATH" | wc -l)
         echo "   Rotas encontradas: $ROTAS_COUNT"
     else
         echo -e "${RED}❌ Arquivo k6-routes.json está vazio${NC}"
     fi
 else
     echo -e "${RED}❌ Arquivo k6-routes.json não existe${NC}"
+    echo "   Caminho esperado: $K6_ROUTES_PATH"
     echo "   Execute: pnpm run extracao-de-rotas"
 fi
 
 echo ""
 
-# 6. Resumo e próximos passos
+# 6. RESUMO E PRÓXIMOS PASSOS
 echo "═══════════════════════════════════════════════════════"
 echo "📊 RESUMO DO DIAGNÓSTICO"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
-if [ "$HTTP_CODE" = "200" ]; then
+if [ "$HTTP_CODE" = "200" ] && [ -f "$K6_ROUTES_PATH" ]; then
     echo -e "${GREEN}✅ Tudo OK! Você pode executar os testes K6:${NC}"
     echo ""
     echo "   pnpm run teste-de-carga"

@@ -14,7 +14,7 @@ const SKIP_CHAMADO_CREATION = __ENV.SKIP_CHAMADO_CREATION === 'true';
 const MOCK_CHAMADO_ID = __ENV.MOCK_CHAMADO_ID || null;
 
 // ====== CONFIGURAÇÃO DE ROTAS DINÂMICAS ======
-const ROUTES_CONFIG = JSON.parse(open('./k6-routes.json'));
+const ROUTES_CONFIG = JSON.parse(open('../../../scripts/k6-routes.json'));
 
 // ====== FUNÇÕES AUXILIARES ======
 function randomString(length) {
@@ -59,7 +59,6 @@ function getFilaDeChamadosURL(routePath, params = {}) {
 }
 
 // ====== CONFIGURAÇÃO DE CENÁRIOS ======
-
 export let options = {
   scenarios: {
     // [CENARIO 01] TESTE DE LOGIN E OPERAÇÕES AUTENTICADAS
@@ -89,7 +88,6 @@ export let options = {
 };
 
 // ====== CENÁRIO 01: OPERAÇÕES AUTENTICADAS ======
-
 export function authenticatedOps() {
   let adminToken;
   let adminHeaders;
@@ -249,7 +247,6 @@ export function authenticatedOps() {
   });
 
   // ====== OPERAÇÕES CRUD DE SERVIÇOS ======
-  
   group('Serviços - CRUD Completo', function () {
     let servicoId = null;
     let servicoIdParaDesativar = null;

@@ -1,4 +1,11 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  afterEach,
+  beforeEach
+} from 'vitest';
 import { logLevel } from 'kafkajs';
 import {
   kafka,
@@ -8,7 +15,7 @@ import {
   getKafkaConfig,
   getProducerInstanceForTest,
   customLogCreator
-} from './kafka';
+} from '../../services/kafka';
 
 describe('Kafka Service', () => {
   let originalBrokerUrl: string | undefined;
@@ -335,7 +342,7 @@ describe('Kafka Service', () => {
 
       // Re-importa o módulo para aplicar o mock
       vi.resetModules();
-      const { getKafkaConfig: getKafkaConfigMocked } = await import('./kafka');
+      const { getKafkaConfig: getKafkaConfigMocked } = await import('../../services/kafka');
 
       const config = getKafkaConfigMocked();
       expect(config).toBeNull();

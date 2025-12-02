@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  vi,
+  afterEach
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -13,7 +21,7 @@ const prismaMock = {
   }
 };
 
-vi.mock('../lib/prisma.js', () => ({
+vi.mock('../../lib/prisma.ts', () => ({
   prisma: prismaMock,
 }));
 
@@ -56,7 +64,7 @@ const generateTokenPairMock = vi.fn(() => tokenPairMock);
 const verifyTokenMock = vi.fn();
 const jwtDecodeMock = vi.fn();
 
-vi.mock('../auth/jwt', () => ({
+vi.mock('../../auth/jwt', () => ({
   generateTokenPair: generateTokenPairMock,
   verifyToken: verifyTokenMock,
 }));
@@ -67,13 +75,15 @@ vi.mock('jsonwebtoken', () => ({
 }));
 
 // ============================================================================
-// MOCK DO CACHE
+// MOCK DO CACHE (REDIS)
 // ============================================================================
 
 const cacheSetMock = vi.fn().mockResolvedValue(undefined);
+const cacheGetMock = vi.fn();
 
-vi.mock('../services/redisClient', () => ({
+vi.mock('../../services/redisClient', () => ({
   cacheSet: cacheSetMock,
+  cacheGet: cacheGetMock,
 }));
 
 // ============================================================================
@@ -93,14 +103,19 @@ let usuarioMock: any = { ...usuarioBase };
 let sessionDestroyCallback: ((err: any) => void) | null = null;
 let sessionDestroyError: any = null;
 
-vi.mock('../middleware/auth', () => ({
+// ============================================================================
+// MOCK DO AUTH MIDDLEWARE
+// ============================================================================
+
+const extractTokenFromHeaderMock = vi.fn();
+
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     if (!deveAutenticar) {
       return res.status(401).json({ error: 'Não autorizado.' });
     }
     req.usuario = usuarioMock;
-    // Não sobrescrever req.session se já foi definido pelo teste
-    if (!req.session) {
+    if (!req.session) { // Não sobrescrever req.session se já foi definido pelo teste
       req.session = { 
         destroy: (cb: any) => {
           sessionDestroyCallback = cb;
@@ -110,6 +125,7 @@ vi.mock('../middleware/auth', () => ({
     }
     next();
   },
+  extractTokenFromHeader: extractTokenFromHeaderMock,
 }));
 
 // ============================================================================
@@ -119,7 +135,7 @@ vi.mock('../middleware/auth', () => ({
 let authRouter: any;
 
 beforeAll(async () => {
-  authRouter = (await import('./auth.routes')).default;
+  authRouter = (await import('../../routes/auth.routes')).default;
 });
 
 beforeEach(() => {
@@ -456,10 +472,7 @@ describe('POST /auth/logout', () => {
     expect(resposta.body).toHaveProperty('error');
   });
 
-  // -------------------------------------------------------------------------
-  // TESTE ESPECÍFICO PARA LINHAS 96-97 - session.destroy com erro
-  // -------------------------------------------------------------------------
-  it('Deve retornar status 500 quando session.destroy retornar erro (linhas 96-97)', async () => {
+  it('Deve retornar status 500 quando session.destroy retornar erro', async () => {
     // Arrange
     deveAutenticar = true;
     usuarioMock = { ...usuarioBase };
@@ -807,10 +820,7 @@ describe('GET /auth/me', () => {
     expect(resposta.body).toEqual({ error: 'Não autorizado.' });
   });
 
-  // -------------------------------------------------------------------------
-  // TESTE ESPECÍFICO PARA LINHA 145 - req.usuario null no /me
-  // -------------------------------------------------------------------------
-  it('Deve retornar status 401 quando req.usuario for null no handler do /me (linha 145)', async () => {
+  it('Deve retornar status 401 quando req.usuario for null no handler do /me', async () => {
     // Arrange
     deveAutenticar = true;
     usuarioMock = null; // Simula req.usuario = null

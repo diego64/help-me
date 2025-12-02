@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  vi
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -39,7 +46,6 @@ const prismaMock = {
 let Regra = 'ADMIN';
 let UsuarioAtual = { id: 'admin', regra: Regra };
 
-// Mock do bcrypt default export
 const bcryptMock = {
   hash: vi.fn()
 };
@@ -48,12 +54,11 @@ vi.mock('@prisma/client', () => ({
   PrismaClient: function () { return prismaMock; }
 }));
 
-// Mock correto do bcrypt usando default export
 vi.mock('bcrypt', () => ({
   default: bcryptMock
 }));
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { ...UsuarioAtual, regra: Regra };
     next();
@@ -73,14 +78,14 @@ vi.mock('multer', () => ({
 
 let router: any;
 beforeAll(async () => {
-  router = (await import('./tecnico.routes')).default;
+  router = (await import('../../routes/tecnico.routes')).default;
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
   Regra = 'ADMIN';
   UsuarioAtual = { id: 'admin', regra: 'ADMIN' };
-  bcryptMock.hash.mockResolvedValue('hashed_mock'); // Resetar mock do bcrypt.hash em cada teste
+  bcryptMock.hash.mockResolvedValue('hashed_mock');
 });
 
 function getApp(mockFile?: any) {

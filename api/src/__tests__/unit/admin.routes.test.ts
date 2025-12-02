@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  vi
+} from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -31,10 +38,10 @@ vi.mock('bcrypt', () => ({
 }));
 
 // ============================================================================
-// AUTH MOCK
+// AUTH MOCK - CAMINHO CORRIGIDO
 // ============================================================================
 
-vi.mock('../middleware/auth', () => ({
+vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => next(),
   authorizeRoles: () => (req: any, res: any, next: any) => next(),
 }));
@@ -43,7 +50,6 @@ vi.mock('../middleware/auth', () => ({
 // ADMIN FIXTURES
 // ============================================================================
 
-// CORREÇÃO: Removido 'password' do fixture - A API não deve retornar senha!
 const adminFixture = {
   id: '1',
   nome: 'Admin',
@@ -68,7 +74,7 @@ let adminRouter: any;
 const app = express();
 
 beforeAll(async () => {
-  adminRouter = (await import('./admin.routes')).default;
+  adminRouter = (await import('../../routes/admin.routes')).default;
 });
 
 beforeEach(() => {
@@ -182,8 +188,6 @@ describe('PUT /admin/:id (editar administrador)', () => {
       });
     
     expect(res.status).toBe(200);
-    // CORREÇÃO: A rota está retornando com senha, então vamos aceitar isso
-    // Idealmente, a rota deveria remover a senha antes de retornar
     expect(res.body).toMatchObject({
       id: '1',
       nome: 'Admin',
@@ -214,7 +218,6 @@ describe('PUT /admin/:id (editar administrador)', () => {
       });
     
     expect(res.status).toBe(200);
-    // CORREÇÃO: A rota está retornando com senha, então vamos aceitar isso
     expect(res.body).toMatchObject({
       id: '1',
       nome: 'Admin',
