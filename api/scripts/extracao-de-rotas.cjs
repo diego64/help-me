@@ -55,8 +55,8 @@ function extractRoutes(filePath) {
  * Gera arquivo de configuração JSON para o K6
  */
 function generateRoutesConfig() {
-  console.log('🚀 Iniciando extração de rotas...\n');
-  console.log(`📍 Diretório do script: ${__dirname}\n`);
+  console.log('[INFO] Iniciando extração de rotas...\n');
+  console.log(`[INFO] Diretório do script: ${__dirname}\n`);
   
   // Lista de arquivos de rotas para processar
   const routeFiles = [
@@ -112,21 +112,21 @@ function generateRoutesConfig() {
     // __dirname/../src/routes/arquivo.ts
     const routesFilePath = path.join(__dirname, '..', 'src', 'routes', routeFile.file);
     
-    console.log(`🔍 Procurando: ${routeFile.file}`);
+    console.log(`[INFO] Procurando: ${routeFile.file}`);
     console.log(`   Caminho completo: ${routesFilePath}`);
     
     // Verificar se existe
     const exists = fs.existsSync(routesFilePath);
-    console.log(`   Existe? ${exists ? '✅ SIM' : '❌ NÃO'}`);
+    console.log(`   Existe? ${exists ? 'SIM' : 'NÃO'}`);
     
     if (!exists) {
       filesNotFound++;
-      console.log(`⚠️  Arquivo não encontrado, pulando...\n`);
+      console.log(`[WARN]  Arquivo não encontrado, pulando...\n`);
       continue;
     }
 
     filesFound++;
-    console.log(`📂 ✅ Arquivo encontrado! Extraindo rotas...\n`);
+    console.log(`[SUCESSO] Arquivo encontrado! Extraindo rotas...\n`);
     
     try {
       const routes = extractRoutes(routesFilePath);
@@ -140,13 +140,13 @@ function generateRoutesConfig() {
       totalRoutes += routeCount;
 
       // Mostrar as rotas encontradas
-      console.log(`📋 Rotas extraídas de ${routeFile.name} (${routeCount} rotas):`);
+      console.log(`Rotas extraídas de ${routeFile.name} (${routeCount} rotas):`);
       Object.entries(routes).forEach(([key, route]) => {
         console.log(`   ${route.method.padEnd(6)} ${routeFile.prefix}${route.path}`);
       });
       console.log('');
     } catch (error) {
-      console.error(`❌ Erro ao processar ${routeFile.file}:`, error.message);
+      console.error(`[ERROR] Erro ao processar ${routeFile.file}:`, error.message);
       console.log('');
     }
   }
@@ -158,15 +158,15 @@ function generateRoutesConfig() {
     fs.writeFileSync(outputPath, JSON.stringify(config, null, 2));
     
     console.log('═══════════════════════════════════════════════════════');
-    console.log(`✅ Configuração de rotas gerada com sucesso!`);
-    console.log(`📄 Arquivo: ${outputPath}`);
-    console.log(`📊 Estatísticas:`);
+    console.log(`[SUCESSO] Configuração de rotas gerada com sucesso!`);
+    console.log(`[INFO] Arquivo: ${outputPath}`);
+    console.log(`[INFO] Estatísticas:`);
     console.log(`   • Arquivos encontrados: ${filesFound}`);
     console.log(`   • Arquivos não encontrados: ${filesNotFound}`);
     console.log(`   • Total de rotas extraídas: ${totalRoutes}`);
     console.log('═══════════════════════════════════════════════════════');
   } catch (error) {
-    console.error('❌ Erro ao salvar arquivo:', error.message);
+    console.error('[ERROR] Erro ao salvar arquivo:', error.message);
   }
 
   return config;
@@ -177,7 +177,7 @@ if (require.main === module) {
   try {
     generateRoutesConfig();
   } catch (error) {
-    console.error('❌ Erro fatal:', error);
+    console.error('[ERROR] Erro fatal:', error);
     process.exit(1);
   }
 }

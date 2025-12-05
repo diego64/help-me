@@ -1,4 +1,7 @@
 services:
+  # ============================================
+  # BANCO DE DADOS - PostgreSQL
+  # ============================================
   postgresql_helpme:
     image: bitnami/postgresql:latest
     container_name: postgresql_helpme
@@ -13,7 +16,7 @@ services:
       POSTGRESQL_ENABLE_TLS: "no"
       POSTGRESQL_PASSWORD_ENCRYPTION: scram-sha-256
       POSTGRESQL_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
-      POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-100}
+      POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-20}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -32,21 +35,26 @@ services:
       start_period: 30s
 
   postgresql_helpme_teste:
-      image: bitnami/postgresql:latest
-      container_name: postgresql_helpme_teste
-      hostname: postgresql_helpme_teste
-      environment:
-        POSTGRESQL_USERNAME: teste
-        POSTGRESQL_PASSWORD: senha
-        POSTGRESQL_DATABASE: helpme-database-teste
-      ports:
-        - "5433:5432"
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U teste"]
-        interval: 5s
-        timeout: 5s
-        retries: 5
+    image: bitnami/postgresql:latest
+    container_name: postgresql_helpme_teste
+    hostname: postgresql_helpme_teste
+    environment:
+      POSTGRESQL_USERNAME: teste
+      POSTGRESQL_PASSWORD: senha
+      POSTGRESQL_DATABASE: helpme-database-teste
+    ports:
+      - "5433:5432"
+    networks:
+      - helpme_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teste"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
+  # ============================================
+  # BANCO DE DADOS - MongoDB
+  # ============================================
   mongodb_helpme:
     image: mongo:latest
     container_name: mongodb_helpme
@@ -84,12 +92,17 @@ services:
       MONGO_INITDB_DATABASE: helpme-mongo-teste
     ports:
       - "27018:27017"
+    networks:
+      - helpme_network
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # ============================================
+  # MESSAGE BROKER - Kafka
+  # ============================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper_helpme
@@ -147,6 +160,9 @@ services:
       - helpme_network
     restart: unless-stopped
 
+  # ============================================
+  # CACHE - Redis
+  # ============================================
   redis_helpme:
     image: redis:latest
     container_name: redis_helpme
@@ -159,12 +175,115 @@ services:
       - helpme_network
     restart: unless-stopped
 
+  # ============================================
+  # MONITORAMENTO K6 - InfluxDB
+  # ============================================
+  influxdb_k6:
+    image: influxdb:2.7-alpine
+    container_name: influxdb_k6_helpme
+    hostname: influxdb_k6
+    restart: unless-stopped
+    
+    ports:
+      - "8086:8086"
+    
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123456
+      - DOCKER_INFLUXDB_INIT_ORG=k6-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=k6
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
+    
+    volumes:
+      - influxdb_k6_data:/var/lib/influxdb2
+      - influxdb_k6_config:/etc/influxdb2
+    
+    networks:
+      - helpme_network
+    
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # MONITORAMENTO K6 - Grafana
+  # ============================================
+  grafana_k6:
+    image: grafana/grafana:10.2.3
+    container_name: grafana_k6_helpme
+    hostname: grafana_k6
+    restart: unless-stopped
+    
+    ports:
+      - "3001:3000"
+    
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_BASIC_ENABLED=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    
+    volumes:
+      - grafana_k6_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    
+    networks:
+      - helpme_network
+    
+    depends_on:
+      influxdb_k6:
+        condition: service_healthy
+    
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # MONITORAMENTO K6 - Prometheus (Opcional)
+  # ============================================
+  prometheus_k6:
+    image: prom/prometheus:v2.48.1
+    container_name: prometheus_k6_helpme
+    hostname: prometheus_k6
+    restart: unless-stopped
+    
+    ports:
+      - "9090:9090"
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_k6_data:/prometheus
+    
+    networks:
+      - helpme_network
+
+# ============================================
+# NETWORKS
+# ============================================
 networks:
   helpme_network:
     driver: bridge
     name: helpme_network
 
+# ============================================
+# VOLUMES
+# ============================================
 volumes:
+  # PostgreSQL
   postgresql_data:
     driver: local
     name: postgresql_helpme_data
@@ -174,9 +293,27 @@ volumes:
   postgresql_archive:
     driver: local
     name: postgresql_helpme_archive
+  
+  # MongoDB
   mongodb_data:
     driver: local
     name: mongodb_helpme_data
+  
+  # Redis
   redis_data:
     driver: local
     name: redis_helpme_data
+  
+  # K6 Monitoring
+  influxdb_k6_data:
+    driver: local
+    name: influxdb_k6_helpme_data
+  influxdb_k6_config:
+    driver: local
+    name: influxdb_k6_helpme_config
+  grafana_k6_data:
+    driver: local
+    name: grafana_k6_helpme_data
+  prometheus_k6_data:
+    driver: local
+    name: prometheus_k6_helpme_data
