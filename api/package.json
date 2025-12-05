@@ -25,7 +25,10 @@
     "test:clean": "docker-compose -f docker-compose.yaml down postgresql_helpme_teste mongo-test -v",
     
     "extracao-de-rotas": "node scripts/extracao-de-rotas.cjs",
-    "test:carga": "pnpm run extracao-de-rotas && k6 run src/__tests__/teste-de-carga/teste-de-carga.js",
+    "test:carga": "pnpm run extracao-de-rotas && k6 run src/__tests__/performance/carga/carga.js",
+    "test:soak": "pnpm run extracao-de-rotas && k6 run src/__tests__/performance/soak/soak.js",
+    "test:spike": "pnpm run extracao-de-rotas && k6 run src/__tests__/performance/spike/spike.js",
+    "test:stress": "pnpm run extracao-de-rotas && k6 run src/__tests__/performance/stress/stress.js",
     
     "diagnostico:env": "tsx scripts/check-env.ts",
     "diagnostico:db": "tsx scripts/diagnostico-db.ts",

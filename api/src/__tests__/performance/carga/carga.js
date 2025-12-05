@@ -13,8 +13,8 @@ const DEBUG_MODE = __ENV.DEBUG_MODE === 'true';
 const SKIP_CHAMADO_CREATION = __ENV.SKIP_CHAMADO_CREATION === 'true';
 const MOCK_CHAMADO_ID = __ENV.MOCK_CHAMADO_ID || null;
 
-// ====== CONFIGURAÇÃO DE ROTAS DINÂMICAS ======
-const ROUTES_CONFIG = JSON.parse(open('../../../scripts/k6-routes.json'));
+// ====== CONFIGURAÇÃO DE ROTAS ======
+const ROUTES_CONFIG = JSON.parse(open('../../../../scripts/k6-routes.json'));
 
 // ====== FUNÇÕES AUXILIARES ======
 function randomString(length) {
@@ -29,7 +29,7 @@ function getRouteURL(module, routePath, params = {}) {
   
   const moduleConfig = ROUTES_CONFIG.routes[module];
   if (!moduleConfig) {
-    console.error(`❌ Módulo de rotas não encontrado: ${module}`);
+    console.error(`[ERROR] Módulo de rotas não encontrado: ${module}`);
     return null;
   }
   
@@ -178,7 +178,7 @@ export function authenticatedOps() {
 
   // INTERROMPE 0 TESTE CASO NÃO CONSEGUIU LOGINS ESSENCIAIS
   if (!adminToken || !userToken) {
-    console.log('❌ Logins essenciais falharam. Abortando testes.');
+    console.log('[ERROR] Logins essenciais falharam. Abortando testes.');
     return;
   }
 
@@ -341,7 +341,7 @@ export function authenticatedOps() {
 
     group('POST /servico - Validação de Nome Duplicado', function () {
       if (!servicoId || !servicoNomeCriado) {
-        console.log('⏭️  Pulando teste de duplicação (serviço não foi criado)');
+        console.log('[INFO]  Pulando teste de duplicação (serviço não foi criado)');
         return;
       }
 
@@ -762,7 +762,7 @@ export function authenticatedOps() {
         }
       });
     } else {
-      console.log('⏭️  Pulando criação de chamados (SKIP_CHAMADO_CREATION=true)');
+      console.log('[INFO]  Pulando criação de chamados (SKIP_CHAMADO_CREATION=true)');
     }
 
     if (chamadoId) {
@@ -1107,7 +1107,7 @@ export function refreshTokenTest() {
     });
 
     if (loginRes.status !== 200) {
-      console.log(`❌ Login falhou no teste de refresh: ${loginRes.status}`);
+      console.log(`[ERROR] Login falhou no teste de refresh: ${loginRes.status}`);
       return;
     }
 
@@ -1118,7 +1118,7 @@ export function refreshTokenTest() {
     });
 
     if (!loginCheck) {
-      console.log('❌ Falha ao obter tokens no teste de refresh');
+      console.log('[ERROR] Falha ao obter tokens no teste de refresh');
       return;
     }
 
@@ -1126,7 +1126,7 @@ export function refreshTokenTest() {
     token = loginRes.json('accessToken');
 
     if (!refreshToken) {
-      console.log('❌ RefreshToken não encontrado na resposta');
+      console.log('[ERROR] RefreshToken não encontrado na resposta');
       return;
     }
 
@@ -1148,7 +1148,7 @@ export function refreshTokenTest() {
     });
 
     if (!refreshCheck) {
-      console.log(`❌ Falha no refresh: ${refreshRes.status} - ${refreshRes.body}`);
+      console.log(`[ERROR] Falha no refresh: ${refreshRes.status} - ${refreshRes.body}`);
       return;
     }
 
@@ -1172,7 +1172,7 @@ export function refreshTokenTest() {
       if (logoutCheck) {
         console.log('✓ Logout realizado com sucesso');
       } else {
-        console.log(`❌ Falha no logout: ${logoutRes.status} - ${logoutRes.body}`);
+        console.log(`[ERROR] Falha no logout: ${logoutRes.status} - ${logoutRes.body}`);
       }
     }
   });
@@ -1211,7 +1211,7 @@ export function userCrudTest() {
         Authorization: `Bearer ${token}`,
       };
     } else {
-      console.log('❌ Falha no login ADMIN - abortando testes de usuário');
+      console.log('[ERROR] Falha no login ADMIN - abortando testes de usuário');
       return;
     }
   });
@@ -1310,7 +1310,7 @@ export function userCrudTest() {
 
     group('POST /usuario - Validação de Email Duplicado', function () {
       if (!usuarioId || !usuarioEmail) {
-        console.log('⏭️  Pulando teste de duplicação (usuário não foi criado)');
+        console.log('[INFO]  Pulando teste de duplicação (usuário não foi criado)');
         return;
       }
 
@@ -1573,8 +1573,8 @@ export function userCrudTest() {
 
     if (usuarioId) {
       group('POST /usuario/:id/avatar - Info sobre Upload de Avatar', function () {
-        console.log(`ℹ️  [INFO] Endpoint de avatar disponível em: /usuario/${usuarioId}/avatar`);
-        console.log(`ℹ️  [INFO] Testes de upload de arquivo devem ser feitos manualmente ou com ferramentas específicas`);
+        console.log(`[INFO] Endpoint de avatar disponível em: /usuario/${usuarioId}/avatar`);
+        console.log(`[INFO] Testes de upload de arquivo devem ser feitos manualmente ou com ferramentas específicas`);
       });
     }
 
@@ -1633,7 +1633,7 @@ export function userCrudTest() {
 
     group('Usuários - Testes de Autorização (USUARIO)', function () {
       if (!userHeaders) {
-        console.log('⏭️  Pulando testes de autorização (usuário não logado)');
+        console.log('[INFO]  Pulando testes de autorização (usuário não logado)');
         return;
       }
 
