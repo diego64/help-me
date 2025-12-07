@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 
 console.log('🔍 Diagnóstico de Carregamento do .env\n');
-console.log('📂 Diretório de trabalho:', process.cwd());
+console.log('[INFO] Diretório de trabalho:', process.cwd());
 console.log('');
 
 const possiveisLocais = [
@@ -21,7 +21,7 @@ for (const local of possiveisLocais) {
   const absolutePath = path.resolve(local);
   
   if (exists) {
-    console.log(`✅ ${local}`);
+    console.log(`[SUCESSO] ${local}`);
     console.log(`   Caminho absoluto: ${absolutePath}`);
     
     if (!envEncontrado) {
@@ -35,8 +35,8 @@ for (const local of possiveisLocais) {
 }
 
 if (!envEncontrado) {
-  console.log('❌ Nenhum arquivo .env encontrado!\n');
-  console.log('💡 Soluções:');
+  console.log('[ERROR] Nenhum arquivo .env encontrado!\n');
+  console.log('[INFO] Soluções:');
   console.log('   1. Crie um arquivo .env na raiz do projeto');
   console.log('   2. Execute o script a partir da raiz do projeto');
   console.log('   3. Verifique se o arquivo se chama exatamente ".env"\n');
@@ -49,18 +49,18 @@ console.log('\n📖 Carregando .env de:', path.resolve(envPath), '\n');
 const result = dotenv.config({ path: envPath });
 
 if (result.error) {
-  console.error('❌ Erro ao carregar .env:', result.error.message);
+  console.error('[ERROR] Erro ao carregar .env:', result.error.message);
   process.exit(1);
 }
 
-console.log('✅ Arquivo .env carregado com sucesso!\n');
+console.log('[SUCESSO] Arquivo .env carregado com sucesso!\n');
 console.log('════════════════════════════════════════════════════════════');
 console.log('\n📋 Variáveis de ambiente carregadas:\n');
 
 const envVars = Object.keys(result.parsed || {});
 
 if (envVars.length === 0) {
-  console.log('⚠️  Nenhuma variável encontrada no .env\n');
+  console.log('[WAN]  Nenhuma variável encontrada no .env\n');
 } else {
   console.log(`Total: ${envVars.length} variáveis\n`);
   
@@ -94,15 +94,15 @@ console.log('\n═════════════════════�
 console.log('\n🎯 Verificação específica de DATABASE_URL:\n');
 
 if (process.env.DATABASE_URL) {
-  console.log('✅ DATABASE_URL está definida');
-  console.log('📝 Tipo:', typeof process.env.DATABASE_URL);
+  console.log('[SUCESSO] DATABASE_URL está definida');
+  console.log('[INFO] Tipo:', typeof process.env.DATABASE_URL);
   console.log('📏 Tamanho:', process.env.DATABASE_URL.length, 'caracteres');
   
   // Parse básico
   const match = process.env.DATABASE_URL.match(/^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)$/);
   
   if (match) {
-    console.log('\n📊 Componentes da URL:');
+    console.log('\n[INFO] Componentes da URL:');
     console.log('   Protocolo: postgresql://');
     console.log('   Usuário:', match[1]);
     console.log('   Senha:', '***' + ' (' + match[2].length + ' caracteres)');
@@ -111,19 +111,19 @@ if (process.env.DATABASE_URL) {
     console.log('   Database:', match[5]);
   }
 } else {
-  console.log('❌ DATABASE_URL NÃO está definida');
-  console.log('\n💡 Verifique se:');
+  console.log('[ERROR] DATABASE_URL NÃO está definida');
+  console.log('\n[INFO] Verifique se:');
   console.log('   1. A linha DATABASE_URL=... existe no .env');
   console.log('   2. Não há espaços antes do nome da variável');
   console.log('   3. Não há aspas ao redor do valor');
 }
 
 console.log('\n════════════════════════════════════════════════════════════');
-console.log('\n✅ Diagnóstico concluído!\n');
+console.log('\n[SUCESSO] Diagnóstico concluído!\n');
 
 if (process.env.DATABASE_URL) {
-  console.log('🎉 Tudo OK! Limpeza da base de dados pode ser executada.\n');
+  console.log('[SUCESSO] Tudo OK! Limpeza da base de dados pode ser executada.\n');
 } else {
-  console.log('⚠️  Corrija o problema acima antes de continuar.\n');
+  console.log('[WAN]  Corrija o problema acima antes de continuar.\n');
   process.exit(1);
 }

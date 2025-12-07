@@ -124,13 +124,13 @@ class K6ResultsAnalyzer {
     • Mínima: ${min.toFixed(2)}ms
     • Máxima: ${max.toFixed(2)}ms
     • p50:    ${p50.toFixed(2)}ms
-    • p95:    ${p95.toFixed(2)}ms ${p95 > 1200 ? '❌ ACIMA DO THRESHOLD' : '✅'}
-    • p99:    ${p99.toFixed(2)}ms ${p99 > 2500 ? '❌ ACIMA DO THRESHOLD' : '✅'}
+    • p95:    ${p95.toFixed(2)}ms ${p95 > 1200 ? '[ERROR] ACIMA DO THRESHOLD' : '[SUCESSO]'}
+    • p99:    ${p99.toFixed(2)}ms ${p99 > 2500 ? '[ERROR] ACIMA DO THRESHOLD' : '[SUCESSO]'}
 
   Performance:
     • Total de requisições: ${totalReqs}
     • Throughput:          ${throughput.toFixed(2)} req/s
-    • Taxa de erro:        ${errorRate.toFixed(2)}% ${errorRate > 15 ? '❌ ACIMA DO THRESHOLD' : '✅'}
+    • Taxa de erro:        ${errorRate.toFixed(2)}% ${errorRate > 15 ? '[ERROR] ACIMA DO THRESHOLD' : '[SUCESSO]'}
     • Requisições falhas:  ${failedReqs}
       `);
 
@@ -142,7 +142,7 @@ class K6ResultsAnalyzer {
         console.log('[WARN]  ALERTA: p99 acima de 2500ms - Latências extremas detectadas');
       }
       if (errorRate > 15) {
-        console.log('❌ CRÍTICO: Taxa de erro acima de 15% - Sistema instável');
+        console.log('[ERROR] CRÍTICO: Taxa de erro acima de 15% - Sistema instável');
       }
     }
   }
@@ -172,7 +172,7 @@ class K6ResultsAnalyzer {
 Recuperação após SPIKE 1:
   • p95 durante SPIKE 1:      ${spike1P95.toFixed(2)}ms
   • p95 durante Recuperação:  ${recoveryP95.toFixed(2)}ms
-  • Melhoria:                 ${improvement.toFixed(2)}% ${improvement > 30 ? '✅ BOA RECUPERAÇÃO' : '[WARN]  RECUPERAÇÃO LENTA'}
+  • Melhoria:                 ${improvement.toFixed(2)}% ${improvement > 30 ? '[SUCESSO] BOA RECUPERAÇÃO' : '[WARN]  RECUPERAÇÃO LENTA'}
       `);
 
       if (improvement < 30) {

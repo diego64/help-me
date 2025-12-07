@@ -46,7 +46,7 @@ async function limparBancoDados() {
     
     console.log('✓ Banco de dados limpo com sucesso');
   } catch (error) {
-    console.error('❌ Erro ao limpar banco de dados:', error);
+    console.error('[ERROR] Erro ao limpar banco de dados:', error);
     throw error;
   }
 }
@@ -82,7 +82,7 @@ describe('E2E - Rotas de Serviços', () => {
       
       console.log('✓ Setup completo - Token e usuário criados');
     } catch (error) {
-      console.error('❌ Erro no beforeAll:', error);
+      console.error('[ERROR] Erro no beforeAll:', error);
       throw error;
     }
   });
@@ -98,7 +98,7 @@ describe('E2E - Rotas de Serviços', () => {
       
       console.log('✓ Cleanup completo');
     } catch (error) {
-      console.error('❌ Erro no afterAll:', error);
+      console.error('[ERROR] Erro no afterAll:', error);
       // Garantir desconexão mesmo com erro
       await mongoose.disconnect().catch(() => {});
       await prisma.$disconnect().catch(() => {});
