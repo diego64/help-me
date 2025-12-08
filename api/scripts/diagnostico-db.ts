@@ -8,12 +8,12 @@ console.log('🔍 Diagnóstico da Conexão com Banco de Dados\n');
 // ====== VERIFICAÇÃO DA URL DO BANCO DE DADOS ======
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error('❌ DATABASE_URL não está definida no arquivo .env');
+  console.error('[ERROR] DATABASE_URL não está definida no arquivo .env');
   process.exit(1);
 }
 
-console.log('✅ DATABASE_URL encontrada');
-console.log('📝 Tipo:', typeof databaseUrl);
+console.log('[SUCESSO] DATABASE_URL encontrada');
+console.log('[INFO] Tipo:', typeof databaseUrl);
 console.log('📏 Tamanho:', databaseUrl.length, 'caracteres\n');
 
 // ====== PARSE MANUAL DA URL DO BANCO DE DADOS POSTGRESQL ======
@@ -38,7 +38,7 @@ function parsePostgresUrl(url: string) {
 try {
   const config = parsePostgresUrl(databaseUrl);
   
-  console.log('✅ Parse bem-sucedido da DATABASE_URL\n');
+  console.log('[SUCESSO] Parse bem-sucedido da DATABASE_URL\n');
   console.log('📋 Configuração extraída:');
   console.log('   Host:', config.host);
   console.log('   Port:', config.port);
@@ -54,37 +54,37 @@ try {
     const issues: string[] = [];
     
     if (typeof config.password !== 'string') {
-      issues.push(`❌ Senha não é string (tipo: ${typeof config.password})`);
+      issues.push(`[ERROR] Senha não é string (tipo: ${typeof config.password})`);
     }
     
     if (config.password.includes(' ')) {
-      issues.push('⚠️  Senha contém espaços');
+      issues.push('[WAN]  Senha contém espaços');
     }
     
     if (config.password.includes('"') || config.password.includes("'")) {
-      issues.push('⚠️  Senha contém aspas');
+      issues.push('[WAN]  Senha contém aspas');
     }
     
     if (config.password.startsWith(' ') || config.password.endsWith(' ')) {
-      issues.push('⚠️  Senha tem espaços no início ou fim');
+      issues.push('[WAN]  Senha tem espaços no início ou fim');
     }
     
     // ====== VERIFICA CARACTERES ESPECIAIS QUE PODEM CAUSAR PROBLEMAS ======
     const specialChars = ['@', '#', '$', '%', '&', ':', '/', '?', '='];
     const foundSpecialChars = specialChars.filter(char => config.password!.includes(char));
     if (foundSpecialChars.length > 0) {
-      issues.push(`⚠️  Senha contém caracteres especiais: ${foundSpecialChars.join(', ')}`);
-      issues.push('   💡 Estes caracteres podem precisar de URL encoding');
+      issues.push(`[WAN]  Senha contém caracteres especiais: ${foundSpecialChars.join(', ')}`);
+      issues.push('   [INFO] Estes caracteres podem precisar de URL encoding');
     }
     
     if (issues.length > 0) {
-      console.log('\n⚠️  Problemas encontrados:');
+      console.log('\n[WAN]  Problemas encontrados:');
       issues.forEach(issue => console.log('   ' + issue));
     } else {
-      console.log('\n✅ Nenhum problema óbvio detectado na senha');
+      console.log('\n[SUCESSO] Nenhum problema óbvio detectado na senha');
     }
   } else {
-    console.log('   ❌ Password não está definida na URL');
+    console.log('   [ERROR] Password não está definida na URL');
   }
   
   console.log('\n📖 Formato esperado da DATABASE_URL:');
@@ -92,7 +92,7 @@ try {
   console.log('   postgresql://user:pass@localhost:5432/mydb');
   
   // ====== MOSTRA COMO CODIFICAR CARACTERES ESPECIAIS ======
-  console.log('\n💡 Se a senha tiver caracteres especiais, use URL encoding:');
+  console.log('\n[INFO] Se a senha tiver caracteres especiais, use URL encoding:');
   console.log('   @ → %40');
   console.log('   # → %23');
   console.log('   $ → %24');
@@ -105,21 +105,21 @@ try {
   
   if (config.password && /[@#$%&:/?=]/.test(config.password)) {
     const encoded = encodeURIComponent(config.password);
-    console.log(`\n💡 Sua senha codificada ficaria: ${encoded.substring(0, 10)}...`);
+    console.log(`\n[INFO] Sua senha codificada ficaria: ${encoded.substring(0, 10)}...`);
     console.log('   Use-a na DATABASE_URL assim:');
     console.log(`   postgresql://${config.user}:${encoded}@${config.host}:${config.port}/${config.database}`);
   }
   
 } catch (error: any) {
-  console.error('\n❌ Erro ao fazer parse da DATABASE_URL:', error.message);
-  console.log('\n💡 Dicas:');
+  console.error('\n[ERROR] Erro ao fazer parse da DATABASE_URL:', error.message);
+  console.log('\n[INFO] Dicas:');
   console.log('   1. Verifique se a URL está no formato correto');
   console.log('   2. Certifique-se de que não há aspas extras ao redor da URL');
   console.log('   3. Se a senha tiver caracteres especiais, use URL encoding');
   console.log('   4. Não use espaços em nenhuma parte da URL');
   console.log('\n📖 Formato esperado:');
   console.log('   postgresql://usuario:senha@host:porta/database');
-  console.log('\n📝 Sua URL começa com:', databaseUrl.substring(0, 30) + '...');
+  console.log('\n[INFO] Sua URL começa com:', databaseUrl.substring(0, 30) + '...');
   process.exit(1);
 }
 
@@ -135,9 +135,9 @@ const testPool = new Pool({
 
 testPool.query('SELECT NOW()', (err, res) => {
   if (err) {
-    console.error('❌ Erro na conexão:', err.message);
+    console.error('[ERROR] Erro na conexão:', err.message);
   } else {
-    console.log('✅ Conexão bem-sucedida!');
+    console.log('[SUCESSO] Conexão bem-sucedida!');
     console.log('   Timestamp do servidor:', res.rows[0].now);
   }
   testPool.end();

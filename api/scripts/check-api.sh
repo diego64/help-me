@@ -14,11 +14,11 @@ API_URL="http://localhost:3000"
 
 if curl -s -o /dev/null -w "%{http_code}" "$API_URL" > /dev/null 2>&1; then
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL")
-    echo -e "${GREEN}✅ API respondendo em $API_URL (HTTP $HTTP_CODE)${NC}"
+    echo -e "${GREEN}[SUCESSO] API respondendo em $API_URL (HTTP $HTTP_CODE)${NC}"
 else
-    echo -e "${RED}❌ API NÃO está respondendo em $API_URL${NC}"
+    echo -e "${RED}[ERROR] API NÃO está respondendo em $API_URL${NC}"
     echo ""
-    echo "💡 Soluções:"
+    echo "[INFO] Soluções:"
     echo "   1. Inicie a API: pnpm dev"
     echo "   2. Verifique se está rodando em outra porta"
     echo "   3. Verifique os logs da API"
@@ -39,13 +39,13 @@ HTTP_CODE=$(echo "$LOGIN_RESPONSE" | grep "HTTP_CODE" | cut -d':' -f2)
 RESPONSE_BODY=$(echo "$LOGIN_RESPONSE" | sed '/HTTP_CODE/d')
 
 if [ "$HTTP_CODE" = "200" ]; then
-    echo -e "${GREEN}✅ Login funcionando (HTTP 200)${NC}"
+    echo -e "${GREEN}[SUCESSO] Login funcionando (HTTP 200)${NC}"
     echo "   Response: ${RESPONSE_BODY:0:100}..."
 else
-    echo -e "${RED}❌ Login falhou (HTTP $HTTP_CODE)${NC}"
+    echo -e "${RED}[ERROR] Login falhou (HTTP $HTTP_CODE)${NC}"
     echo "   Response: $RESPONSE_BODY"
     echo ""
-    echo "💡 Possíveis causas:"
+    echo "[INFO] Possíveis causas:"
     echo "   1. Seed não foi executado: pnpm prisma db seed"
     echo "   2. Credenciais incorretas no seed"
     echo "   3. Rota de login com problema"
@@ -69,12 +69,12 @@ if [ -n "$TOKEN" ]; then
     
     if [ "$USUARIOS_HTTP" = "200" ]; then
         USUARIOS_COUNT=$(echo "$USUARIOS_BODY" | grep -o '"id"' | wc -l)
-        echo -e "${GREEN}✅ Banco populado: $USUARIOS_COUNT usuários encontrados${NC}"
+        echo -e "${GREEN}[SUCESSO] Banco populado: $USUARIOS_COUNT usuários encontrados${NC}"
     else
-        echo -e "${YELLOW}⚠️  Não foi possível verificar usuários (HTTP $USUARIOS_HTTP)${NC}"
+        echo -e "${YELLOW}[WAN]  Não foi possível verificar usuários (HTTP $USUARIOS_HTTP)${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠️  Não foi possível obter token para verificar dados${NC}"
+    echo -e "${YELLOW}[WAN]  Não foi possível obter token para verificar dados${NC}"
 fi
 
 echo ""
@@ -85,12 +85,12 @@ echo "4️⃣  VERIFICANDO PORTAS EM USO..."
 if command -v lsof &> /dev/null; then
     PORT_3000=$(lsof -i :3000 -t 2>/dev/null)
     if [ -n "$PORT_3000" ]; then
-        echo -e "${GREEN}✅ Porta 3000 em uso (PID: $PORT_3000)${NC}"
+        echo -e "${GREEN}[SUCESSO] Porta 3000 em uso (PID: $PORT_3000)${NC}"
     else
-        echo -e "${RED}❌ Porta 3000 livre (API não está rodando?)${NC}"
+        echo -e "${RED}[ERROR] Porta 3000 livre (API não está rodando?)${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠️  lsof não disponível, pulando verificação de porta${NC}"
+    echo -e "${YELLOW}[WAN]  lsof não disponível, pulando verificação de porta${NC}"
 fi
 
 echo ""
@@ -103,7 +103,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K6_ROUTES_PATH="$SCRIPT_DIR/k6-routes.json"
 
 if [ -f "$K6_ROUTES_PATH" ]; then
-    echo -e "${GREEN}✅ Arquivo k6-routes.json existe${NC}"
+    echo -e "${GREEN}[SUCESSO] Arquivo k6-routes.json existe${NC}"
     echo "   Localização: $K6_ROUTES_PATH"
     
     # VERIFICAR SE TEM CONTEÚDO
@@ -111,10 +111,10 @@ if [ -f "$K6_ROUTES_PATH" ]; then
         ROTAS_COUNT=$(grep -o '"method"' "$K6_ROUTES_PATH" | wc -l)
         echo "   Rotas encontradas: $ROTAS_COUNT"
     else
-        echo -e "${RED}❌ Arquivo k6-routes.json está vazio${NC}"
+        echo -e "${RED}[ERROR] Arquivo k6-routes.json está vazio${NC}"
     fi
 else
-    echo -e "${RED}❌ Arquivo k6-routes.json não existe${NC}"
+    echo -e "${RED}[ERROR] Arquivo k6-routes.json não existe${NC}"
     echo "   Caminho esperado: $K6_ROUTES_PATH"
     echo "   Execute: pnpm run extracao-de-rotas"
 fi
@@ -123,17 +123,17 @@ echo ""
 
 # 6. RESUMO E PRÓXIMOS PASSOS
 echo "═══════════════════════════════════════════════════════"
-echo "📊 RESUMO DO DIAGNÓSTICO"
+echo "[INFO] RESUMO DO DIAGNÓSTICO"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
 if [ "$HTTP_CODE" = "200" ] && [ -f "$K6_ROUTES_PATH" ]; then
-    echo -e "${GREEN}✅ Tudo OK! Você pode executar os testes K6:${NC}"
+    echo -e "${GREEN}[SUCESSO] Tudo OK! Você pode executar os testes K6:${NC}"
     echo ""
     echo "   pnpm run teste-de-carga"
     echo ""
 else
-    echo -e "${RED}❌ Problemas detectados. Siga estes passos:${NC}"
+    echo -e "${RED}[ERROR] Problemas detectados. Siga estes passos:${NC}"
     echo ""
     echo "   1. Inicie a API:"
     echo "      pnpm dev"

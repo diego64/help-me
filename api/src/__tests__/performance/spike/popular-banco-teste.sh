@@ -31,7 +31,7 @@ if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
     echo -e "  ${GREEN}[SUCESSO] Login OK${NC}"
     echo "  Token: ${TOKEN:0:30}..."
 else
-    echo -e "  ${RED}❌ Falha no login${NC}"
+    echo -e "  ${RED}[ERROR] Falha no login${NC}"
     exit 1
 fi
 

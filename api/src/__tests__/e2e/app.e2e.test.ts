@@ -59,7 +59,7 @@ const limparBancoDeDados = async () => {
       prisma.usuario.deleteMany(),
     ]);
   } catch (erro) {
-    console.warn('⚠️ Aviso ao limpar banco:', erro);
+    console.warn('[WAN] Aviso ao limpar banco:', erro);
   }
 };
 
@@ -105,9 +105,9 @@ const criarUsuariosDeTeste = async () => {
       },
     });
 
-    console.log('✅ Usuários de teste criados com sucesso');
+    console.log('[SUCESSO] Usuários de teste criados com sucesso');
   } catch (erro) {
-    console.error('❌ Erro ao criar usuários de teste:', erro);
+    console.error('[ERROR] Erro ao criar usuários de teste:', erro);
   }
 };
 
@@ -128,9 +128,9 @@ const autenticarUsuarios = async () => {
       tokenUsuario = resUsuario.body.token;
       const setCookie = resUsuario.headers['set-cookie'];
       cookieUsuario = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
-      console.log('✅ Usuário comum autenticado');
+      console.log('[SUCESSO] Usuário comum autenticado');
     } else {
-      console.warn('⚠️ Falha ao autenticar usuário comum:', resUsuario.status);
+      console.warn('[WAN] Falha ao autenticar usuário comum:', resUsuario.status);
     }
 
     // Autenticar admin
@@ -145,9 +145,9 @@ const autenticarUsuarios = async () => {
       tokenAdmin = resAdmin.body.token;
       const setCookie = resAdmin.headers['set-cookie'];
       cookieAdmin = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
-      console.log('✅ Admin autenticado');
+      console.log('[SUCESSO] Admin autenticado');
     } else {
-      console.warn('⚠️ Falha ao autenticar admin:', resAdmin.status);
+      console.warn('[WAN] Falha ao autenticar admin:', resAdmin.status);
     }
 
     // Autenticar técnico
@@ -162,12 +162,12 @@ const autenticarUsuarios = async () => {
       tokenTecnico = resTecnico.body.token;
       const setCookie = resTecnico.headers['set-cookie'];
       cookieTecnico = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
-      console.log('✅ Técnico autenticado');
+      console.log('[SUCESSO] Técnico autenticado');
     } else {
-      console.warn('⚠️ Falha ao autenticar técnico:', resTecnico.status);
+      console.warn('[WAN] Falha ao autenticar técnico:', resTecnico.status);
     }
   } catch (erro) {
-    console.error('❌ Erro ao autenticar usuários:', erro);
+    console.error('[ERROR] Erro ao autenticar usuários:', erro);
   }
 };
 
@@ -179,10 +179,10 @@ const limparSessoesRedis = async () => {
     const keys = await redisClient.keys('sess:*');
     if (keys.length > 0) {
       await redisClient.del(...(keys as unknown as [string]));
-      console.log('✅ Sessões Redis limpas');
+      console.log('[SUCESSO] Sessões Redis limpas');
     }
   } catch (erro) {
-    console.warn('⚠️ Aviso ao limpar Redis:', erro);
+    console.warn('[WAN] Aviso ao limpar Redis:', erro);
   }
 };
 
@@ -197,7 +197,7 @@ const verificarAutenticacao = (tipo: 'usuario' | 'admin' | 'tecnico'): boolean =
   };
 
   if (!tokens[tipo]) {
-    console.log(`⚠️ Token ${tipo} não disponível - pulando teste`);
+    console.log(`[WAN] Token ${tipo} não disponível - pulando teste`);
     return false;
   }
   return true;
@@ -241,22 +241,22 @@ const adicionarAutenticacao = (
 // ==========================
 
 beforeAll(async () => {
-  console.log('\n🚀 Iniciando testes E2E...\n');
+  console.log('\n[INFO] Iniciando testes E2E...\n');
 
   // Garantir que JWT_SECRET está definido
   if (!process.env.JWT_SECRET) {
     process.env.JWT_SECRET = 'test-jwt-secret-e2e';
-    console.log('✅ JWT_SECRET definido para testes');
+    console.log('[SUCESSO] JWT_SECRET definido para testes');
   }
 
   // Conectar ao Redis
   try {
     if (!redisClient.isOpen) {
       await redisClient.connect();
-      console.log('✅ Redis conectado');
+      console.log('[SUCESSO] Redis conectado');
     }
   } catch (erro) {
-    console.warn('⚠️ Redis não conectado:', erro);
+    console.warn('[WAN] Redis não conectado:', erro);
   }
 
   // Limpar banco e criar usuários
@@ -277,17 +277,17 @@ afterAll(async () => {
   // Desconectar do banco e Redis
   try {
     await prisma.$disconnect();
-    console.log('✅ Prisma desconectado');
+    console.log('[SUCESSO] Prisma desconectado');
     
     if (redisClient.isOpen) {
       await redisClient.quit();
-      console.log('✅ Redis desconectado');
+      console.log('[SUCESSO] Redis desconectado');
     }
   } catch (erro) {
-    console.warn('⚠️ Aviso ao desconectar:', erro);
+    console.warn('[WAN] Aviso ao desconectar:', erro);
   }
 
-  console.log('\n✅ Limpeza completa!\n');
+  console.log('\n[SUCESSO] Limpeza completa!\n');
 });
 
 // ==========================
@@ -378,7 +378,7 @@ describe('Testes E2E da Aplicação', () => {
       
       // Se usuário não existe, pula teste com aviso
       if (!usuarioExiste) {
-        console.warn('⚠️ Usuário de teste não encontrado - pulando teste de login');
+        console.warn('[WAN] Usuário de teste não encontrado - pulando teste de login');
         return;
       }
 
@@ -394,10 +394,10 @@ describe('Testes E2E da Aplicação', () => {
         .send(credenciais);
 
       // Assert (Verificação): Verifica resposta
-      console.log(`📊 Status da resposta de login: ${resposta.status}`);
+      console.log(`[INFO] Status da resposta de login: ${resposta.status}`);
       
       if (resposta.status === 404) {
-        console.warn('⚠️ Rota /auth/login não encontrada (404)');
+        console.warn('[WAN] Rota /auth/login não encontrada (404)');
         expect(resposta.status).toBe(404);
       } else if (resposta.status === 200) {
         // O token pode estar em diferentes lugares dependendo da estrutura da resposta
@@ -412,10 +412,10 @@ describe('Testes E2E da Aplicação', () => {
         const cookies = resposta.headers['set-cookie'];
         if (cookies) {
           expect(cookies).toBeDefined();
-          console.log('✅ Cookie de sessão recebido');
+          console.log('[SUCESSO] Cookie de sessão recebido');
         }
       } else {
-        console.error(`❌ Login falhou com status ${resposta.status}:`, resposta.body);
+        console.error(`[ERROR] Login falhou com status ${resposta.status}:`, resposta.body);
       }
       
       expect([200, 404]).toContain(resposta.status);
@@ -922,7 +922,7 @@ describe('Testes E2E da Aplicação', () => {
       expect([200, 201, 404]).toContain(respostaCriacao.status);
       
       if (![200, 201].includes(respostaCriacao.status)) {
-        console.log('⚠️ Não foi possível criar chamado para teste de fluxo');
+        console.log('[WAN] Não foi possível criar chamado para teste de fluxo');
         return;
       }
 
@@ -1202,7 +1202,7 @@ describe('Testes E2E da Aplicação', () => {
       // Assert (Verificação): Verifica tempo de resposta
       expect(resposta.status).toBeDefined();
       expect(tempoResposta).toBeLessThan(2000);
-      console.log(`⏱️ Tempo de resposta: ${tempoResposta}ms`);
+      console.log(`[INFO] Tempo de resposta: ${tempoResposta}ms`);
     });
 
     it('deve responder rápido em listagens - DADO que listo recursos QUANDO processo ENTÃO deve ser eficiente', async () => {
@@ -1222,7 +1222,7 @@ describe('Testes E2E da Aplicação', () => {
       // Assert (Verificação): Verifica performance
       expect([200, 404]).toContain(resposta.status);
       expect(tempoResposta).toBeLessThan(3000);
-      console.log(`⏱️ Tempo de listagem: ${tempoResposta}ms`);
+      console.log(`[INFO] Tempo de listagem: ${tempoResposta}ms`);
     });
 
     it('deve limitar tamanho de payload - DADO que payload é muito grande QUANDO envio ENTÃO pode rejeitar', async () => {
@@ -1269,7 +1269,7 @@ describe('Testes E2E da Aplicação', () => {
         expect([200, 404]).toContain(resposta.status);
       });
       expect(tempoTotal).toBeLessThan(5000);
-      console.log(`⏱️ Tempo de 5 requisições paralelas: ${tempoTotal}ms`);
+      console.log(`[INFO] Tempo de 5 requisições paralelas: ${tempoTotal}ms`);
     });
   });
 

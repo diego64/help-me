@@ -90,7 +90,7 @@ export function setup() {
     console.error('  3. Firewall bloqueando a conexão');
     console.error('');
     console.error('Como resolver:');
-    console.error('  ✓ Inicie a API: npm run dev (ou yarn dev)');
+    console.error('  ✓ Inicie a API: pnpm  (ou yarn dev)');
     console.error('  ✓ Verifique se a API está rodando: curl http://localhost:3333/health');
     console.error('  ✓ Confirme a porta correta no arquivo .env');
     console.error('='.repeat(70) + '\n');
