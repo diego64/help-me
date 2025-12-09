@@ -8,8 +8,15 @@ import { cacheSet, cacheGet } from '../services/redisClient';
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Usuários
+ *   description: Gerenciamento de usuários do sistema
+ */
+
 // ============================================================================
-// CONFIGURÇÃO DE UPLOAD DE IMAGEM DO AVATAR
+// CONFIGURAÇÃO DE UPLOAD DE IMAGEM DO AVATAR
 // ============================================================================
 
 const upload = multer({ dest: 'uploads/' });
@@ -32,6 +39,62 @@ interface usuarioInput {
 // CRIAÇÃO DO PERFIL USUARIO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios:
+ *   post:
+ *     summary: Cria um novo usuário
+ *     description: Cadastra um usuário no sistema com perfil USUARIO. A senha é obrigatória e será criptografada antes de ser armazenada. Requer autenticação e perfil ADMIN.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nome
+ *               - sobrenome
+ *               - email
+ *               - password
+ *               - setor
+ *             properties:
+ *               nome:
+ *                 type: string
+ *                 description: Nome do usuário
+ *               sobrenome:
+ *                 type: string
+ *                 description: Sobrenome do usuário
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Email do usuário
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Senha do usuário
+ *               telefone:
+ *                 type: string
+ *                 description: Telefone do usuário (opcional)
+ *               ramal:
+ *                 type: string
+ *                 description: Ramal do usuário (opcional)
+ *               setor:
+ *                 type: string
+ *                 enum: [TECNOLOGIA_INFORMACAO, RECURSOS_HUMANOS, FINANCEIRO, OPERACIONAL, COMERCIAL, ADMINISTRATIVO]
+ *                 description: Setor do usuário
+ *     responses:
+ *       201:
+ *         description: Usuário criado com sucesso
+ *       400:
+ *         description: Dados inválidos ou senha não fornecida
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN)
+ */
 router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
     try {
       const { nome, sobrenome, email, password, telefone, ramal, setor } = req.body as usuarioInput;
@@ -64,6 +127,55 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
 // LISTAGEM DE TODOS OS USUARIOS
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios:
+ *   get:
+ *     summary: Lista todos os usuários
+ *     description: Retorna todos os usuários com perfil USUARIO cadastrados no sistema. Utiliza cache Redis com TTL de 60 segundos para otimizar performance. Requer autenticação e perfil ADMIN.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de usuários retornada com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     format: uuid
+ *                   nome:
+ *                     type: string
+ *                   sobrenome:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   telefone:
+ *                     type: string
+ *                     nullable: true
+ *                   ramal:
+ *                     type: string
+ *                     nullable: true
+ *                   setor:
+ *                     type: string
+ *                   avatarUrl:
+ *                     type: string
+ *                     nullable: true
+ *                   geradoEm:
+ *                     type: string
+ *                     format: date-time
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN)
+ *       500:
+ *         description: Erro ao listar usuários
+ */
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
     try {
       const cacheKey = 'usuarios:list:admin'; // Chave descritiva
@@ -102,6 +214,72 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
 // BUSCA PELO USUARIO ATRAVÉS DO EMAIL
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios/email:
+ *   post:
+ *     summary: Busca um usuário por email
+ *     description: Localiza um usuário específico através do endereço de email. Retorna informações completas do usuário (exceto senha). Requer autenticação e perfil ADMIN.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Email do usuário a ser buscado
+ *     responses:
+ *       200:
+ *         description: Usuário encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *                 nome:
+ *                   type: string
+ *                 sobrenome:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 telefone:
+ *                   type: string
+ *                   nullable: true
+ *                 ramal:
+ *                   type: string
+ *                   nullable: true
+ *                 setor:
+ *                   type: string
+ *                 regra:
+ *                   type: string
+ *                 avatarUrl:
+ *                   type: string
+ *                   nullable: true
+ *                 geradoEm:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Email não fornecido ou inválido
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN)
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao buscar usuário
+ */
 router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { email } = req.body;
@@ -142,6 +320,53 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
 // EDIÇÃO DO PERFIL DO USUARIO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios/{id}:
+ *   put:
+ *     summary: Atualiza os dados de um usuário
+ *     description: Permite editar informações cadastrais do usuário (nome, sobrenome, email, telefone, ramal e setor). Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do usuário a ser atualizado
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nome:
+ *                 type: string
+ *               sobrenome:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               telefone:
+ *                 type: string
+ *               ramal:
+ *                 type: string
+ *               setor:
+ *                 type: string
+ *                 enum: [TECNOLOGIA_INFORMACAO, RECURSOS_HUMANOS, FINANCEIRO, OPERACIONAL, COMERCIAL, ADMINISTRATIVO]
+ *     responses:
+ *       200:
+ *         description: Usuário atualizado com sucesso
+ *       400:
+ *         description: Erro de validação
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ */
 router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -162,6 +387,46 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
 // ALTERAÇÃO DE SENHA
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios/{id}/senha:
+ *   put:
+ *     summary: Altera a senha de um usuário
+ *     description: Permite redefinir a senha de um usuário. A senha é criptografada antes de ser armazenada. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do usuário
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Nova senha
+ *     responses:
+ *       200:
+ *         description: Senha alterada com sucesso
+ *       400:
+ *         description: Senha não fornecida ou erro de validação
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ */
 router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -183,9 +448,36 @@ router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), asy
 });
 
 // ============================================================================
-// EXCLUÃO DA CONTA DO USUARIO 
+// EXCLUSÃO DA CONTA DO USUARIO 
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios/{id}:
+ *   delete:
+ *     summary: Exclui um usuário
+ *     description: Remove permanentemente o usuário e todos os chamados associados do sistema. Esta ação é irreversível. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do usuário a ser excluído
+ *     responses:
+ *       200:
+ *         description: Usuário e chamados associados excluídos com sucesso
+ *       400:
+ *         description: Erro ao excluir usuário
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ */
 router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -203,6 +495,46 @@ router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async 
 // ENVIO DA FOTO DE PERFIL DO USUARIO 
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/usuarios/{id}/avatar:
+ *   post:
+ *     summary: Faz upload da foto de perfil do usuário
+ *     description: Permite enviar uma imagem de avatar/foto de perfil para o usuário. O arquivo é salvo no servidor e o caminho é armazenado no banco de dados. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do usuário
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - avatar
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Arquivo de imagem do avatar
+ *     responses:
+ *       200:
+ *         description: Imagem de perfil atualizada com sucesso
+ *       400:
+ *         description: Arquivo não enviado ou erro no upload
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ */
 router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), upload.single('avatar'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const file = req.file;

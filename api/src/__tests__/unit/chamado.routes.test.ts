@@ -31,6 +31,7 @@ const prismaMock = {
     deleteMany: vi.fn(),
   },
   $transaction: vi.fn(),
+  $disconnect: vi.fn().mockResolvedValue(undefined)
 };
 
 // ============================================================================

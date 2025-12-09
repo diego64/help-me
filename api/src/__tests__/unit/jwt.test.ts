@@ -65,61 +65,53 @@ afterEach(() => {
 
 describe('JWT Utils', () => {
   describe('validateSecrets', () => {
-    it('Dado secrets JWT válidos, Quando validar secrets, Então não deve lançar erro', () => {
+    it('deve validar secrets JWT válidos sem lançar erro', () => {
       expect(() => jwtUtil.validateSecrets()).not.toThrow();
     });
 
-    it('Dado JWT_SECRET undefined, Quando validar secrets, Então deve lançar erro específico', () => {
+    it('deve lançar erro quando JWT_SECRET for undefined', () => {
       delete process.env.JWT_SECRET;
-      process.env.JWT_REFRESH_SECRET = JWT_REFRESH_SECRET_VALIDO;
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_SECRET vazio, Quando validar secrets, Então deve lançar erro específico', () => {
+    it('deve lançar erro quando JWT_SECRET for vazio', () => {
       process.env.JWT_SECRET = '';
-      process.env.JWT_REFRESH_SECRET = JWT_REFRESH_SECRET_VALIDO;
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_SECRET inválido (muito curto), Quando validar secrets, Então deve lançar erro específico', () => {
-      const secretCurtoInvalido = 'curto';
-      process.env.JWT_SECRET = secretCurtoInvalido;
-      process.env.JWT_REFRESH_SECRET = JWT_REFRESH_SECRET_VALIDO;
+    it('deve lançar erro quando JWT_SECRET for muito curto', () => {
+      process.env.JWT_SECRET = 'curto';
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_REFRESH_SECRET undefined, Quando validar secrets, Então deve lançar erro específico', () => {
-      process.env.JWT_SECRET = JWT_SECRET_VALIDO;
+    it('deve lançar erro quando JWT_REFRESH_SECRET for undefined', () => {
       delete process.env.JWT_REFRESH_SECRET;
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_REFRESH_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_REFRESH_SECRET vazio, Quando validar secrets, Então deve lançar erro específico', () => {
-      process.env.JWT_SECRET = JWT_SECRET_VALIDO;
+    it('deve lançar erro quando JWT_REFRESH_SECRET for vazio', () => {
       process.env.JWT_REFRESH_SECRET = '';
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_REFRESH_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_REFRESH_SECRET inválido (muito curto), Quando validar secrets, Então deve lançar erro específico', () => {
-      const refreshSecretCurtoInvalido = 'curto';
-      process.env.JWT_SECRET = JWT_SECRET_VALIDO;
-      process.env.JWT_REFRESH_SECRET = refreshSecretCurtoInvalido;
+    it('deve lançar erro quando JWT_REFRESH_SECRET for muito curto', () => {
+      process.env.JWT_REFRESH_SECRET = 'curto';
       expect(() => jwtUtil.validateSecrets()).toThrow(
         'JWT_REFRESH_SECRET deve estar definido e conter pelo menos 32 caracteres.'
       );
     });
 
-    it('Dado JWT_SECRET e JWT_REFRESH_SECRET idênticos, Quando validar secrets, Então deve lançar erro sobre secrets diferentes', () => {
+    it('deve lançar erro quando secrets forem idênticos', () => {
       const secretIdentico = 'igualigualigualigualigualigualigualigual';
       process.env.JWT_SECRET = secretIdentico;
       process.env.JWT_REFRESH_SECRET = secretIdentico;
@@ -130,215 +122,310 @@ describe('JWT Utils', () => {
   });
 
   describe('generateToken', () => {
-    it('Dado dados de usuário válidos, Quando gerar token de acesso, Então deve retornar token string válido', () => {
-      const tipoToken = 'access';
-      const tokenAcessoGerado = jwtUtil.generateToken(mockUsuarioValido, tipoToken);
-      expect(tokenAcessoGerado).toBeTruthy();
-      expect(typeof tokenAcessoGerado).toBe('string');
-      expect(tokenAcessoGerado.length).toBeGreaterThan(0);
-    });
-
-    it('Dado dados de usuário válidos, Quando gerar token de refresh, Então deve retornar token string válido', () => {
-      const tipoToken = 'refresh';
-      const tokenRefreshGerado = jwtUtil.generateToken(mockUsuarioValido, tipoToken);
-      expect(tokenRefreshGerado).toBeTruthy();
-      expect(typeof tokenRefreshGerado).toBe('string');
-      expect(tokenRefreshGerado.length).toBeGreaterThan(0);
-    });
-
-    it('Dado dados de usuário válidos, Quando gerar token de acesso sem expiração definida, Então deve usar valor padrão', () => {
-      delete process.env.JWT_EXPIRATION;
-      const tipoToken = 'access';
-      const tokenAcessoGerado = jwtUtil.generateToken(mockUsuarioValido, tipoToken);
-      expect(tokenAcessoGerado).toBeTruthy();
-      expect(typeof tokenAcessoGerado).toBe('string');
-    });
-
-    it('Dado dados de usuário válidos, Quando gerar token de refresh sem expiração definida, Então deve usar valor padrão 7d (linha 80)', () => {
-      delete process.env.JWT_REFRESH_EXPIRATION;
-      const tipoToken = 'refresh';
-      const tokenRefreshGerado = jwtUtil.generateToken(mockUsuarioValido, tipoToken);
-      expect(tokenRefreshGerado).toBeTruthy();
-      expect(typeof tokenRefreshGerado).toBe('string');
-      const partes = tokenRefreshGerado.split('.');
-      expect(partes.length).toBe(3);
-    });
-
-    it('Dado usuário válido, Quando gerar token, Então jwt.sign deve retornar string JWT válida (linha 89)', () => {
+    it('deve gerar token de acesso válido', () => {
       const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      expect(token).toBeTruthy();
       expect(typeof token).toBe('string');
       expect(token.split('.').length).toBe(3);
+    });
 
+    it('deve gerar token de refresh válido', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
+      expect(token).toBeTruthy();
+      expect(typeof token).toBe('string');
+      expect(token.split('.').length).toBe(3);
+    });
+
+    it('deve usar valor padrão 8h quando JWT_EXPIRATION não estiver definido', () => {
+      delete process.env.JWT_EXPIRATION;
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      expect(token).toBeTruthy();
+    });
+
+    it('deve usar valor padrão 7d quando JWT_REFRESH_EXPIRATION não estiver definido', () => {
+      delete process.env.JWT_REFRESH_EXPIRATION;
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
+      expect(token).toBeTruthy();
+    });
+
+    it('deve incluir payload correto no token', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
       const decoded = jwt.decode(token) as jwt.JwtPayload;
-      expect(decoded).toBeDefined();
+      
       expect(decoded.id).toBe(mockUsuarioValido.id);
+      expect(decoded.email).toBe(mockUsuarioValido.email);
+      expect(decoded.regra).toBe(mockUsuarioValido.regra);
       expect(decoded.type).toBe('access');
     });
   });
 
   describe('generateTokenPair', () => {
-    it('Dado dados de usuário válidos, Quando gerar par de tokens, Então deve retornar tokens de acesso e refresh com expiração', () => {
-      const parDeTokens = jwtUtil.generateTokenPair(mockUsuarioValido);
+    it('deve gerar par de tokens com expiração', () => {
+      const tokens = jwtUtil.generateTokenPair(mockUsuarioValido);
 
-      expect(parDeTokens).toBeDefined();
-      expect(parDeTokens.accessToken).toBeTruthy();
-      expect(parDeTokens.refreshToken).toBeTruthy();
-      expect(parDeTokens.expiresIn).toBe(JWT_EXPIRATION_VALIDO);
-      expect(typeof parDeTokens.accessToken).toBe('string');
-      expect(typeof parDeTokens.refreshToken).toBe('string');
+      expect(tokens.accessToken).toBeTruthy();
+      expect(tokens.refreshToken).toBeTruthy();
+      expect(tokens.expiresIn).toBe(JWT_EXPIRATION_VALIDO);
     });
 
-    it('Dado JWT_EXPIRATION indefinido, Quando gerar par de tokens, Então deve usar valor padrão 8h (linha 99)', () => {
+    it('deve usar valor padrão 8h quando JWT_EXPIRATION não estiver definido', () => {
       delete process.env.JWT_EXPIRATION;
-      const parDeTokens = jwtUtil.generateTokenPair(mockUsuarioValido);
+      const tokens = jwtUtil.generateTokenPair(mockUsuarioValido);
 
-      expect(parDeTokens.expiresIn).toBe('8h');
-      expect(parDeTokens.accessToken).toBeTruthy();
-      expect(parDeTokens.refreshToken).toBeTruthy();
+      expect(tokens.expiresIn).toBe('8h');
+      expect(tokens.accessToken).toBeTruthy();
+      expect(tokens.refreshToken).toBeTruthy();
     });
   });
 
   describe('verifyToken', () => {
-    it('Dado token de acesso válido, Quando verificar com tipo correto, Então deve retornar payload decodificado com id do usuário', () => {
-      const tokenAcesso = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      const payloadDecodificado = jwtUtil.verifyToken(tokenAcesso, 'access');
+    it('deve verificar token de acesso válido', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      const payload = jwtUtil.verifyToken(token, 'access');
 
-      expect(payloadDecodificado).toBeDefined();
-      expect(payloadDecodificado.id).toBe('user1');
+      expect(payload.id).toBe(mockUsuarioValido.id);
+      expect(payload.type).toBe('access');
     });
 
-    it('Dado token de refresh válido, Quando verificar com tipo correto, Então deve retornar payload decodificado com id do usuário', () => {
-      const tokenRefresh = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
-      const payloadDecodificado = jwtUtil.verifyToken(tokenRefresh, 'refresh');
+    it('deve verificar token de refresh válido', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
+      const payload = jwtUtil.verifyToken(token, 'refresh');
 
-      expect(payloadDecodificado.id).toBe(mockUsuarioValido.id);
+      expect(payload.id).toBe(mockUsuarioValido.id);
+      expect(payload.type).toBe('refresh');
     });
 
-    it('Dado token de acesso, Quando verificar com tipo errado (refresh), Então deve lançar erro de token inválido', () => {
-      const tokenAcesso = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      expect(() => jwtUtil.verifyToken(tokenAcesso, 'refresh')).toThrow('Token inválido');
+    it('deve usar access como tipo padrão quando não especificado', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      const payload = jwtUtil.verifyToken(token);
+
+      expect(payload.type).toBe('access');
     });
 
-    it('Dado string de token malformada, Quando verificar token, Então deve lançar erro de token inválido', () => {
+    it('deve lançar erro quando token de acesso for verificado como refresh', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      expect(() => jwtUtil.verifyToken(token, 'refresh')).toThrow('Token inválido');
+    });
+
+    it('deve lançar erro quando token de refresh for verificado como access', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
+      expect(() => jwtUtil.verifyToken(token, 'access')).toThrow('Token inválido');
+    });
+
+    it('deve lançar erro quando token for malformado', () => {
       expect(() => jwtUtil.verifyToken('invalido', 'access')).toThrow(/Token inválido/);
     });
 
-    it('Dado token expirado, Quando verificar token, Então deve lançar erro de expirado ou inválido', () => {
+    it('deve lançar erro quando token estiver expirado', () => {
       const tokenExpirado = jwt.sign(
         { id: 'x', regra: Regra.USUARIO, type: 'access' },
         process.env.JWT_SECRET!,
-        {
-          expiresIn: '-10s',
-          algorithm: 'HS256',
-          issuer: 'helpme-api',
-          audience: 'helpme-client'
-        }
+        { expiresIn: '-10s', algorithm: 'HS256', issuer: 'helpme-api', audience: 'helpme-client' }
       );
 
-      expect(() => jwtUtil.verifyToken(tokenExpirado, 'access')).toThrow(/expirado|invalid/);
+      expect(() => jwtUtil.verifyToken(tokenExpirado, 'access')).toThrow(/expirado/);
     });
 
-    it('Dado token com tipo incompatível no payload, Quando verificar token, Então deve lançar erro de token inválido', () => {
-      const tokenComTipoErrado = jwt.sign(
-        { id: 'user1', regra: Regra.USUARIO, type: 'access' },
-        process.env.JWT_SECRET!,
-        { expiresIn: '1h', algorithm: 'HS256', issuer: 'helpme-api', audience: 'helpme-client' }
-      );
-
-      expect(() => jwtUtil.verifyToken(tokenComTipoErrado, 'refresh')).toThrow('Token inválido');
-    });
-
-    it('Dado token com assinatura inválida, Quando verificar token, Então deve lançar erro de token inválido', () => {
-      const tokenComAssinaturaInvalida = jwt.sign(
+    it('deve lançar erro quando assinatura for inválida', () => {
+      const tokenInvalido = jwt.sign(
         { id: 'user1', regra: Regra.USUARIO, type: 'access' },
         'segredo-invalido-qualquer-coisa-aqui',
         { expiresIn: '1h', algorithm: 'HS256' }
       );
 
-      expect(() => jwtUtil.verifyToken(tokenComAssinaturaInvalida, 'access')).toThrow(
-        /Token inválido|invalid signature/
-      );
+      expect(() => jwtUtil.verifyToken(tokenInvalido, 'access')).toThrow(/Token inválido/);
     });
 
-    it('Dado erro não-JWT durante verificação, Quando verificar token, Então deve re-lançar erro original (linha 73)', () => {
-      const erroGenerico = new Error('Erro genérico de sistema');
-      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw erroGenerico;
+    // ========================================================================
+    // 🎯 TESTE CRÍTICO PARA LINHA 73 - Relançar erro não-JWT
+    // ========================================================================
+    it('deve relançar TypeError quando não for erro JWT (linha 73)', () => {
+      const verifySpy = vi.spyOn(jwt, 'verify');
+      
+      // Mocka para lançar TypeError (não é JsonWebTokenError)
+      verifySpy.mockImplementation(() => {
+        throw new TypeError('Cannot read property of undefined');
       });
 
-      expect(() => jwtUtil.verifyToken('qualquer-token', 'access')).toThrow('Erro genérico de sistema');
+      // Deve relançar o TypeError
+      expect(() => jwtUtil.verifyToken('token-teste', 'access'))
+        .toThrow(TypeError);
+
       verifySpy.mockRestore();
     });
 
-    it('Dado erro TypeError durante verificação, Quando verificar token, Então deve re-lançar erro original (linha 73)', () => {
-      const typeError = new TypeError('Cannot read property of undefined');
-      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw typeError;
+    it('deve relançar RangeError quando não for erro JWT (linha 73)', () => {
+      const verifySpy = vi.spyOn(jwt, 'verify');
+      
+      verifySpy.mockImplementation(() => {
+        throw new RangeError('Valor fora do intervalo');
       });
 
-      expect(() => jwtUtil.verifyToken('qualquer-token', 'access')).toThrow(TypeError);
+      expect(() => jwtUtil.verifyToken('xyz', 'access')).toThrow(RangeError);
+
+      verifySpy.mockRestore();
+    });
+
+    it('deve relançar ReferenceError quando não for erro JWT (linha 73)', () => {
+      const verifySpy = vi.spyOn(jwt, 'verify');
+      
+      verifySpy.mockImplementation(() => {
+        throw new ReferenceError('Variable is not defined');
+      });
+
+      expect(() => jwtUtil.verifyToken('abc', 'refresh')).toThrow(ReferenceError);
+
+      verifySpy.mockRestore();
+    });
+
+    it('deve relançar SyntaxError quando não for erro JWT (linha 73)', () => {
+      const verifySpy = vi.spyOn(jwt, 'verify');
+      
+      verifySpy.mockImplementation(() => {
+        throw new SyntaxError('Unexpected token');
+      });
+
+      expect(() => jwtUtil.verifyToken('malformed', 'access')).toThrow(SyntaxError);
+
+      verifySpy.mockRestore();
+    });
+
+    it('deve relançar erro customizado quando não for erro JWT (linha 73)', () => {
+      class CustomError extends Error {
+        constructor(message: string) {
+          super(message);
+          this.name = 'CustomError';
+        }
+      }
+
+      const verifySpy = vi.spyOn(jwt, 'verify');
+      
+      verifySpy.mockImplementation(() => {
+        throw new CustomError('Erro personalizado do sistema');
+      });
+
+      expect(() => jwtUtil.verifyToken('token', 'access')).toThrow(CustomError);
+
       verifySpy.mockRestore();
     });
   });
 
   describe('decodeToken', () => {
-    it('Dado token válido, Quando decodificar sem verificação, Então deve retornar payload com id do usuário', () => {
-      const tokenValido = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      const payloadDecodificado = jwtUtil.decodeToken(tokenValido);
+    it('deve decodificar token válido sem verificação', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      const payload = jwtUtil.decodeToken(token);
 
-      expect(payloadDecodificado?.id).toBe(mockUsuarioValido.id);
+      expect(payload?.id).toBe(mockUsuarioValido.id);
+      expect(payload?.email).toBe(mockUsuarioValido.email);
     });
 
-    it('Dado string de token inválida, Quando decodificar token, Então deve retornar null', () => {
+    it('deve retornar null quando token for inválido', () => {
       expect(jwtUtil.decodeToken('abc')).toBeNull();
     });
 
-    it('Dado token vazio, Quando decodificar token, Então deve retornar null', () => {
+    it('deve retornar null quando token for vazio', () => {
       expect(jwtUtil.decodeToken('')).toBeNull();
     });
 
-    it('Dado token malformado com caracteres especiais, Quando decodificar token, Então deve retornar null', () => {
+    it('deve retornar null quando token for malformado', () => {
       expect(jwtUtil.decodeToken('@@#$%^&*()')).toBeNull();
     });
 
-    it('Dado erro durante jwt.decode, Quando decodificar token, Então deve retornar null (linha 121)', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('Erro interno do decode');
+    // ========================================================================
+    // 🎯 TESTE CRÍTICO PARA LINHA 121 - Retornar null quando decode lançar erro
+    // ========================================================================
+    it('deve retornar null quando jwt.decode lançar Error (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      // Força jwt.decode a lançar um erro
+      decodeSpy.mockImplementation(() => {
+        throw new Error('Erro interno ao decodificar');
       });
 
-      expect(jwtUtil.decodeToken('qualquer-token')).toBeNull();
+      const resultado = jwtUtil.decodeToken('token-problema');
+      
+      expect(resultado).toBeNull();
+
       decodeSpy.mockRestore();
     });
 
-    it('Dado erro TypeError durante jwt.decode, Quando decodificar token, Então deve retornar null (linha 121)', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new TypeError('Invalid input');
+    it('deve retornar null quando jwt.decode lançar TypeError (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      decodeSpy.mockImplementation(() => {
+        throw new TypeError('Invalid argument type');
       });
 
-      expect(jwtUtil.decodeToken('token-invalido')).toBeNull();
+      expect(jwtUtil.decodeToken('bad-token')).toBeNull();
+
       decodeSpy.mockRestore();
     });
 
-    it('Dado jwt.decode que retorna null, Quando decodificar token, Então deve retornar null', () => {
-      expect(jwtUtil.decodeToken('not.a.jwt')).toBeNull();
+    it('deve retornar null quando jwt.decode lançar SyntaxError (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      decodeSpy.mockImplementation(() => {
+        throw new SyntaxError('Malformed JSON');
+      });
+
+      expect(jwtUtil.decodeToken('invalid-json')).toBeNull();
+
+      decodeSpy.mockRestore();
+    });
+
+    it('deve retornar null quando jwt.decode lançar RangeError (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      decodeSpy.mockImplementation(() => {
+        throw new RangeError('Out of range');
+      });
+
+      expect(jwtUtil.decodeToken('out-of-range')).toBeNull();
+
+      decodeSpy.mockRestore();
+    });
+
+    it('deve retornar null quando jwt.decode lançar ReferenceError (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      decodeSpy.mockImplementation(() => {
+        throw new ReferenceError('Variable undefined');
+      });
+
+      expect(jwtUtil.decodeToken('ref-error')).toBeNull();
+
+      decodeSpy.mockRestore();
+    });
+
+    it('deve retornar null para qualquer exceção durante decode (linha 121)', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      // Lança uma string como erro (edge case)
+      decodeSpy.mockImplementation(() => {
+        throw 'String como erro';
+      });
+
+      expect(jwtUtil.decodeToken('string-error')).toBeNull();
+
+      decodeSpy.mockRestore();
     });
   });
 
   describe('isTokenExpired', () => {
-    it('Dado token recém gerado, Quando verificar expiração, Então deve retornar false', () => {
-      const tokenFresco = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      expect(jwtUtil.isTokenExpired(tokenFresco)).toBe(false);
+    it('deve retornar false para token recém gerado', () => {
+      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
+      expect(jwtUtil.isTokenExpired(token)).toBe(false);
     });
 
-    it('Dado string de token inválida, Quando verificar expiração, Então deve retornar true', () => {
+    it('deve retornar true quando token for inválido', () => {
       expect(jwtUtil.isTokenExpired('abc')).toBe(true);
     });
 
-    it('Dado token vazio, Quando verificar expiração, Então deve retornar true', () => {
+    it('deve retornar true quando token for vazio', () => {
       expect(jwtUtil.isTokenExpired('')).toBe(true);
     });
 
-    it('Dado token sem campo exp, Quando verificar expiração, Então deve retornar true', () => {
+    it('deve retornar true quando token não tiver campo exp', () => {
       const tokenSemExp = jwt.sign(
         { id: 'x', regra: 'USUARIO' },
         process.env.JWT_SECRET!,
@@ -348,7 +435,7 @@ describe('JWT Utils', () => {
       expect(jwtUtil.isTokenExpired(tokenSemExp)).toBe(true);
     });
 
-    it('Dado token com exp no passado, Quando verificar expiração, Então deve retornar true', () => {
+    it('deve retornar true quando token estiver expirado', () => {
       const tokenExpirado = jwt.sign(
         { id: 'x', regra: 'USUARIO', type: 'access' },
         process.env.JWT_SECRET!,
@@ -358,112 +445,71 @@ describe('JWT Utils', () => {
       expect(jwtUtil.isTokenExpired(tokenExpirado)).toBe(true);
     });
 
-    it('Dado erro durante jwt.decode em isTokenExpired, Quando verificar expiração, Então deve retornar true', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
+    it('deve retornar true quando ocorrer erro no decode', () => {
+      const decodeSpy = vi.spyOn(jwt, 'decode');
+      
+      decodeSpy.mockImplementation(() => {
         throw new Error('Decode error');
       });
 
-      expect(jwtUtil.isTokenExpired('qualquer-token')).toBe(true);
+      expect(jwtUtil.isTokenExpired('token')).toBe(true);
+
       decodeSpy.mockRestore();
     });
   });
 
   describe('extractTokenFromHeader', () => {
-    it('Dado header de autorização Bearer válido, Quando extrair token, Então deve retornar string do token', () => {
+    it('deve extrair token de header Bearer válido', () => {
       expect(jwtUtil.extractTokenFromHeader('Bearer abc123')).toBe('abc123');
     });
 
-    it('Dado formato de header inválido, Quando extrair token, Então deve retornar null', () => {
+    it('deve retornar null quando formato for inválido', () => {
       expect(jwtUtil.extractTokenFromHeader('Token abc')).toBeNull();
     });
 
-    it('Dado nenhum header, Quando extrair token, Então deve retornar null', () => {
+    it('deve retornar null quando header for undefined', () => {
       expect(jwtUtil.extractTokenFromHeader()).toBeNull();
     });
 
-    it('Dado header Bearer mas sem token, Quando extrair token, Então deve retornar null', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer ')).toBeNull();
-    });
-
-    it('Dado header somente com Bearer, Quando extrair token, Então deve retornar null', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer')).toBeNull();
-    });
-
-    it('Dado header com espaços extras, Deve extrair o token corretamente', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer   token123')).not.toBeNull();
-    });
-
-    it('Dado header vazio, Deve retornar null', () => {
+    it('deve retornar null quando header for vazio', () => {
       expect(jwtUtil.extractTokenFromHeader('')).toBeNull();
     });
 
-    it('Dado Bearer em lowercase, deve funcionar', () => {
+    it('deve retornar null quando Bearer não tiver token', () => {
+      expect(jwtUtil.extractTokenFromHeader('Bearer ')).toBeNull();
+    });
+
+    it('deve retornar null quando só tiver Bearer', () => {
+      expect(jwtUtil.extractTokenFromHeader('Bearer')).toBeNull();
+    });
+
+    it('deve funcionar com bearer em lowercase', () => {
       expect(jwtUtil.extractTokenFromHeader('bearer token123')).toBe('token123');
     });
 
-    it('Dado Bearer em mixed case, deve funcionar', () => {
+    it('deve funcionar com Bearer em mixed case', () => {
       expect(jwtUtil.extractTokenFromHeader('BeArEr token456')).toBe('token456');
     });
 
-    it('Dado header com mais de 2 partes, deve retornar null', () => {
+    it('deve retornar null quando header tiver mais de 2 partes', () => {
       expect(jwtUtil.extractTokenFromHeader('Bearer token parte3')).toBeNull();
     });
 
-    it('Dado header undefined, deve retornar null', () => {
-      expect(jwtUtil.extractTokenFromHeader(undefined)).toBeNull();
+    it('deve lidar com espaços extras entre Bearer e token', () => {
+      expect(jwtUtil.extractTokenFromHeader('Bearer   token123')).toBe('token123');
+    });
+
+    it('deve retornar null quando token contiver espaços', () => {
+      expect(jwtUtil.extractTokenFromHeader('Bearer token com espacos')).toBeNull();
+    });
+
+    it('deve retornar null quando Bearer tiver apenas espaços', () => {
+      expect(jwtUtil.extractTokenFromHeader('Bearer      ')).toBeNull();
     });
   });
 
-  describe('Cobertura adicional - branches e edge cases', () => {
-    it('Token decodificado sem id deve retornar payload mesmo assim', () => {
-      const tokenSemId = jwt.sign(
-        { regra: 'USUARIO' },
-        process.env.JWT_SECRET!,
-        { algorithm: 'HS256' }
-      );
-
-      const payload = jwtUtil.decodeToken(tokenSemId);
-
-      expect(payload).toBeDefined();
-      expect(payload?.id).toBeUndefined();
-    });
-
-    it('Token com exp no limite deve retornar boolean válido', () => {
-      const agora = Math.floor(Date.now() / 1000);
-
-      const token = jwt.sign(
-        { id: 'x', regra: 'USUARIO', exp: agora },
-        process.env.JWT_SECRET!,
-        { algorithm: 'HS256' }
-      );
-
-      expect(typeof jwtUtil.isTokenExpired(token)).toBe('boolean');
-    });
-
-    it('Header "Bearer token" deve extrair token corretamente', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer     token-valido')).toBe('token-valido');
-    });
-
-    it('Header "Bearer" deve retornar null', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer      ')).toBeNull();
-    });
-
-    it('Payload deve ter email do usuário', () => {
-      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      const payload = jwtUtil.verifyToken(token, 'access');
-
-      expect(payload.email).toBe(mockUsuarioValido.email);
-    });
-
-    it('Token refresh deve conter regra e type', () => {
-      const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
-      const payload = jwtUtil.verifyToken(token, 'refresh');
-
-      expect(payload.regra).toBe(Regra.USUARIO);
-      expect(payload.type).toBe('refresh');
-    });
-
-    it('Payload deve conter propriedades esperadas', () => {
+  describe('Casos adicionais', () => {
+    it('payload deve conter todos os campos esperados', () => {
       const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
       const payload = jwtUtil.decodeToken(token);
 
@@ -473,313 +519,24 @@ describe('JWT Utils', () => {
       expect(payload?.type).toBe('access');
     });
 
-    it('verifyToken deve usar access como tipo padrão', () => {
-      const token = jwtUtil.generateToken(mockUsuarioValido, 'access');
-      const payload = jwtUtil.verifyToken(token);
-
-      expect(payload.type).toBe('access');
-    });
-  });
-
-  describe('Garantir a cobertura de testes para as linhas 73 e 121', () => {
-    it('Deve re-lançar erro genérico não-JWT', () => {
-      const erroGenerico = new Error('Erro de sistema inesperado');
-      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw erroGenerico;
-      });
-
-      expect(() => jwtUtil.verifyToken('qualquer-token', 'access')).toThrow('Erro de sistema inesperado');
-      verifySpy.mockRestore();
-    });
-
-    it('Deve re-lançar TypeError durante verificação', () => {
-      const typeError = new TypeError('Não é possível ler propriedade');
-      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw typeError;
-      });
-
-      expect(() => jwtUtil.verifyToken('token-teste', 'access')).toThrow(TypeError);
-      verifySpy.mockRestore();
-    });
-
-    it('Deve re-lançar RangeError durante verificação', () => {
-      const rangeError = new RangeError('Valor fora do intervalo');
-      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw rangeError;
-      });
-
-      expect(() => jwtUtil.verifyToken('abc123', 'refresh')).toThrow(RangeError);
-      verifySpy.mockRestore();
-    });
-
-    it('Erro genérico no decode deve retornar null', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('Erro interno do decode');
-      });
-
-      expect(jwtUtil.decodeToken('qualquer-token-aqui')).toBeNull();
-      decodeSpy.mockRestore();
-    });
-
-    it('TypeError no decode deve retornar null', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new TypeError('Entrada inválida para decode');
-      });
-
-      expect(jwtUtil.decodeToken('token-invalido-xyz')).toBeNull();
-      decodeSpy.mockRestore();
-    });
-
-    it('SyntaxError no decode deve retornar null', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new SyntaxError('JSON malformado');
-      });
-
-      expect(jwtUtil.decodeToken('###invalid###')).toBeNull();
-      decodeSpy.mockRestore();
-    });
-
-    it('Erro customizado no decode deve retornar null', () => {
-      const erroCustomizado = new Error('Falha crítica no decode');
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw erroCustomizado;
-      });
-
-      expect(jwtUtil.decodeToken('token-que-causa-erro')).toBeNull();
-      decodeSpy.mockRestore();
-    });
-
-    it('isTokenExpired com erro no decode deve retornar true', () => {
-      const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('Falha no decode');
-      });
-
-      expect(jwtUtil.isTokenExpired('token-com-erro')).toBe(true);
-      decodeSpy.mockRestore();
-    });
-
-    it('verifyToken com token refresh e tipo access deve lançar erro', () => {
+    it('token refresh deve conter regra e type corretos', () => {
       const token = jwtUtil.generateToken(mockUsuarioValido, 'refresh');
-      expect(() => jwtUtil.verifyToken(token, 'access')).toThrow(/Token inválido/);
+      const payload = jwtUtil.verifyToken(token, 'refresh');
+
+      expect(payload.regra).toBe(Regra.USUARIO);
+      expect(payload.type).toBe('refresh');
     });
 
-    it('Header com token contendo espaços deve retornar null', () => {
-      expect(jwtUtil.extractTokenFromHeader('Bearer token com espacos')).toBeNull();
-    });
+    it('token decodificado sem id deve retornar payload', () => {
+      const tokenSemId = jwt.sign(
+        { regra: 'USUARIO' },
+        process.env.JWT_SECRET!,
+        { algorithm: 'HS256' }
+      );
 
-    it('Header não-string deve retornar null', () => {
-      // @ts-expect-error testando comportamento incorreto
-      expect(jwtUtil.extractTokenFromHeader(123)).toBeNull();
-    });
-
-    it('Header como objeto deve retornar null', () => {
-      // @ts-expect-error testando comportamento incorreto
-      expect(jwtUtil.extractTokenFromHeader({})).toBeNull();
-    });
-  });
-
-  describe('Deve forçar a cobertura das condições específicas do código', () => {
-    it('Força throw de erro não-JWT em verifyToken', () => {
-      const originalVerify = jwt.verify;
-      (jwt as any).verify = () => {
-        throw new Error('ERRO_GENERICO_NAO_JWT');
-      };
-
-      expect(() => jwtUtil.verifyToken('token', 'access')).toThrow('ERRO_GENERICO_NAO_JWT');
-      (jwt as any).verify = originalVerify;
-    });
-
-    it('Força catch em decodeToken', () => {
-      const originalDecode = jwt.decode;
-
-      (jwt as any).decode = () => {
-        throw new Error('ERRO_DECODE_FORCADO');
-      };
-
-      expect(jwtUtil.decodeToken('token')).toBeNull();
-      (jwt as any).decode = originalDecode;
-    });
-
-    it('Deve relançar erro não-JWT no verifyToken (cobre linha 73)', () => {
-      const erroGenerico = new Error('Erro genérico inesperado');
-
-      const spy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw erroGenerico;
-      });
-
-      expect(() => jwtUtil.verifyToken('token-qualquer', 'access')).toThrow('Erro genérico inesperado');
-
-      spy.mockRestore();
-    });
-
-    it('Deve retornar null quando jwt.decode lança exceção (cobre linha 121)', () => {
-      const spy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('falha inesperada no decode');
-      });
-
-      expect(jwtUtil.decodeToken('token')).toBeNull();
-
-      spy.mockRestore();
-    });
-
-    it('Cobertura do throw em verifyToken', () => {
-      class CustomNonJWTError extends Error {}
-      const spy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw new CustomNonJWTError('Erro para coverage');
-      });
-
-      expect(() => jwtUtil.verifyToken('abc', 'access')).toThrow(CustomNonJWTError);
-
-      spy.mockRestore();
-    });
-
-    it('Força execução do catch em decodeToken', () => {
-      const spy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('Forçando catch');
-      });
-
-      const result = jwtUtil.decodeToken('token-qualquer');
-      expect(result).toBeNull();
-
-      spy.mockRestore();
-    });
-  });
-
-  describe('Lançar erros inesperados que não são erros de JWT', () => {
-    describe('Throw error no verifyToken', () => {
-      it('Deve lançar erro personalizado quando jwt.verify falha com erro não-JWT', () => {
-        class CustomError extends Error {
-          constructor(message: string) {
-            super(message);
-            this.name = 'CustomError';
-          }
-        }
-
-        const erroCustomizado = new CustomError('Erro customizado do sistema');
-        const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-          throw erroCustomizado;
-        });
-
-        expect(() => jwtUtil.verifyToken('token-qualquer', 'access')).toThrow(CustomError);
-        verifySpy.mockRestore();
-      });
-
-      it('Deve lançar ReferenceError quando ocorre durante verificação', () => {
-        const refError = new ReferenceError('Variável não definida');
-        const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-          throw refError;
-        });
-
-        expect(() => jwtUtil.verifyToken('abc', 'refresh')).toThrow(ReferenceError);
-        verifySpy.mockRestore();
-      });
-
-      it('Deve lançar Error genérico do sistema', () => {
-        const erroSistema = new Error('Falha crítica do sistema');
-        const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-          throw erroSistema;
-        });
-
-        try {
-          jwtUtil.verifyToken('token-teste', 'access');
-          expect.fail('Deveria ter lançado erro');
-        } catch (error) {
-          expect(error).toBe(erroSistema);
-        }
-
-        verifySpy.mockRestore();
-      });
-    });
-
-    describe('Catch no decodeToken', () => {
-      it('Erro genérico deve retornar null', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw new Error('Falha ao decodificar');
-        });
-
-        expect(jwtUtil.decodeToken('token')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-
-      it('TypeError deve retornar null', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw new TypeError('Tipo inválido');
-        });
-
-        expect(jwtUtil.decodeToken('token')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-
-      it('SyntaxError deve retornar null', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw new SyntaxError('JSON inválido');
-        });
-
-        expect(jwtUtil.decodeToken('token')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-
-      it('RangeError deve retornar null', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw new RangeError('Range inválido');
-        });
-
-        expect(jwtUtil.decodeToken('###')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-
-      it('Qualquer exceção deve retornar null', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw 'String como erro';
-        });
-
-        expect(jwtUtil.decodeToken('token')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-    });
-
-    describe('Edge cases adicionais', () => {
-      it('Erro não-JWT deve ser relançado corretamente', () => {
-        const customError = { message: 'Erro customizado', code: 500 };
-        const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-          throw customError;
-        });
-
-        expect(() => jwtUtil.verifyToken('token', 'access')).toThrow();
-        verifySpy.mockRestore();
-      });
-
-      it('decodeToken deve retornar null mesmo se erro for undefined', () => {
-        const decodeSpy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-          throw undefined;
-        });
-
-        expect(jwtUtil.decodeToken('x')).toBeNull();
-        decodeSpy.mockRestore();
-      });
-    });
-  });
-
-  describe('Forçar cobertura de linhas críticas', () => {
-    it('Força catch em verifyToken (linha 73) com erro não-JWT', () => {
-      const spy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
-        throw new TypeError('Erro forçado para linha 73');
-      });
-
-      expect(() => jwtUtil.verifyToken('token-fake', 'access')).toThrow(TypeError);
-
-      spy.mockRestore();
-    });
-
-    it('Força catch em decodeToken (linha 121)', () => {
-      const spy = vi.spyOn(jwt, 'decode').mockImplementation(() => {
-        throw new Error('Erro forçado para linha 121');
-      });
-
-      const result = jwtUtil.decodeToken('qualquer-token');
-      expect(result).toBeNull();
-
-      spy.mockRestore();
+      const payload = jwtUtil.decodeToken(tokenSemId);
+      expect(payload).toBeDefined();
+      expect(payload?.id).toBeUndefined();
     });
   });
 });

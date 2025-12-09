@@ -12,6 +12,9 @@ import chamadoRoutes from './routes/chamado.routes';
 import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
 import envioDeEmailTeste from './routes/envio-email-teste.routes';
 
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET não definido nas variáveis de ambiente!');
@@ -49,5 +52,7 @@ app.use('/servico', servicoRoutes);
 app.use('/chamado', chamadoRoutes);
 app.use('/filadechamados', filaDeChamadosRoutes);
 app.use('/testeemail', envioDeEmailTeste);
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 export default app;

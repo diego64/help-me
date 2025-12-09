@@ -6,6 +6,13 @@ import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Chamados
+ *   description: Gerenciamento de chamados de suporte
+ */
+
 async function gerarNumeroOS(): Promise<string> {
   return await prisma.$transaction(async (tx) => {
     const ultimoChamado = await tx.chamado.findFirst({
@@ -36,9 +43,50 @@ async function gerarNumeroOS(): Promise<string> {
 }
 
 // ============================================================================
-// BERTURA DE CHAMADO
+// ABERTURA DE CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/abertura-chamado:
+ *   post:
+ *     summary: Abre um novo chamado de suporte
+ *     description: Cria um novo chamado vinculado a um ou mais serviços. Gera automaticamente um número de OS (Ordem de Serviço) no formato INC0001. Requer autenticação e perfil USUARIO.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - descricao
+ *               - servico
+ *             properties:
+ *               descricao:
+ *                 type: string
+ *                 description: Descrição detalhada do problema
+ *               servico:
+ *                 oneOf:
+ *                   - type: string
+ *                   - type: array
+ *                     items:
+ *                       type: string
+ *                 description: Nome do serviço ou array de nomes de serviços
+ *     responses:
+ *       201:
+ *         description: Chamado criado com sucesso
+ *       400:
+ *         description: Dados inválidos ou serviço não encontrado
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil USUARIO)
+ *       500:
+ *         description: Erro ao criar o chamado
+ */
 router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { descricao, servico } = req.body;
@@ -139,6 +187,56 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), asyn
 // STATUS DO CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/{id}/status:
+ *   patch:
+ *     summary: Atualiza o status de um chamado
+ *     description: Permite alterar o status do chamado para EM_ATENDIMENTO, ENCERRADO ou CANCELADO. Técnicos só podem assumir chamados dentro do horário de expediente. Chamados encerrados requerem descrição de encerramento. Técnicos não podem cancelar chamados. Requer autenticação e perfil ADMIN ou TECNICO.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do chamado
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [EM_ATENDIMENTO, ENCERRADO, CANCELADO]
+ *                 description: Novo status do chamado
+ *               descricaoEncerramento:
+ *                 type: string
+ *                 description: Obrigatório quando status for ENCERRADO
+ *               atualizacaoDescricao:
+ *                 type: string
+ *                 description: Descrição da alteração (opcional)
+ *     responses:
+ *       200:
+ *         description: Status atualizado com sucesso
+ *       400:
+ *         description: Status inválido ou falta descrição de encerramento
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão ou fora do horário de expediente
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao atualizar status
+ */
 router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -256,7 +354,7 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
       id: chamadoAtualizado.id,
       OS: chamadoAtualizado.OS,
       descricao: chamadoAtualizado.descricao,
-      status: chamadoAtualizado.status, // vai ser "REABERTO" se mudou!
+      status: chamadoAtualizado.status,
       geradoEm: chamadoAtualizado.geradoEm,
       atualizadoEm: chamadoAtualizado.atualizadoEm,
       encerradoEm: chamadoAtualizado.encerradoEm,
@@ -296,9 +394,34 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
 });
 
 // ============================================================================
-// HISTÓRRICO DO CHAMADO
+// HISTÓRICO DO CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/{id}/historico:
+ *   get:
+ *     summary: Busca o histórico de atualizações de um chamado
+ *     description: Retorna todas as alterações registradas no chamado (abertura, mudanças de status, reabertura, etc.). Os dados são armazenados no MongoDB. Requer autenticação.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do chamado
+ *     responses:
+ *       200:
+ *         description: Histórico retornado com sucesso
+ *       401:
+ *         description: Não autenticado
+ *       500:
+ *         description: Erro ao buscar histórico
+ */
 router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -314,6 +437,46 @@ router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
 // REABERTURA DO CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/{id}/reabrir-chamado:
+ *   patch:
+ *     summary: Reabre um chamado encerrado
+ *     description: Permite que o usuário reabra seu próprio chamado encerrado dentro de 48 horas após o encerramento. O chamado volta ao status REABERTO e é reatribuído ao último técnico. Requer autenticação e perfil USUARIO.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do chamado a ser reaberto
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               atualizacaoDescricao:
+ *                 type: string
+ *                 description: Motivo da reabertura (opcional)
+ *     responses:
+ *       200:
+ *         description: Chamado reaberto com sucesso
+ *       400:
+ *         description: Chamado não pode ser reaberto (não encerrado, prazo expirado, etc.)
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (só pode reabrir chamados próprios)
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao reabrir chamado
+ */
 router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -441,6 +604,49 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
 // CANCELAR O CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/{id}/cancelar-chamado:
+ *   patch:
+ *     summary: Cancela um chamado
+ *     description: Permite que o usuário que criou o chamado ou um ADMIN cancele o chamado. Requer justificativa. Chamados encerrados não podem ser cancelados. Requer autenticação e perfil USUARIO ou ADMIN.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do chamado a ser cancelado
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - descricaoEncerramento
+ *             properties:
+ *               descricaoEncerramento:
+ *                 type: string
+ *                 description: Justificativa do cancelamento
+ *     responses:
+ *       200:
+ *         description: Chamado cancelado com sucesso
+ *       400:
+ *         description: Chamado já cancelado, encerrado ou falta justificativa
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão para cancelar este chamado
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao cancelar chamado
+ */
 router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -494,6 +700,35 @@ router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 
 // EXCLUIR O CHAMADO
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/chamados/{id}/excluir-chamado:
+ *   delete:
+ *     summary: Exclui permanentemente um chamado
+ *     description: Remove o chamado e todos os registros relacionados (serviços vinculados) do sistema. Esta ação é irreversível. Requer autenticação e perfil ADMIN.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do chamado a ser excluído
+ *     responses:
+ *       200:
+ *         description: Chamado excluído com sucesso
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão (requer perfil ADMIN)
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao excluir chamado
+ */
 router.delete('/:id/excluir-chamado', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
