@@ -8,10 +8,50 @@ import { cacheSet } from '../services/redisClient';
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Auth
+ *   description: Endpoints de autenticação e gerenciamento de sessão
+ */
+
 // ============================================================================
 // LOGIN
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Autentica um usuário no sistema
+ *     description: Realiza o login do usuário, gerando tokens de acesso (accessToken) e atualização (refreshToken). Também cria uma sessão no servidor.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 format: password
+ *     responses:
+ *       200:
+ *         description: Login realizado com sucesso
+ *       400:
+ *         description: Email e senha são obrigatórios
+ *       401:
+ *         description: Credenciais inválidas (usuário não encontrado ou senha incorreta)
+ *       500:
+ *         description: Erro interno do servidor
+ */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -67,6 +107,23 @@ router.post('/login', async (req, res) => {
 // LOGOUT
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Encerra a sessão do usuário
+ *     description: Realiza o logout do usuário, revogando o token JWT (adicionando à blacklist), removendo o refreshToken do banco de dados e destruindo a sessão no Redis. Requer autenticação.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout realizado com sucesso
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro ao realizar logout ou encerrar sessão
+ */
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {
     return res.status(401).json({ error: 'Não autorizado.' });
@@ -110,6 +167,32 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
 // REFRESH TOKEN
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/auth/refresh-token:
+ *   post:
+ *     summary: Renova o token de acesso
+ *     description: Gera um novo par de tokens (accessToken e refreshToken) usando um refreshToken válido. O refreshToken antigo é invalidado e substituído pelo novo.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Tokens renovados com sucesso
+ *       400:
+ *         description: Refresh token não fornecido
+ *       401:
+ *         description: Refresh token inválido ou expirado
+ */
 router.post('/refresh-token', async (req, res) => {
   const { refreshToken } = req.body as { refreshToken: string };
   if (!refreshToken)
@@ -140,6 +223,25 @@ router.post('/refresh-token', async (req, res) => {
 // ME
 // ============================================================================
 
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Retorna o perfil do usuário autenticado
+ *     description: Busca as informações completas do usuário logado, incluindo dados pessoais e profissionais. Requer autenticação.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Perfil do usuário retornado com sucesso
+ *       401:
+ *         description: Não autorizado
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao buscar perfil do usuário
+ */
 router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {
     return res.status(401).json({ error: 'Não autorizado.' });

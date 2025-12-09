@@ -19,7 +19,8 @@ const prismaMock = {
     findMany: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  }
+  },
+  $disconnect: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('@prisma/client', () => ({
@@ -38,7 +39,7 @@ vi.mock('bcrypt', () => ({
 }));
 
 // ============================================================================
-// AUTH MOCK - CAMINHO CORRIGIDO
+// AUTH MOCK
 // ============================================================================
 
 vi.mock('../../middleware/auth', () => ({

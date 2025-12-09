@@ -13,6 +13,11 @@ import request from 'supertest';
 // PRISMA MOCK
 // ============================================================================
 
+export const createBasePrismaMock = () => ({
+  $disconnect: vi.fn().mockResolvedValue(undefined),
+  $transaction: vi.fn(),
+});
+
 const prismaMock = {
   chamado: {
     findMany: vi.fn(),
