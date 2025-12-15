@@ -1,0 +1,12 @@
+apiVersion: 1
+datasources:
+  - name: PostgreSQL Helpdesk
+    type: postgres
+    url: postgresql_helpme:5432
+    database: helpme-database
+    user: administrador
+    secureJsonData:
+      password: '1qaz2wsx3edc'
+    jsonData:
+      sslmode: 'disable'
+    isDefault: true
