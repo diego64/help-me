@@ -132,7 +132,7 @@ async function main() {
     }
   }
 
-  console.log('\n[SUCESSO] Seed concluído com sucesso!\n');
+  console.log('\n✅ Seed concluído com sucesso!\n');
   console.log('Credenciais criadas:');
   console.log('Admin:   admin@helpme.com   | Admin123!');
   console.log('Usuario: user@helpme.com    | User123!');

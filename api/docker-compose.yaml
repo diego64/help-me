@@ -230,8 +230,8 @@ services:
     
     volumes:
       - grafana_k6_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./dash/grafana/provisioning:/etc/grafana/provisioning
+      - ./dash/grafana/dashboards:/var/lib/grafana/dashboards
     
     networks:
       - helpme_network
@@ -247,7 +247,7 @@ services:
       retries: 5
 
   # ============================================
-  # MONITORAMENTO K6 - Prometheus (Opcional)
+  # MONITORAMENTO K6 - Prometheus
   # ============================================
   prometheus_k6:
     image: prom/prometheus:v2.48.1
@@ -265,7 +265,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
     
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_k6_data:/prometheus
     
     networks:

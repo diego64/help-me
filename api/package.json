@@ -12,6 +12,7 @@
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
+    "seed-big": "tsx prisma/seed-big.ts",
     "prisma:reset": "prisma migrate reset --force",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
