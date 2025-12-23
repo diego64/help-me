@@ -30,14 +30,14 @@ scrape_configs:
       - targets: ['cadvisor:8080']
 
   # PostgreSQL Exporter
-  - job_name: 'postgresql'
+  - job_name: 'postgres'
     static_configs:
       - targets: ['postgres-exporter:9187']
 
-  # MongoDB Exporter - hostname correto
+  # MongoDB Exporter
   - job_name: 'mongodb'
     static_configs:
-      - targets: ['mongodb_exporter_helpme:9216']
+      - targets: ['mongodb-exporter:9216']
 
   # Redis Exporter
   - job_name: 'redis'
