@@ -1719,8 +1719,8 @@
     ]
   },
   "timezone": "America/Sao_Paulo",
-  "title": "HelpMe Dashboard Chamados",
-  "uid": "helpme-dashboard",
+  "title": "Dashboard",
+  "uid": "chamados-dashboard",
   "version": 1,
   "weekStart": ""
 }

@@ -1,0 +1,18 @@
+apiVersion: 1
+
+datasources:
+  - name: MongoDB Helpdesk
+    type: grafana-mongodb-datasource
+    access: proxy
+    url: mongodb://mongodb:27017
+    database: helpme-database
+    user: administrador
+    secureJsonData:
+      password: "1qaz2wsx3edc"
+    jsonData:
+      authType: "credentials"
+      authSource: "admin"
+      ssl: false
+      tlsSkipVerify: true
+    isDefault: false
+    editable: true

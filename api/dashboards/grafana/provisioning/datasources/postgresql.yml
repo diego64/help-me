@@ -1,4 +1,5 @@
 apiVersion: 1
+
 datasources:
   - name: PostgreSQL Helpdesk
     type: postgres
@@ -6,7 +7,7 @@ datasources:
     database: helpme-database
     user: administrador
     secureJsonData:
-      password: '1qaz2wsx3edc'
+      password: 1qaz2wsx3edc
     jsonData:
-      sslmode: 'disable'
-    isDefault: true
+      sslmode: disable
+      isDefault: true

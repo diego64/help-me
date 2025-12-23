@@ -42,6 +42,7 @@ services:
       POSTGRESQL_USERNAME: teste
       POSTGRESQL_PASSWORD: senha
       POSTGRESQL_DATABASE: helpme-database-teste
+      TZ: America/Sao_Paulo
     ports:
       - "5433:5432"
     networks:
@@ -63,6 +64,8 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+      TZ: America/Sao_Paulo
+    command: mongod --bind_ip_all --auth
     healthcheck:
       test: |
         mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} \
@@ -71,7 +74,7 @@ services:
           --eval "db.adminCommand('ping')" > /dev/null
       interval: 10s
       timeout: 5s
-      start_period: 20s
+      start_period: 30s
       retries: 5
     ports:
       - "${MONGO_PORT:-27017}:27017"
@@ -90,6 +93,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: teste
       MONGO_INITDB_ROOT_PASSWORD: senha
       MONGO_INITDB_DATABASE: helpme-mongo-teste
+      TZ: America/Sao_Paulo
     ports:
       - "27018:27017"
     networks:
@@ -109,6 +113,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      TZ: America/Sao_Paulo
     ports:
       - '2181:2181'
     networks:
@@ -131,6 +136,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      TZ: America/Sao_Paulo
     healthcheck:
       test: ["CMD-SHELL", "echo > /dev/tcp/localhost/9092"]
       interval: 10s
@@ -156,6 +162,7 @@ services:
       CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       CONTROL_CENTER_REPLICATION_FACTOR: 1
       PORT: 9021
+      TZ: America/Sao_Paulo
     networks:
       - helpme_network
     restart: unless-stopped
@@ -167,6 +174,8 @@ services:
     image: redis:latest
     container_name: redis_helpme
     hostname: redis_helpme
+    environment:
+      TZ: America/Sao_Paulo
     ports:
       - "6379:6379"
     volumes:
@@ -176,12 +185,12 @@ services:
     restart: unless-stopped
 
   # ============================================
-  # MONITORAMENTO K6 - InfluxDB
+  # MONITORAMENTO - InfluxDB
   # ============================================
-  influxdb_k6:
+  influxdb:
     image: influxdb:2.7-alpine
-    container_name: influxdb_k6_helpme
-    hostname: influxdb_k6
+    container_name: influxdb_helpme
+    hostname: influxdb
     restart: unless-stopped
     
     ports:
@@ -191,14 +200,15 @@ services:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=admin123456
-      - DOCKER_INFLUXDB_INIT_ORG=k6-org
-      - DOCKER_INFLUXDB_INIT_BUCKET=k6
+      - DOCKER_INFLUXDB_INIT_ORG=org
+      - DOCKER_INFLUXDB_INIT_BUCKET=helpme_bucket
       - DOCKER_INFLUXDB_INIT_RETENTION=30d
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
+      - TZ=America/Sao_Paulo
     
     volumes:
-      - influxdb_k6_data:/var/lib/influxdb2
-      - influxdb_k6_config:/etc/influxdb2
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
     
     networks:
       - helpme_network
@@ -210,34 +220,37 @@ services:
       retries: 5
 
   # ============================================
-  # MONITORAMENTO K6 - Grafana
+  # MONITORAMENTO - Grafana
   # ============================================
-  grafana_k6:
+  grafana:
     image: grafana/grafana:10.2.3
-    container_name: grafana_k6_helpme
-    hostname: grafana_k6
+    container_name: grafana_helpme
+    hostname: grafana
     restart: unless-stopped
     
     ports:
       - "3001:3000"
     
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_BASIC_ENABLED=false
+      - GF_AUTH_BASIC_ENABLED=true
       - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_INSTALL_PLUGINS=grafana-mongodb-datasource, redis-datasource
+      - TZ=America/Sao_Paulo
     
     volumes:
-      - grafana_k6_data:/var/lib/grafana
-      - ./dash/grafana/provisioning:/etc/grafana/provisioning
-      - ./dash/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+      - ./dashboards/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./dashboards/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboards/grafana/dashboards:/var/lib/grafana/dashboards
     
     networks:
       - helpme_network
     
     depends_on:
-      influxdb_k6:
+      influxdb:
         condition: service_healthy
     
     healthcheck:
@@ -247,29 +260,170 @@ services:
       retries: 5
 
   # ============================================
-  # MONITORAMENTO K6 - Prometheus
+  # MONITORAMENTO - Prometheus
   # ============================================
-  prometheus_k6:
+  prometheus:
     image: prom/prometheus:v2.48.1
-    container_name: prometheus_k6_helpme
-    hostname: prometheus_k6
+    container_name: prometheus_helpme
+    hostname: prometheus
     restart: unless-stopped
     
     ports:
       - "9090:9090"
+    
+    environment:
+      - TZ=America/Sao_Paulo
     
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
     
     volumes:
       - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_k6_data:/prometheus
+      - prometheus_data:/prometheus
     
     networks:
       - helpme_network
+
+  # ============================================
+  # MONITORAMENTO - Node Exporter
+  # ============================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter_helpme
+    hostname: node-exporter
+    restart: unless-stopped
+    environment:
+      - TZ=America/Sao_Paulo
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - helpme_network
+
+  # ============================================
+  # MONITORAMENTO - cAdvisor (Container Advisor)  
+  # CONFIGURAÇÃO PARA WSL2 + DOCKER DESKTOP + CGROUPV2
+  # ============================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor_helpme
+    hostname: cadvisor
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - TZ=America/Sao_Paulo
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - '--housekeeping_interval=10s'
+      - '--docker_only=false'
+    networks:
+      - helpme_network
+
+  # ============================================
+  # MONITORAMENTO - PostgreSQL Exporter
+  # ============================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter_helpme
+    hostname: postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@postgresql_helpme:5432/${DB_NAME}?sslmode=disable"
+      TZ: America/Sao_Paulo
+    ports:
+      - "9187:9187"
+    networks:
+      - helpme_network
+    depends_on:
+      postgresql_helpme:
+        condition: service_healthy
+
+  # ============================================
+  # MONITORAMENTO - MongoDB Exporter
+  # ============================================
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40
+    container_name: mongodb_exporter_helpme
+    hostname: mongodb-exporter
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb_helpme:27017"
+      TZ: America/Sao_Paulo
+    ports:
+      - "9216:9216"
+    command:
+      - '--mongodb.direct-connect=true'
+      - '--mongodb.global-conn-pool=true'
+      - '--collect-all'
+    
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9216/metrics"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    
+    networks:
+      - helpme_network
+
+  # ============================================
+  # MONITORAMENTO - Redis Exporter
+  # ============================================
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis_exporter_helpme
+    hostname: redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis_helpme:6379"
+      TZ: America/Sao_Paulo
+    ports:
+      - "9121:9121"
+    networks:
+      - helpme_network
+    depends_on:
+      - redis_helpme
+
+  # ============================================
+  # MONITORAMENTO - Kafka Exporter
+  # ============================================
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka_exporter_helpme
+    hostname: kafka-exporter
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+    ports:
+      - "9308:9308"
+    command:
+      - '--kafka.server=kafka:9092'
+    networks:
+      - helpme_network
+    depends_on:
+      kafka:
+        condition: service_healthy
 
 # ============================================
 # NETWORKS
@@ -304,16 +458,16 @@ volumes:
     driver: local
     name: redis_helpme_data
   
-  # K6 Monitoring
-  influxdb_k6_data:
+  # Monitoring
+  influxdb_data:
     driver: local
-    name: influxdb_k6_helpme_data
-  influxdb_k6_config:
+    name: influxdb_helpme_data
+  influxdb_config:
     driver: local
-    name: influxdb_k6_helpme_config
-  grafana_k6_data:
+    name: influxdb_helpme_config
+  grafana_data:
     driver: local
-    name: grafana_k6_helpme_data
-  prometheus_k6_data:
+    name: grafana_helpme_data
+  prometheus_data:
     driver: local
-    name: prometheus_k6_helpme_data
+    name: prometheus_helpme_data
