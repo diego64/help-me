@@ -37,7 +37,7 @@
   "packageManager": "pnpm@10.23.0",
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "7.0.1",
+    "@prisma/client": "7.2.0",
     "@prisma/config": "^7.0.0",
     "@types/dotenv": "^8.2.3",
     "bcrypt": "^6.0.0",
@@ -73,7 +73,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@vitest/coverage-v8": "4.0.6",
     "@vitest/ui": "4.0.6",
-    "prisma": "7.0.1",
+    "prisma": "7.2.0",
     "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
