@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script para popular banco com dados de teste
+# Script para popular banco com DADOS DE TESTES
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -10,7 +10,7 @@ NC='\033[0m'
 
 echo ""
 echo -e "${BLUE}╔═══════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  Popular Banco com Dados de Teste         ║${NC}"
+echo -e "${BLUE}║  Popular Banco com DADOS DE TESTES         ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 

@@ -72,12 +72,12 @@ check_api_container() {
             API_MODE="container"
             API_URL="http://localhost:$API_PORT"
         else
-            echo -e "${YELLOW}[WAN] Porta não mapeada, tentando IP do container${NC}"
+            echo -e "${YELLOW}[WARN] Porta não mapeada, tentando IP do container${NC}"
             API_MODE="container-internal"
             API_URL="http://$API_IP:$API_PORT_INTERNAL"
         fi
     else
-        echo -e "${YELLOW}[WAN]  API não está rodando em container${NC}"
+        echo -e "${YELLOW}[WARN]  API não está rodando em container${NC}"
         API_MODE="host"
         API_URL="http://localhost:$API_PORT_HOST"
     fi
@@ -123,7 +123,7 @@ test_api_connection() {
         echo -e "${GREEN}[SUCESSO] API acessível e respondendo corretamente${NC}"
         API_ACCESSIBLE="true"
     elif [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "400" ]; then
-        echo -e "${YELLOW}[WAN]  API acessível mas credenciais podem estar incorretas${NC}"
+        echo -e "${YELLOW}[WARN]  API acessível mas credenciais podem estar incorretas${NC}"
         echo -e "${CYAN}   HTTP Code: $HTTP_CODE${NC}"
         API_ACCESSIBLE="true"
     elif [ "$HTTP_CODE" = "000" ]; then
@@ -131,7 +131,7 @@ test_api_connection() {
         echo -e "${YELLOW}[INFO] Verifique se a API está realmente rodando${NC}"
         API_ACCESSIBLE="false"
     else
-        echo -e "${YELLOW}[WAN]  API respondeu com código inesperado: $HTTP_CODE${NC}"
+        echo -e "${YELLOW}[WARN]  API respondeu com código inesperado: $HTTP_CODE${NC}"
         API_ACCESSIBLE="maybe"
     fi
     echo ""
@@ -153,7 +153,7 @@ check_database() {
             
             # Alertar se próximo do limite
             if [ "$ACTIVE_CONN" -gt $((MAX_CONN * 80 / 100)) ]; then
-                echo -e "${YELLOW}[WAN]  Conexões próximas do limite!${NC}"
+                echo -e "${YELLOW}[WARN]  Conexões próximas do limite!${NC}"
             fi
         fi
     else
@@ -170,7 +170,7 @@ check_infrastructure() {
     if docker ps | grep -q "redis_helpme"; then
         echo -e "${GREEN}[SUCESSO] Redis rodando${NC}"
     else
-        echo -e "${YELLOW}[WAN]  Redis não está rodando (opcional)${NC}"
+        echo -e "${YELLOW}[WARN]  Redis não está rodando (opcional)${NC}"
     fi
     
     # InfluxDB

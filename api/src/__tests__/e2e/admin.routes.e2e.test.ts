@@ -1,6 +1,18 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
+  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
+
+console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
+
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  vi
+} from 'vitest';
 import request from 'supertest';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../../lib/prisma'; // ← VOLTA PARA O PRISMA NORMAL
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import app from '../../app';
@@ -16,7 +28,10 @@ describe('E2E - Rotas de Técnicos', () => {
   let senhaOriginal: string;
 
   beforeAll(async () => {
-    const mongoUri = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
+    const mongoUri = process.env.MONGO_URI_TEST || 
+      'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
+    
+    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', mongoUri);
     await mongoose.connect(mongoUri);
 
     await prisma.expediente.deleteMany({});
@@ -48,7 +63,13 @@ describe('E2E - Rotas de Técnicos', () => {
     });
     tecnicoId = tecnico.id;
 
-    await prisma.expediente.create({ data: { usuarioId: tecnicoId, entrada: '09:00', saida: '17:00' } });
+    await prisma.expediente.create({ 
+      data: { 
+        usuarioId: tecnicoId, 
+        entrada: '09:00', 
+        saida: '17:00' 
+      } 
+    });
 
     const secret = process.env.JWT_SECRET || 'testsecret';
     adminToken = jwt.sign(
@@ -113,10 +134,9 @@ describe('E2E - Rotas de Técnicos', () => {
       // Verifica se horário foi criado
       const exped = await prisma.expediente.findFirst({ where: { usuarioId: response.body.id } });
       expect(exped).not.toBeNull();
-      // Obs: Não deve retornar senha no body!
     });
+    
     it('recusa criação sem senha', async () => {
-      // Act
       const response = await request(app)
         .post('/tecnico')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -126,7 +146,6 @@ describe('E2E - Rotas de Técnicos', () => {
           email: 'sem@teste.com',
         });
 
-      // Assert
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Senha obrigatória');
     });

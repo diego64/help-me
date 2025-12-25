@@ -6,9 +6,9 @@ import path from 'path';
 
 const { Pool } = pkg;
 
-// ============================================================================  
+// ========================================  
 // CARREGAMENTO DO .ENV
-// ============================================================================
+// ========================================
 
 const envPaths = [
   '.env',
@@ -29,13 +29,13 @@ for (const envPath of envPaths) {
 }
 
 if (!envCarregado) {
-  console.error('[WAN]  Não foi possível carregar o arquivo .env automaticamente');
+  console.error('[WARN]  Não foi possível carregar o arquivo .env automaticamente');
   console.error('   Tentando usar variáveis de ambiente do sistema...\n');
 }
 
-// ============================================================================  
+// ========================================  
 // VALIDAÇÃO DA DATABASE_URL
-// ============================================================================
+// ========================================
 
 function validateDatabaseUrl(): string {
   const databaseUrl = process.env.DATABASE_URL;
@@ -75,9 +75,9 @@ function validateDatabaseUrl(): string {
   return databaseUrl;
 }
 
-// ============================================================================  
+// ========================================  
 // CRIAÇÃO DO CLIENTE PRISMA
-// ============================================================================
+// ========================================
 
 function createPrismaClient(connectionString: string): PrismaClient {
   try {
@@ -102,9 +102,9 @@ function createPrismaClient(connectionString: string): PrismaClient {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // FUNÇÃO PARA LIMPAR O BANCO
-// ============================================================================
+// ========================================
 
 async function limparBanco(prisma: PrismaClient) {
   console.log('\n[INFO]  Iniciando limpeza do banco de dados...\n');
@@ -162,9 +162,9 @@ async function limparBanco(prisma: PrismaClient) {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // FUNÇÃO PARA RESETAR SEQUÊNCIAS (OPCIONAL)
-// ============================================================================
+// ========================================
 
 async function resetarSequencias(prisma: PrismaClient) {
   console.log('🔄 Resetando sequências do banco...\n');
@@ -172,13 +172,13 @@ async function resetarSequencias(prisma: PrismaClient) {
   try {
     console.log('[INFO]  Schema usa CUID - não há sequências para resetar\n');
   } catch (error: any) {
-    console.error('[WAN]  Erro ao resetar sequências:', error.message);
+    console.error('[WARN]  Erro ao resetar sequências:', error.message);
   }
 }
 
-// ============================================================================  
+// ========================================  
 // FUNÇÃO PRINCIPAL
-// ============================================================================
+// ========================================
 
 async function main() {
   let prisma: PrismaClient | null = null;
@@ -248,9 +248,9 @@ async function main() {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // EXECUÇÃO
-// ============================================================================
+// ========================================
 
 main()
   .catch((error) => {

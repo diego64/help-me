@@ -1,22 +1,57 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll
+} from 'vitest';
 import { createClient, RedisClientType } from 'redis';
 
 describe('Redis Client E2E', () => {
   let redisClient: RedisClientType;
   const redisHost = process.env.REDIS_HOST || 'localhost';
   const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
+  
+  const redisPassword = process.env.REDIS_PASSWORD || 'UwopC15GvVlz7By6';
 
   beforeAll(async () => {
-    redisClient = createClient({
-      url: `redis://${redisHost}:${redisPort}`
-    });
+    try {
+      redisClient = createClient({
+        url: `redis://:${redisPassword}@${redisHost}:${redisPort}`,
+        socket: {
+          connectTimeout: 5000,
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.error('[REDIS] Máximo de tentativas excedido');
+              return new Error('Max retries');
+            }
+            return retries * 1000;
+          }
+        }
+      });
 
-    await redisClient.connect();
-  });
+      redisClient.on('error', (err) => {
+        console.error('[REDIS] Erro de conexão:', err.message);
+      });
+
+      await redisClient.connect();
+      console.log('[REDIS] Conectado com sucesso!');
+    } catch (error) {
+      console.error('[REDIS] Falha ao conectar:', error);
+      throw error;
+    }
+  }, 15000);
 
   afterAll(async () => {
-    await redisClient.quit();
-  });
+    try {
+      if (redisClient && redisClient.isOpen) {
+        await redisClient.quit();
+        console.log('[REDIS] Conexão encerrada');
+      }
+    } catch (error) {
+      console.warn('[REDIS] Erro ao desconectar:', error);
+    }
+  }, 15000);
 
   describe('Dado que o Redis está disponível, Quando realizar operações, Então deve funcionar corretamente', () => {
     it('deve conectar com sucesso ao Redis', async () => {
@@ -183,12 +218,22 @@ describe('Redis Client E2E', () => {
         await clienteComErro.connect();
       } catch (error) {
         expect(erroCapturado).toBe(true);
+      } finally {
+        try {
+          if (clienteComErro.isOpen) {
+            await clienteComErro.quit();
+          }
+        } catch (e) {
+        }
       }
     });
 
     it('deve emitir evento de ready quando conexão estiver pronta', async () => {
       const clienteNovo = createClient({
-        url: `redis://${redisHost}:${redisPort}`
+        url: `redis://:${redisPassword}@${redisHost}:${redisPort}`,
+        socket: {
+          connectTimeout: 5000
+        }
       });
 
       const readyPromise = new Promise<void>((resolve) => {
@@ -202,7 +247,7 @@ describe('Redis Client E2E', () => {
 
       expect(clienteNovo.isReady).toBe(true);
       await clienteNovo.quit();
-    });
+    }, 10000);
   });
 
   describe('Dado operações com TTL, Quando tempo expirar, Então chave deve ser removida', () => {
@@ -220,7 +265,7 @@ describe('Redis Client E2E', () => {
 
       resultado = await redisClient.get(chave);
       expect(resultado).toBeNull();
-    });
+    }, 5000);
   });
 
   describe('Dado operações de pipeline, Quando executar múltiplos comandos, Então deve processar em lote', () => {

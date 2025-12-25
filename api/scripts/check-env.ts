@@ -60,7 +60,7 @@ console.log('\n📋 Variáveis de ambiente carregadas:\n');
 const envVars = Object.keys(result.parsed || {});
 
 if (envVars.length === 0) {
-  console.log('[WAN]  Nenhuma variável encontrada no .env\n');
+  console.log('[WARN]  Nenhuma variável encontrada no .env\n');
 } else {
   console.log(`Total: ${envVars.length} variáveis\n`);
   
@@ -124,6 +124,6 @@ console.log('\n[SUCESSO] Diagnóstico concluído!\n');
 if (process.env.DATABASE_URL) {
   console.log('[SUCESSO] Tudo OK! Limpeza da base de dados pode ser executada.\n');
 } else {
-  console.log('[WAN]  Corrija o problema acima antes de continuar.\n');
+  console.log('[WARN]  Corrija o problema acima antes de continuar.\n');
   process.exit(1);
 }

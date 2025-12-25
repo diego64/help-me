@@ -9,18 +9,18 @@ import { registrarAcaoNoHistorico, buscarHistorico } from '../../services/chamad
 import { salvarHistoricoChamado, listarHistoricoChamado } from '../../repositories/chamadoAtualizacao.repository';
 import { HistoricoChamadoInput } from '../../../@types/historicoChamado';
 
-// ============================================================================
+// ========================================
 // MOCK DO REPOSITÓRIO
-// ============================================================================
+// ========================================
 
 vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
   salvarHistoricoChamado: vi.fn(),
   listarHistoricoChamado: vi.fn(),
 }));
 
-// ============================================================================
+// ========================================
 // SETUP E TEARDOWN
-// ============================================================================
+// ========================================
 
 describe('ChamadoAtualizacao Service', () => {
   beforeEach(() => {

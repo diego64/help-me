@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import {
+    describe,
+    it,
+    expect,
+    beforeAll,
+    afterAll,
+    beforeEach,
+    vi
+} from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
@@ -7,13 +15,12 @@ import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 15000 });
 
-
 const BASE_URL = '/chamado';
 
 describe('E2E - Rotas de Chamados', () => {
-    // ============================================================================
-    // Dados de Teste & Configuração
-    // ============================================================================
+    // ========================================
+    // DADOS DE TESTESS E CONFIGURAÇÕES
+    // ========================================
     
     let tokenAutenticacaoUsuario: string;
     let tokenAutenticacaoTecnico: string;
@@ -24,9 +31,9 @@ describe('E2E - Rotas de Chamados', () => {
     let idServico: string;
     let idChamado: string;
 
-    // ============================================================================
-    // Funções Auxiliares
-    // ============================================================================
+    // ========================================
+    // FUNÇÕES AUXILIARES
+    // ========================================
 
     const limparBancoDeDados = async () => {
         await prisma.ordemDeServico.deleteMany({});
@@ -140,9 +147,9 @@ describe('E2E - Rotas de Chamados', () => {
         return { tokenUsuario, tokenTecnico, tokenAdmin };
     };
 
-    // ============================================================================
+    // ========================================
     // Hooks Globais
-    // ============================================================================
+    // ========================================
 
     beforeAll(async () => {
         // Arrange: Conectar aos bancos de dados
@@ -180,9 +187,9 @@ describe('E2E - Rotas de Chamados', () => {
         await prisma.$disconnect();
     });
 
-    // ============================================================================
+    // ========================================
     // POST /abertura-chamado - Criação de Chamados
-    // ============================================================================
+    // ========================================
 
     describe('POST /abertura-chamado', () => {
         it('Dado dados válidos de chamado, Quando usuário cria chamado, Então deve retornar chamado criado com número OS', async () => {
@@ -329,9 +336,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // PATCH /:id/status - Atualização de Status
-    // ============================================================================
+    // ========================================
 
     describe('PATCH /:id/status', () => {
         it('Dado técnico dentro do expediente, Quando assume chamado, Então deve atualizar status para EM_ATENDIMENTO', async () => {
@@ -542,9 +549,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // GET /:id/historico - Consulta de Histórico
-    // ============================================================================
+    // ========================================
 
     describe('GET /:id/historico', () => {
         it('Dado chamado com histórico, Quando usuário consulta, Então deve retornar array de eventos', async () => {
@@ -580,9 +587,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // PATCH /:id/reabrir-chamado - Reabertura de Chamados
-    // ============================================================================
+    // ========================================
 
     describe('PATCH /:id/reabrir-chamado', () => {
         let idChamadoEncerrado: string;
@@ -721,9 +728,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // PATCH /:id/cancelar-chamado - Cancelamento de Chamados
-    // ============================================================================
+    // ========================================
 
     describe('PATCH /:id/cancelar-chamado', () => {
         it('Dado usuário dono do chamado, Quando cancela com justificativa, Então deve atualizar para CANCELADO', async () => {
@@ -865,9 +872,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // DELETE /:id/excluir-chamado - Exclusão de Chamados
-    // ============================================================================
+    // ========================================
 
     describe('DELETE /:id/excluir-chamado', () => {
         it('Dado admin autenticado, Quando exclui chamado, Então deve deletar com sucesso', async () => {
@@ -954,9 +961,9 @@ describe('E2E - Rotas de Chamados', () => {
         });
     });
 
-    // ============================================================================
+    // ========================================
     // Testes de Autenticação e Segurança
-    // ============================================================================
+    // ========================================
 
     describe('Autenticação e Segurança', () => {
         it('Dado requisição sem token, Quando tenta criar chamado, Então deve rejeitar com erro 401', async () => {

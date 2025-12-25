@@ -14,7 +14,9 @@ import {
   desconectarKafkaProducer,
   getKafkaConfig,
   getProducerInstanceForTest,
-  customLogCreator
+  customLogCreator,
+  isKafkaConnected,
+  sendMessage
 } from '../../services/kafka';
 
 describe('Kafka Service', () => {
@@ -36,6 +38,7 @@ describe('Kafka Service', () => {
     try {
       await desconectarKafkaProducer();
     } catch (error) {
+      // Ignora erros de desconexão no cleanup
     }
     vi.resetModules();
   });
@@ -135,7 +138,7 @@ describe('Kafka Service', () => {
 
   describe('Dado que KAFKA_BROKER_URL está definida, Quando acessar kafka proxy, Então deve retornar instância do Kafka', () => {
     it('permite acesso a propriedades do kafka via proxy', () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
 
       const kafkaInstance = kafka;
       expect(kafkaInstance).toBeDefined();
@@ -160,16 +163,16 @@ describe('Kafka Service', () => {
 
   describe('Dado que KAFKA_BROKER_URL está definida, Quando criar instância do Kafka, Então deve configurar corretamente', () => {
     it('cria instância com configurações corretas', () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const kafkaConfig = getKafkaConfig();
       expect(kafkaConfig).not.toBeNull();
       expect(kafkaConfig?.clientId).toBe('helpdesk-api');
-      expect(kafkaConfig?.brokers).toEqual(['localhost:9092']);
-      expect(kafkaConfig?.brokerUrl).toBe('localhost:9092');
+      expect(kafkaConfig?.brokers).toEqual(['localhost:9093']);
+      expect(kafkaConfig?.brokerUrl).toBe('localhost:9093');
     });
 
     it('reutiliza a mesma configuração em chamadas subsequentes', () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const primeiraConfig = getKafkaConfig();
       const segundaConfig = getKafkaConfig();
       expect(primeiraConfig).toBe(segundaConfig);
@@ -183,6 +186,7 @@ describe('Kafka Service', () => {
       try {
         await desconectarKafkaProducer();
       } catch (error) {
+        // Ignora erros
       }
       delete process.env.KAFKA_BROKER_URL;
     });
@@ -196,7 +200,7 @@ describe('Kafka Service', () => {
 
   describe('Dado que KAFKA_BROKER_URL está definida, Quando obter producer, Então deve criar instância funcional', () => {
     it('cria instância do producer com métodos disponíveis', () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const kafkaProducer = producer;
       expect(kafkaProducer).toBeDefined();
       expect(typeof kafkaProducer.connect).toBe('function');
@@ -205,7 +209,7 @@ describe('Kafka Service', () => {
     });
 
     it('reutiliza a mesma instância do producer em múltiplas chamadas', () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const primeiroProducer = producer;
       const segundoProducer = producer;
       expect(typeof primeiroProducer.connect).toBe('function');
@@ -214,8 +218,8 @@ describe('Kafka Service', () => {
   });
 
   describe('Dado um producer inicializado, Quando chamar conectarKafkaProducer, Então deve conectar com sucesso', () => {
-    it('chama producer.connect() uma vez', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    it('chama producer.connect() uma vez quando conexão é bem-sucedida', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
 
@@ -225,10 +229,13 @@ describe('Kafka Service', () => {
 
       await conectarKafkaProducer();
       expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(isKafkaConnected()).toBe(true);
     });
 
-    it('propaga erro quando conexão falha', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    it('não lança erro quando conexão falha, apenas loga warning', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
 
@@ -236,39 +243,67 @@ describe('Kafka Service', () => {
       const erroConexao = new Error('Falha na conexão com Kafka');
       vi.spyOn(producerReal!, 'connect').mockRejectedValue(erroConexao);
 
-      await expect(conectarKafkaProducer()).rejects.toThrow('Falha na conexão com Kafka');
+      await conectarKafkaProducer();
+      
+      expect(isKafkaConnected()).toBe(false);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        '[Kafka][Producer] Falha ao conectar ao Kafka - funcionando sem Kafka'
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        '[Kafka][Producer] Certifique-se de que o Kafka está rodando em:',
+        'localhost:9093'
+      );
+
+      consoleWarnSpy.mockRestore();
     });
   });
 
   describe('Dado que KAFKA_BROKER_URL não está definida, Quando tentar conectar producer, Então deve lançar erro', () => {
-    it('lança erro ao tentar conectar sem KAFKA_BROKER_URL', async () => {
+    it('não lança erro ao tentar conectar sem KAFKA_BROKER_URL, mas loga warning', async () => {
       delete process.env.KAFKA_BROKER_URL;
-      await expect(conectarKafkaProducer()).rejects.toThrow('KAFKA_BROKER_URL não definida!');
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      // Agora não deve lançar erro, apenas logar warning
+      await conectarKafkaProducer();
+      
+      expect(isKafkaConnected()).toBe(false);
+      expect(consoleWarnSpy).toHaveBeenCalled();
+      
+      consoleWarnSpy.mockRestore();
     });
   });
 
   describe('Dado um producer conectado, Quando chamar desconectarKafkaProducer, Então deve desconectar corretamente', () => {
     it('chama producer.disconnect() uma vez', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      // Acessa o producer para inicializá-lo
       const kafkaProducer = producer;
-      expect(typeof kafkaProducer.disconnect).toBe('function');
-
+      expect(typeof kafkaProducer.connect).toBe('function');
+      
       const producerReal = getProducerInstanceForTest();
-      const mockDisconnect = vi.spyOn(producerReal!, 'disconnect').mockResolvedValue();
+      expect(producerReal).not.toBeNull();
+      
+      const mockConnect = vi.spyOn(producerReal!, 'connect').mockResolvedValue();
+      await conectarKafkaProducer();
+      expect(mockConnect).toHaveBeenCalled();
 
+      const mockDisconnect = vi.spyOn(producerReal!, 'disconnect').mockResolvedValue();
       await desconectarKafkaProducer();
+      
       expect(mockDisconnect).toHaveBeenCalledTimes(1);
+      expect(isKafkaConnected()).toBe(false);
     });
 
     it('não lança erro quando producer não está conectado', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       await expect(desconectarKafkaProducer()).resolves.not.toThrow();
     });
   });
 
   describe('Dado um producer desconectado, Quando reconectar, Então deve criar nova instância', () => {
     it('permite reconexão com nova instância do producer', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const primeiroProducer = producer;
       expect(typeof primeiroProducer.connect).toBe('function');
 
@@ -295,59 +330,107 @@ describe('Kafka Service', () => {
     });
   });
 
+  describe('Função sendMessage', () => {
+    it('deve enviar mensagem quando Kafka está conectado', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      // Acessa o producer para inicializá-lo
+      const kafkaProducer = producer;
+      expect(typeof kafkaProducer.connect).toBe('function');
+      
+      const producerReal = getProducerInstanceForTest();
+      expect(producerReal).not.toBeNull();
+      
+      vi.spyOn(producerReal!, 'connect').mockResolvedValue();
+      await conectarKafkaProducer();
+      
+      const mockSend = vi.spyOn(producerReal!, 'send').mockResolvedValue({} as any);
+      
+      await sendMessage('test-topic', [{ value: 'test' }]);
+      
+      expect(mockSend).toHaveBeenCalledWith({
+        topic: 'test-topic',
+        messages: [{ value: 'test' }]
+      });
+    });
+
+    it('deve logar warning quando Kafka não está conectado', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      // Não conecta o Kafka propositalmente
+      await sendMessage('test-topic', [{ value: 'test' }]);
+      
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        '[Kafka][Producer] Kafka não conectado - mensagem não enviada para o tópico "test-topic"'
+      );
+      
+      consoleWarnSpy.mockRestore();
+    });
+  });
+
   describe('Dado cenários de erro e limites, Quando ocorrerem falhas ou falta de configuração, Então deve tratar adequadamente', () => {
     it('deve lançar erro ao acessar outros métodos do producer sem KAFKA_BROKER_URL', () => {
       delete process.env.KAFKA_BROKER_URL;
       expect(() => producer.connect).toThrow('KAFKA_BROKER_URL não definida!');
     });
 
-    it('deve propagar erro quando desconexão falha', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    it('deve logar erro quando desconexão falha', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      
+      // Acessa o producer para inicializá-lo
       const kafkaProducer = producer;
-      expect(typeof kafkaProducer.disconnect).toBe('function');
-
+      expect(typeof kafkaProducer.connect).toBe('function');
+      
       const producerReal = getProducerInstanceForTest();
+      expect(producerReal).not.toBeNull();
+      
+      // Conecta primeiro
+      vi.spyOn(producerReal!, 'connect').mockResolvedValue();
+      await conectarKafkaProducer();
+      
       const erroDesconexao = new Error('Erro ao desconectar');
       const mockDisconnect = vi.spyOn(producerReal!, 'disconnect').mockRejectedValue(erroDesconexao);
 
-      await expect(desconectarKafkaProducer()).rejects.toThrow('Erro ao desconectar');
+      await desconectarKafkaProducer();
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[Kafka][Producer] Erro ao desconectar:',
+        erroDesconexao
+      );
 
-      // Restaura imediatamente para garantir o isolamento do teste e evitar que o afterEach seja afetado, prevenindo efeitos colaterais entre testes e mantendo a confiabilidade da suíte de testes
       mockDisconnect.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 
-  describe('getKafkaConfig - catch branch (linha 85)', () => {
+  describe('getKafkaConfig - catch branch', () => {
     it('deve retornar null quando getKafkaInstance lança erro inesperado', async () => {
-      // Mocks são restaurados e o estado limpo para evitar impactos no afterEach
       vi.restoreAllMocks();
       try {
         await desconectarKafkaProducer();
       } catch (error) {
+        // Ignora erros
       }
 
-      // Define URL para passar a primeira verificação
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
 
-      // Mock do construtor Kafka para lançar erro
       const KafkaMock = vi.fn().mockImplementation(() => {
         throw new Error('Erro inesperado ao criar instância Kafka');
       });
 
-      // Re-importa o módulo com o mock
       vi.doMock('kafkajs', () => ({
         Kafka: KafkaMock,
         logLevel: { ERROR: 1, WARN: 2, INFO: 4 }
       }));
 
-      // Re-importa o módulo para aplicar o mock
       vi.resetModules();
       const { getKafkaConfig: getKafkaConfigMocked } = await import('../../services/kafka');
 
       const config = getKafkaConfigMocked();
       expect(config).toBeNull();
 
-      // Limpa o mock
       vi.doUnmock('kafkajs');
     });
   });

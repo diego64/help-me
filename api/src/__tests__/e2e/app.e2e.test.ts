@@ -1,13 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll
+} from 'vitest';
 import request from 'supertest';
 import app from '../../app';
 import { redisClient } from '../../services/redisClient';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
 
-// ==========================
+// ==================================
 // CONFIGURAÇÃO DO AMBIENTE DE TESTES
-// ==========================
+// ==================================
 
 const dadosUsuarioTeste = {
   email: 'teste.e2e@exemplo.com',
@@ -59,7 +65,7 @@ const limparBancoDeDados = async () => {
       prisma.usuario.deleteMany(),
     ]);
   } catch (erro) {
-    console.warn('[WAN] Aviso ao limpar banco:', erro);
+    console.warn('[WARN] Aviso ao limpar banco:', erro);
   }
 };
 
@@ -130,7 +136,7 @@ const autenticarUsuarios = async () => {
       cookieUsuario = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
       console.log('[SUCESSO] Usuário comum autenticado');
     } else {
-      console.warn('[WAN] Falha ao autenticar usuário comum:', resUsuario.status);
+      console.warn('[WARN] Falha ao autenticar usuário comum:', resUsuario.status);
     }
 
     // Autenticar admin
@@ -147,7 +153,7 @@ const autenticarUsuarios = async () => {
       cookieAdmin = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
       console.log('[SUCESSO] Admin autenticado');
     } else {
-      console.warn('[WAN] Falha ao autenticar admin:', resAdmin.status);
+      console.warn('[WARN] Falha ao autenticar admin:', resAdmin.status);
     }
 
     // Autenticar técnico
@@ -164,7 +170,7 @@ const autenticarUsuarios = async () => {
       cookieTecnico = Array.isArray(setCookie) ? setCookie : (setCookie ? [setCookie] : undefined);
       console.log('[SUCESSO] Técnico autenticado');
     } else {
-      console.warn('[WAN] Falha ao autenticar técnico:', resTecnico.status);
+      console.warn('[WARN] Falha ao autenticar técnico:', resTecnico.status);
     }
   } catch (erro) {
     console.error('[ERROR] Erro ao autenticar usuários:', erro);
@@ -182,7 +188,7 @@ const limparSessoesRedis = async () => {
       console.log('[SUCESSO] Sessões Redis limpas');
     }
   } catch (erro) {
-    console.warn('[WAN] Aviso ao limpar Redis:', erro);
+    console.warn('[WARN] Aviso ao limpar Redis:', erro);
   }
 };
 
@@ -197,7 +203,7 @@ const verificarAutenticacao = (tipo: 'usuario' | 'admin' | 'tecnico'): boolean =
   };
 
   if (!tokens[tipo]) {
-    console.log(`[WAN] Token ${tipo} não disponível - pulando teste`);
+    console.log(`[WARN] Token ${tipo} não disponível - pulando teste`);
     return false;
   }
   return true;
@@ -256,7 +262,7 @@ beforeAll(async () => {
       console.log('[SUCESSO] Redis conectado');
     }
   } catch (erro) {
-    console.warn('[WAN] Redis não conectado:', erro);
+    console.warn('[WARN] Redis não conectado:', erro);
   }
 
   // Limpar banco e criar usuários
@@ -270,7 +276,7 @@ beforeAll(async () => {
 afterAll(async () => {
   console.log('\n🧹 Limpando ambiente de teste...\n');
 
-  // Limpar dados de teste
+  // Limpar DADOS DE TESTES
   await limparBancoDeDados();
   await limparSessoesRedis();
   
@@ -284,7 +290,7 @@ afterAll(async () => {
       console.log('[SUCESSO] Redis desconectado');
     }
   } catch (erro) {
-    console.warn('[WAN] Aviso ao desconectar:', erro);
+    console.warn('[WARN] Aviso ao desconectar:', erro);
   }
 
   console.log('\n[SUCESSO] Limpeza completa!\n');
@@ -378,7 +384,7 @@ describe('Testes E2E da Aplicação', () => {
       
       // Se usuário não existe, pula teste com aviso
       if (!usuarioExiste) {
-        console.warn('[WAN] Usuário de teste não encontrado - pulando teste de login');
+        console.warn('[WARN] Usuário de teste não encontrado - pulando teste de login');
         return;
       }
 
@@ -397,7 +403,7 @@ describe('Testes E2E da Aplicação', () => {
       console.log(`[INFO] Status da resposta de login: ${resposta.status}`);
       
       if (resposta.status === 404) {
-        console.warn('[WAN] Rota /auth/login não encontrada (404)');
+        console.warn('[WARN] Rota /auth/login não encontrada (404)');
         expect(resposta.status).toBe(404);
       } else if (resposta.status === 200) {
         // O token pode estar em diferentes lugares dependendo da estrutura da resposta
@@ -922,7 +928,7 @@ describe('Testes E2E da Aplicação', () => {
       expect([200, 201, 404]).toContain(respostaCriacao.status);
       
       if (![200, 201].includes(respostaCriacao.status)) {
-        console.log('[WAN] Não foi possível criar chamado para teste de fluxo');
+        console.log('[WARN] Não foi possível criar chamado para teste de fluxo');
         return;
       }
 

@@ -16,7 +16,9 @@ services:
       POSTGRESQL_ENABLE_TLS: "no"
       POSTGRESQL_PASSWORD_ENCRYPTION: scram-sha-256
       POSTGRESQL_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
-      POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-20}
+      POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS}
+      POSTGRESQL_SHARED_BUFFERS: ${DB_SHARED_BUFFERS:-512MB}
+      POSTGRESQL_EFFECTIVE_CACHE_SIZE: ${DB_EFFECTIVE_CACHE_SIZE:-1GB}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -27,37 +29,73 @@ services:
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "PGPASSWORD=${DB_PASSWORD} pg_isready -U ${DB_USER} -d ${DB_NAME} && PGPASSWORD=${DB_PASSWORD} psql -U ${DB_USER} -d ${DB_NAME} -c 'SELECT 1' > /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=postgresql"
+      - "com.helpme.environment=production"
 
   postgresql_helpme_teste:
     image: bitnami/postgresql:latest
     container_name: postgresql_helpme_teste
     hostname: postgresql_helpme_teste
     environment:
-      POSTGRESQL_USERNAME: teste
-      POSTGRESQL_PASSWORD: senha
-      POSTGRESQL_DATABASE: helpme-database-teste
+      POSTGRESQL_USERNAME: ${DB_USER_TESTE:-teste}
+      POSTGRESQL_PASSWORD: ${DB_PASSWORD_TESTE:-senha_teste}
+      POSTGRESQL_DATABASE: ${DB_NAME_TESTE:-helpme-database-teste}
       TZ: America/Sao_Paulo
     ports:
-      - "5433:5432"
+      - "${DB_PORT_TESTE:-5433}:5432"
     networks:
       - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U teste"]
+      test: ["CMD-SHELL", "PGPASSWORD=$$POSTGRESQL_PASSWORD pg_isready -U $$POSTGRESQL_USERNAME -d $$POSTGRESQL_DATABASE"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=postgresql"
+      - "com.helpme.environment=test"
 
   # ============================================
   # BANCO DE DADOS - MongoDB
   # ============================================
   mongodb_helpme:
-    image: mongo:latest
+    image: mongo:8.0
     container_name: mongodb_helpme
     hostname: mongodb_helpme
     environment:
@@ -84,25 +122,68 @@ services:
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=mongodb"
+      - "com.helpme.environment=production"
 
-  mongo-test:
-    image: mongo:latest
+  mongodb_helpme_teste:
+    image: mongo:8.0
     container_name: mongodb_helpme_teste
     hostname: mongodb_helpme_teste
     environment:
-      MONGO_INITDB_ROOT_USERNAME: teste
-      MONGO_INITDB_ROOT_PASSWORD: senha
-      MONGO_INITDB_DATABASE: helpme-mongo-teste
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME_TESTE}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD_TESTE}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE_TESTE}
       TZ: America/Sao_Paulo
+    command: mongod --bind_ip_all --auth
     ports:
-      - "27018:27017"
+      - "${MONGO_PORT_TESTE:-27018}:27017"
+    volumes:
+      - mongodb_teste_data:/data/db
     networks:
       - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 5s
+      test: |
+        mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME_TESTE:-teste} \
+          --password $${MONGO_INITDB_ROOT_PASSWORD_TESTE:-senha_teste} \
+          --authenticationDatabase admin \
+          --eval "db.adminCommand('ping')" > /dev/null || exit 1
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=mongodb"
+      - "com.helpme.environment=test"
 
   # ============================================
   # MESSAGE BROKER - Kafka
@@ -111,78 +192,165 @@ services:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper_helpme
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_CLIENT_PORT: ${ZOOKEEPER_CLIENT_PORT:-2181}
+      ZOOKEEPER_TICK_TIME: ${ZOOKEEPER_TICK_TIME:-2000}
       TZ: America/Sao_Paulo
     ports:
-      - '2181:2181'
+      - '${ZOOKEEPER_PORT:-2181}:2181'
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo srvr | nc localhost 2181 | grep -q Mode"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=zookeeper"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka_helpme
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
-      - '9092:9092'
+      - '${KAFKA_PORT:-9092}:9092'
+      - '${KAFKA_EXTERNAL_PORT:-9093}:9093'
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_BROKER_ID: ${KAFKA_BROKER_ID:-1}
+      KAFKA_ZOOKEEPER_CONNECT: ${KAFKA_ZOOKEEPER_CONNECT:-zookeeper:2181}
+      # Configuração para aceitar conexões internas (Docker) e externas (localhost)
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_REPLICATION_FACTOR:-1}
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: ${KAFKA_AUTO_CREATE_TOPICS:-true}
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: ${KAFKA_MIN_ISR:-1}
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: ${KAFKA_REPLICATION_FACTOR:-1}
+      KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS:-168}
       TZ: America/Sao_Paulo
-    healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/9092"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=kafka"
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.5.0
-    container_name: control-center_helpme
+    container_name: control_center_helpme
     depends_on:
-      kafka:
-        condition: service_healthy
-      zookeeper:
-        condition: service_started
+      - kafka
+      - zookeeper
     ports:
-      - '9021:9021'
+      - '${CONTROL_CENTER_PORT:-9021}:9021'
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'localhost:9092'
-      CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: ${CONTROL_CENTER_BOOTSTRAP_SERVERS:-kafka:9092}
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: ${CONTROL_CENTER_ZOOKEEPER_CONNECT:-zookeeper:2181}
+      CONTROL_CENTER_REPLICATION_FACTOR: ${CONTROL_CENTER_REPLICATION_FACTOR:-1}
       PORT: 9021
       TZ: America/Sao_Paulo
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=control-center"
 
   # ============================================
   # CACHE - Redis
   # ============================================
   redis_helpme:
-    image: redis:latest
+    image: redis:8.0
     container_name: redis_helpme
     hostname: redis_helpme
     environment:
       TZ: America/Sao_Paulo
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis_helpme_password}
+      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
+      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      --appendonly yes
+      --appendfsync everysec
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
       - helpme_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 768M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "--pass", "${REDIS_PASSWORD:-redis_helpme_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=cache"
+      - "com.helpme.cache.type=redis"
 
   # ============================================
   # MONITORAMENTO - InfluxDB
@@ -191,33 +359,46 @@ services:
     image: influxdb:2.7-alpine
     container_name: influxdb_helpme
     hostname: influxdb
-    restart: unless-stopped
-    
-    ports:
-      - "8086:8086"
-    
     environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123456
-      - DOCKER_INFLUXDB_INIT_ORG=org
-      - DOCKER_INFLUXDB_INIT_BUCKET=helpme_bucket
-      - DOCKER_INFLUXDB_INIT_RETENTION=30d
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
-      - TZ=America/Sao_Paulo
-    
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-org}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_ADMIN_TOKEN}
+      INFLUXDB_HTTP_LOG_ENABLED: ${INFLUX_HTTP_LOG_ENABLED:-true}
+      TZ: America/Sao_Paulo
+    ports:
+      - "${INFLUX_PORT:-8086}:8086"
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
-    
     networks:
       - helpme_network
-    
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: ["CMD", "influx", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=timeseries"
 
   # ============================================
   # MONITORAMENTO - Grafana
@@ -226,38 +407,53 @@ services:
     image: grafana/grafana:10.2.3
     container_name: grafana_helpme
     hostname: grafana
-    restart: unless-stopped
-    
-    ports:
-      - "3001:3000"
-    
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_BASIC_ENABLED=true
-      - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
-      - GF_INSTALL_PLUGINS=grafana-mongodb-datasource, redis-datasource
-      - TZ=America/Sao_Paulo
-    
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_INSTALL_PLUGINS: grafana-mongodb-datasource,redis-datasource
+      GF_METRICS_ENABLED: ${GRAFANA_METRICS_ENABLED:-true}
+      TZ: America/Sao_Paulo
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./dashboards/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./dashboards/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./dashboards/grafana/dashboards:/var/lib/grafana/dashboards
-    
     networks:
       - helpme_network
-    
     depends_on:
       influxdb:
         condition: service_healthy
-    
+      postgresql_helpme:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=visualization"
 
   # ============================================
   # MONITORAMENTO - Prometheus
@@ -266,67 +462,105 @@ services:
     image: prom/prometheus:v2.48.1
     container_name: prometheus_helpme
     hostname: prometheus
-    restart: unless-stopped
-    
-    ports:
-      - "9090:9090"
-    
     environment:
-      - TZ=America/Sao_Paulo
-    
+      TZ: America/Sao_Paulo
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}'
       - '--web.enable-lifecycle'
-    
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
-    
     networks:
       - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=metrics"
 
   # ============================================
   # MONITORAMENTO - Node Exporter
   # ============================================
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.7.0
     container_name: node_exporter_helpme
     hostname: node-exporter
-    restart: unless-stopped
     environment:
-      - TZ=America/Sao_Paulo
+      TZ: America/Sao_Paulo
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
       - '--path.rootfs=/rootfs'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     ports:
-      - "9100:9100"
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
     networks:
       - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=exporter"
+      - "com.helpme.exporter.target=node"
 
   # ============================================
-  # MONITORAMENTO - cAdvisor (Container Advisor)  
-  # CONFIGURAÇÃO PARA WSL2 + DOCKER DESKTOP + CGROUPV2
+  # MONITORAMENTO - cAdvisor
   # ============================================
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor_helpme
     hostname: cadvisor
-    restart: unless-stopped
     privileged: true
     environment:
-      - TZ=America/Sao_Paulo
+      TZ: America/Sao_Paulo
     ports:
-      - "8080:8080"
+      - "${CADVISOR_PORT:-8080}:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -335,29 +569,76 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     command:
-      - '--housekeeping_interval=10s'
+      - '--housekeeping_interval=30s'
       - '--docker_only=false'
+      - '--store_container_labels=false'
     networks:
       - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=container-metrics"
 
   # ============================================
   # MONITORAMENTO - PostgreSQL Exporter
   # ============================================
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres_exporter_helpme
     hostname: postgres-exporter
-    restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@postgresql_helpme:5432/${DB_NAME}?sslmode=disable"
       TZ: America/Sao_Paulo
     ports:
-      - "9187:9187"
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
     networks:
       - helpme_network
+    restart: unless-stopped
     depends_on:
       postgresql_helpme:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=exporter"
+      - "com.helpme.exporter.target=postgresql"
 
   # ============================================
   # MONITORAMENTO - MongoDB Exporter
@@ -366,64 +647,116 @@ services:
     image: percona/mongodb_exporter:0.40
     container_name: mongodb_exporter_helpme
     hostname: mongodb-exporter
-    restart: unless-stopped
     environment:
       MONGODB_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb_helpme:27017"
       TZ: America/Sao_Paulo
     ports:
-      - "9216:9216"
+      - "${MONGODB_EXPORTER_PORT:-9216}:9216"
     command:
       - '--mongodb.direct-connect=true'
       - '--mongodb.global-conn-pool=true'
       - '--collect-all'
-    
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9216/metrics"]
-      interval: 10s
-      timeout: 5s
-      start_period: 20s
-      retries: 5
-    
+    depends_on:
+      - mongodb_helpme
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     networks:
       - helpme_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=exporter"
+      - "com.helpme.exporter.target=mongodb"
 
   # ============================================
   # MONITORAMENTO - Redis Exporter
   # ============================================
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.55.0
     container_name: redis_exporter_helpme
     hostname: redis-exporter
-    restart: unless-stopped
     environment:
       REDIS_ADDR: "redis://redis_helpme:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_helpme_password}
       TZ: America/Sao_Paulo
     ports:
-      - "9121:9121"
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
     networks:
       - helpme_network
+    restart: unless-stopped
     depends_on:
-      - redis_helpme
+      redis_helpme:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=exporter"
+      - "com.helpme.exporter.target=redis"
 
   # ============================================
   # MONITORAMENTO - Kafka Exporter
   # ============================================
   kafka-exporter:
-    image: danielqsj/kafka-exporter:latest
+    image: danielqsj/kafka-exporter:v1.7.0
     container_name: kafka_exporter_helpme
     hostname: kafka-exporter
-    restart: unless-stopped
     environment:
       TZ: America/Sao_Paulo
     ports:
-      - "9308:9308"
+      - "${KAFKA_EXPORTER_PORT:-9308}:9308"
     command:
       - '--kafka.server=kafka:9092'
     networks:
       - helpme_network
+    restart: unless-stopped
     depends_on:
-      kafka:
-        condition: service_healthy
+      - kafka
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=exporter"
+      - "com.helpme.exporter.target=kafka"
 
 # ============================================
 # NETWORKS
@@ -432,12 +765,15 @@ networks:
   helpme_network:
     driver: bridge
     name: helpme_network
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
 
 # ============================================
 # VOLUMES
 # ============================================
 volumes:
-  # PostgreSQL
   postgresql_data:
     driver: local
     name: postgresql_helpme_data
@@ -447,18 +783,15 @@ volumes:
   postgresql_archive:
     driver: local
     name: postgresql_helpme_archive
-  
-  # MongoDB
   mongodb_data:
     driver: local
     name: mongodb_helpme_data
-  
-  # Redis
+  mongodb_teste_data:
+    driver: local
+    name: mongodb_helpme_teste_data
   redis_data:
     driver: local
     name: redis_helpme_data
-  
-  # Monitoring
   influxdb_data:
     driver: local
     name: influxdb_helpme_data

@@ -14,3 +14,6 @@ datasources:
       timeout: 10
       pingInterval: 0
       pipelineWindow: 0
+      acl: false 
+    secureJsonData:
+      password: UwopC15GvVlz7By6

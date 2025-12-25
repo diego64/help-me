@@ -1,10 +1,14 @@
-import { Kafka, Producer, logLevel, LogEntry } from 'kafkajs';
+import {
+  Kafka,
+  Producer,
+  logLevel,
+  LogEntry
+} from 'kafkajs';
 
 const ignoreMessages = [
   'The group is rebalancing, so a rejoin is needed'
 ];
 
-// ==== CRIA UM LOGGER CUSTOMIZADO PARA O KAFKA QUE FILTRA MENSAGENS DESNECESSÁRIAS EXPORTADO PARA PERMITIR TESTES UNITÁRIOS ====
 export const customLogCreator = () => (entry: LogEntry) => {
   const errorMsg = typeof entry.log?.error === 'string' ? entry.log.error : '';
   if (
@@ -18,6 +22,7 @@ export const customLogCreator = () => (entry: LogEntry) => {
 // ===== VARIÁVEIS PRIVADAS QUE SERÃO INICIALIZADAS SOB DEMANDA ====
 let kafkaInstance: Kafka | null = null;
 let producerInstance: Producer | null = null;
+let isConnected = false;
 
 // ==== CONFIGURAÇÃO DO KAFKA (EXPOSTA PARA TESTES) ====
 export interface KafkaConfig {
@@ -29,7 +34,7 @@ export interface KafkaConfig {
 let kafkaConfig: KafkaConfig | null = null;
 
 /**
- * NICIALIZA E RETORNA A INSTÂNCIA DO KAFKA (LAZY LOADING)
+ * INICIALIZA E RETORNA A INSTÂNCIA DO KAFKA (LAZY LOADING)
  * @returns INSTÂNCIA DO KAFKA
  * @throws ERROR SE KAFKA_BROKER_URL NÃO ESTIVER DEFINIDA
  */
@@ -50,7 +55,13 @@ function getKafkaInstance(): Kafka {
     clientId: kafkaConfig.clientId,
     brokers: kafkaConfig.brokers,
     logLevel: logLevel.ERROR,
-    logCreator: customLogCreator
+    logCreator: customLogCreator,
+    retry: {
+      initialRetryTime: 300,
+      retries: 3
+    },
+    connectionTimeout: 3000,
+    requestTimeout: 25000
   });
 
   return kafkaInstance;
@@ -99,22 +110,62 @@ export function getProducerInstanceForTest(): Producer | null {
   return producerInstance;
 }
 
+/**
+ * VERIFICA SE O KAFKA ESTÁ CONECTADO
+ */
+export function isKafkaConnected(): boolean {
+  return isConnected;
+}
+
 export async function conectarKafkaProducer(): Promise<void> {
-  const prod = getProducerInstance();
-  await prod.connect();
-  console.log('[Kafka][Producer] Kafka Producer conectado');
+  try {
+    const prod = getProducerInstance();
+    await prod.connect();
+    isConnected = true;
+    console.log('[Kafka][Producer] Kafka Producer conectado');
+  } catch (error) {
+    isConnected = false;
+    console.warn('[Kafka][Producer] Falha ao conectar ao Kafka - funcionando sem Kafka');
+    console.warn('[Kafka][Producer] Certifique-se de que o Kafka está rodando em:', process.env.KAFKA_BROKER_URL);
+    // Não lança erro para permitir que a aplicação continue sem Kafka
+  }
 }
 
 export async function desconectarKafkaProducer(): Promise<void> {
-  if (producerInstance) {
-    await producerInstance.disconnect();
+  if (producerInstance && isConnected) {
+    try {
+      await producerInstance.disconnect();
+      console.log('[Kafka][Producer] Kafka Producer desconectado');
+    } catch (error) {
+      console.error('[Kafka][Producer] Erro ao desconectar:', error);
+    }
   }
   
   producerInstance = null;
   kafkaInstance = null;
   kafkaConfig = null;
+  isConnected = false;
+}
+
+/**
+ * ENVIA UMA MENSAGEM PARA O KAFKA (COM FALLBACK SE NÃO CONECTADO)
+ */
+export async function sendMessage(topic: string, messages: any[]): Promise<void> {
+  if (!isConnected) {
+    console.warn(`[Kafka][Producer] Kafka não conectado - mensagem não enviada para o tópico "${topic}"`);
+    return;
+  }
   
-  console.log('Kafka Producer desconectado');
+  try {
+    const prod = getProducerInstance();
+    await prod.send({
+      topic,
+      messages
+    });
+  } catch (error) {
+    console.error(`[Kafka][Producer] Erro ao enviar mensagem para o tópico "${topic}":`, error);
+    throw error;
+  }
 }
 
 export const kafka = new Proxy({} as Kafka, {

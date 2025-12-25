@@ -58,27 +58,27 @@ try {
     }
     
     if (config.password.includes(' ')) {
-      issues.push('[WAN]  Senha contém espaços');
+      issues.push('[WARN]  Senha contém espaços');
     }
     
     if (config.password.includes('"') || config.password.includes("'")) {
-      issues.push('[WAN]  Senha contém aspas');
+      issues.push('[WARN]  Senha contém aspas');
     }
     
     if (config.password.startsWith(' ') || config.password.endsWith(' ')) {
-      issues.push('[WAN]  Senha tem espaços no início ou fim');
+      issues.push('[WARN]  Senha tem espaços no início ou fim');
     }
     
     // ====== VERIFICA CARACTERES ESPECIAIS QUE PODEM CAUSAR PROBLEMAS ======
     const specialChars = ['@', '#', '$', '%', '&', ':', '/', '?', '='];
     const foundSpecialChars = specialChars.filter(char => config.password!.includes(char));
     if (foundSpecialChars.length > 0) {
-      issues.push(`[WAN]  Senha contém caracteres especiais: ${foundSpecialChars.join(', ')}`);
+      issues.push(`[WARN]  Senha contém caracteres especiais: ${foundSpecialChars.join(', ')}`);
       issues.push('   [INFO] Estes caracteres podem precisar de URL encoding');
     }
     
     if (issues.length > 0) {
-      console.log('\n[WAN]  Problemas encontrados:');
+      console.log('\n[WARN]  Problemas encontrados:');
       issues.forEach(issue => console.log('   ' + issue));
     } else {
       console.log('\n[SUCESSO] Nenhum problema óbvio detectado na senha');

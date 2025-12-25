@@ -71,10 +71,10 @@ if [ -n "$TOKEN" ]; then
         USUARIOS_COUNT=$(echo "$USUARIOS_BODY" | grep -o '"id"' | wc -l)
         echo -e "${GREEN}[SUCESSO] Banco populado: $USUARIOS_COUNT usuários encontrados${NC}"
     else
-        echo -e "${YELLOW}[WAN]  Não foi possível verificar usuários (HTTP $USUARIOS_HTTP)${NC}"
+        echo -e "${YELLOW}[WARN]  Não foi possível verificar usuários (HTTP $USUARIOS_HTTP)${NC}"
     fi
 else
-    echo -e "${YELLOW}[WAN]  Não foi possível obter token para verificar dados${NC}"
+    echo -e "${YELLOW}[WARN]  Não foi possível obter token para verificar dados${NC}"
 fi
 
 echo ""
@@ -90,7 +90,7 @@ if command -v lsof &> /dev/null; then
         echo -e "${RED}[ERROR] Porta 3000 livre (API não está rodando?)${NC}"
     fi
 else
-    echo -e "${YELLOW}[WAN]  lsof não disponível, pulando verificação de porta${NC}"
+    echo -e "${YELLOW}[WARN]  lsof não disponível, pulando verificação de porta${NC}"
 fi
 
 echo ""

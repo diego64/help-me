@@ -9,9 +9,9 @@ import {
 import { Response, NextFunction } from 'express';
 import { Regra } from '@prisma/client';
 
-// ============================================================================
+// ========================================
 // MOCKS - DEVEM VIR ANTES DOS IMPORTS
-// ============================================================================
+// ========================================
 
 vi.mock('../../auth/jwt', () => ({
   verifyToken: vi.fn(),
@@ -22,9 +22,9 @@ vi.mock('../../services/redisClient', () => ({
   cacheGet: vi.fn(),
 }));
 
-// ============================================================================
+// ========================================
 // IMPORTS - DEPOIS DOS MOCKS
-// ============================================================================
+// ========================================
 
 import { authMiddleware, authorizeRoles, AuthRequest } from '../../middleware/auth';
 import * as jwtModule from '../../auth/jwt';
@@ -34,9 +34,9 @@ const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
 const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);
 const cacheGetMock = vi.mocked(redisModule.cacheGet);
 
-// ============================================================================
+// ========================================
 // SETUP E HELPERS
-// ============================================================================
+// ========================================
 
 function createMockRequest(authorization?: string): Partial<AuthRequest> {
   return {
@@ -67,9 +67,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// ============================================================================
+// ========================================
 // TESTES DO authMiddleware
-// ============================================================================
+// ========================================
 
 describe('authMiddleware', () => {
   it('Deve retornar 401 quando token não for fornecido', async () => {
@@ -331,9 +331,9 @@ describe('authMiddleware', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES DO authorizeRoles
-// ============================================================================
+// ========================================
 
 describe('authorizeRoles', () => {
   it('Deve retornar 401 quando req.usuario não estiver definido', () => {

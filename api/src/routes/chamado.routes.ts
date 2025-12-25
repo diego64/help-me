@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
-import { salvarHistoricoChamado, listarHistoricoChamado } from '../repositories/chamadoAtualizacao.repository';
+import { 
+  authMiddleware,
+  authorizeRoles,
+  AuthRequest
+} from '../middleware/auth';
+import {
+  salvarHistoricoChamado,
+  listarHistoricoChamado
+} from '../repositories/chamadoAtualizacao.repository';
 import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 
 const router = Router();
@@ -42,9 +49,9 @@ async function gerarNumeroOS(): Promise<string> {
   });
 }
 
-// ============================================================================
+// ========================================
 // ABERTURA DE CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -183,9 +190,9 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), asyn
   }
 });
 
-// ============================================================================
+// ========================================
 // STATUS DO CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -393,9 +400,9 @@ router.patch('/:id/status', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), 
   }
 });
 
-// ============================================================================
+// ========================================
 // HISTÓRICO DO CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -433,9 +440,9 @@ router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-// ============================================================================
+// ========================================
 // REABERTURA DO CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -600,9 +607,9 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
   }
 });
 
-// ============================================================================
+// ========================================
 // CANCELAR O CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -696,9 +703,9 @@ router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 
   }
 });
 
-// ============================================================================
+// ========================================
 // EXCLUIR O CHAMADO
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
