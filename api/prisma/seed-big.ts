@@ -16,15 +16,17 @@ const prisma = new PrismaClient({
   log: ['query', 'error', 'warn'],
 });
 
-// ============================================================================  
+// ========================================  
 // CONFIGURAÇÃO REDIS
-// ============================================================================
+// ========================================
 
 const redisHost = process.env.REDIS_HOST || 'localhost';
 const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
 
+const redisPassword = process.env.REDIS_PASSWORD || 'redis_helpme_password';
+
 const redisClient = createClient({
-  url: `redis://${redisHost}:${redisPort}`
+  url: `redis://:${redisPassword}@${redisHost}:${redisPort}`
 });
 
 const TTL_CURTO = 300;         // 5 minutos
@@ -32,9 +34,9 @@ const TTL_MEDIO = 1800;        // 30 minutos
 const TTL_LONGO = 3600;        // 1 hora
 const TTL_MUITO_LONGO = 86400; // 24 horas
 
-// ============================================================================  
+// ========================================  
 // CONFIGURAÇÃO KAFKA
-// ============================================================================
+// ========================================
 
 const kafka = new Kafka({
   clientId: 'helpdesk-seed',
@@ -57,9 +59,9 @@ const TOPICS = {
   AUDITORIA: 'auditoria.log',
 };
 
-// ============================================================================  
+// ========================================  
 // SCHEMA MONGODB - CHAMADO ATUALIZACAO
-// ============================================================================
+// ========================================
 
 const chamadoAtualizacaoSchema = new mongoose.Schema({
   chamadoId: { type: String, required: true },
@@ -75,9 +77,9 @@ const chamadoAtualizacaoSchema = new mongoose.Schema({
 
 const ChamadoAtualizacao = mongoose.model('ChamadoAtualizacao', chamadoAtualizacaoSchema);
 
-// ============================================================================  
+// ========================================  
 // CONEXAO MONGODB
-// ============================================================================
+// ========================================
 
 async function connectMongo() {
   try {
@@ -109,9 +111,9 @@ async function disconnectMongo() {
   console.log('[MONGODB] Conexão encerrada');
 }
 
-// ============================================================================  
+// ========================================  
 // CONEXÃO REDIS
-// ============================================================================
+// ========================================
 
 let redisHabilitado = true;
 
@@ -138,9 +140,9 @@ async function desconectarRedis() {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // CONEXÃO KAFKA
-// ============================================================================
+// ========================================
 
 async function conectarKafka() {
   try {
@@ -162,9 +164,9 @@ async function desconectarKafka() {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // CRIAR TÓPICOS KAFKA
-// ============================================================================
+// ========================================
 
 async function criarTopicosKafka() {
   try {
@@ -204,9 +206,9 @@ async function criarTopicosKafka() {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // PUBLICAR EVENTO NO KAFKA
-// ============================================================================
+// ========================================
 
 let kafkaHabilitado = true;
 let eventosCriados = 0;
@@ -230,9 +232,9 @@ async function publicarEventoKafka(topic: string, key: string, evento: any, time
   }
 }
 
-// ============================================================================  
+// ========================================  
 // FUNCOES AUXILIARES
-// ============================================================================
+// ========================================
 
 async function criarAtualizacao(dados: {
   chamadoId: string;
@@ -291,9 +293,9 @@ function gerarDataInteligente(index: number, total: number): Date {
   return data;
 }
 
-// ============================================================================  
+// ========================================  
 // POPULAR REDIS - ESTATISTICAS E CACHE
-// ============================================================================
+// ========================================
 
 async function popularRedis() {
   if (!redisHabilitado) return;
@@ -543,9 +545,9 @@ async function popularRedis() {
   }
 }
 
-// ============================================================================  
+// ========================================  
 // DADOS PARA CHAMADOS ALEATORIOS
-// ============================================================================
+// ========================================
 
 const problemas = [
   'Computador nao liga', 'Internet lenta', 'Email nao esta funcionando',
@@ -623,9 +625,9 @@ const descricoesAtualizacao = [
   'Documentando procedimento'
 ];
 
-// ============================================================================  
+// ========================================  
 // FUNCAO PRINCIPAL DE SEED
-// ============================================================================
+// ========================================
 
 async function main() {
   console.log('='.repeat(80));
@@ -633,9 +635,9 @@ async function main() {
   console.log('='.repeat(80));
   console.log('\nIniciando seed do banco de dados com 15.000 chamados...\n');
 
-  // ============================================================================
+  // ========================================
   // 0. CONECTAR AOS BANCOS E SERVICOS
-  // ============================================================================
+  // ========================================
   console.log('Conectando ao MongoDB...\n');
   await connectMongo();
   
@@ -649,9 +651,9 @@ async function main() {
     await criarTopicosKafka();
   }
 
-  // ============================================================================
+  // ========================================
   // 1. LIMPAR TODA A BASE DE DADOS
-  // ============================================================================
+  // ========================================
   console.log('Limpando base de dados (PostgreSQL + MongoDB)...\n');
   
   try {
@@ -679,9 +681,9 @@ async function main() {
     throw error;
   }
 
-  // ============================================================================
+  // ========================================
   // 2. CRIAR ADMIN
-  // ============================================================================
+  // ========================================
   console.log('Criando Admin...');
   
   const adminUser = await criarUsuario('admin@helpme.com', {
@@ -697,9 +699,9 @@ async function main() {
 
   console.log('[OK] Admin criado:', adminUser.email);
 
-  // ============================================================================
+  // ========================================
   // 3. CRIAR 5 TECNICOS
-  // ============================================================================
+  // ========================================
   console.log('\nCriando 5 Tecnicos...');
   
   const tecnicosData = [
@@ -733,9 +735,9 @@ async function main() {
 
   console.log('[OK] Expedientes configurados: 08:00 - 18:00\n');
 
-  // ============================================================================
+  // ========================================
   // 4. CRIAR 12 USUARIOS (UM PARA CADA SETOR)
-  // ============================================================================
+  // ========================================
   console.log('Criando 12 Usuarios (um por setor)...');
   
   const usuariosData = [
@@ -765,9 +767,9 @@ async function main() {
     console.log(`[OK] Usuario: ${usuario.nome} ${usuario.sobrenome} (${dados.setor})`);
   }
 
-  // ============================================================================
+  // ========================================
   // 5. CRIAR SERVICOS
-  // ============================================================================
+  // ========================================
   console.log('\nCriando Servicos...');
   
   const servicosData = [
@@ -792,9 +794,9 @@ async function main() {
     console.log(`[OK] Servico: ${servico.nome}`);
   }
 
-  // ============================================================================
+  // ========================================
   // 6. CRIAR 15.000 CHAMADOS + MONGO + KAFKA
-  // ============================================================================
+  // ========================================
   console.log('\nCriando 15.000 chamados com distribuicao inteligente...\n');
   console.log(`   [INFO] Kafka habilitado: ${kafkaHabilitado ? 'SIM' : 'NAO'}\n`);
 
@@ -1222,14 +1224,14 @@ async function main() {
     console.log(`[${barraProgresso}${espacos}] Lote ${batch + 1}/${totalBatches} | ${chamadosCriados}/${totalChamados} (${progresso}%) | ${atualizacoesCriadas} atualizações${eventosTxt}`);
   }
 
-  // ============================================================================
+  // ========================================
   // 7. POPULAR REDIS COM ESTATISTICAS
-  // ============================================================================
+  // ========================================
   await popularRedis();
 
-  // ============================================================================
+  // ========================================
   // 8. VALIDACAO DOS DADOS
-  // ============================================================================
+  // ========================================
   console.log('\n[VALIDACAO] Verificando distribuicao dos dados...\n');
 
   const totalCriados = await prisma.chamado.count();
@@ -1251,9 +1253,9 @@ async function main() {
   });
   console.log(`[CHECK] Ultimos 30 dias: ${ultimos30Dias} (${((ultimos30Dias/totalCriados)*100).toFixed(1)}%)`);
 
-  // ============================================================================
+  // ========================================
   // 9. ESTATISTICAS FINAIS
-  // ============================================================================
+  // ========================================
   console.log('\nEstatisticas dos chamados criados:\n');
 
   const stats = await prisma.chamado.groupBy({
@@ -1267,9 +1269,9 @@ async function main() {
     console.log(`   ${stat.status}:${espacamento}${stat._count.toString().padStart(5)} chamados (${percentual.padStart(5)}%)`);
   }
 
-  // ============================================================================
+  // ========================================
   // RESUMO FINAL
-  // ============================================================================
+  // ========================================
   console.log('\n' + '='.repeat(80));
   console.log('SEED COMPLETO CONCLUIDO COM SUCESSO!');
   console.log('='.repeat(80));
@@ -1296,9 +1298,9 @@ async function main() {
   console.log('\n' + '='.repeat(80) + '\n');
 }
 
-// ============================================================================  
+// ========================================  
 // EXECUCAO
-// ============================================================================
+// ========================================
 
 main()
   .catch((e) => {

@@ -9,7 +9,6 @@ import { startChamadoConsumer } from './consumers/chamadoConsumer';
 
 const PORT = process.env.PORT || 3000;
 
-
 (async () => {
   try {
     await prisma.$connect();

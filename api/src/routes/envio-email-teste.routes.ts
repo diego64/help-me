@@ -1,4 +1,8 @@
-import { Router, Request, Response } from 'express';
+import {
+  Router,
+  Request,
+  Response
+} from 'express';
 import { producer } from '../services/kafka';
 
 const router = Router();

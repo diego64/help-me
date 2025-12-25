@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  vi,
+  beforeEach
+} from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
@@ -62,7 +70,7 @@ describe('E2E - Rotas de Serviços', () => {
       const uriMongo = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
       await mongoose.connect(uriMongo);
 
-      // Limpar dados de teste na ordem correta
+      // Limpar DADOS DE TESTES na ordem correta
       await limparBancoDados();
 
       // Criar usuário administrador

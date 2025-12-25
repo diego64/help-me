@@ -2,16 +2,16 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
-// ============================================================================
+// ========================================
 // MÉTRICAS CUSTOMIZADAS
-// ============================================================================
+// ========================================
 const errorRate = new Rate('errors');
 const customTrend = new Trend('custom_response_time');
 const requestCount = new Counter('total_requests');
 
-// ============================================================================
+// ========================================
 // CONFIGURAÇÃO DO TESTE DE SOAK
-// ============================================================================
+// ========================================
 export const options = {
   stages: [
     // 1. RAMP-UP: Sobe gradualmente até a carga alvo
@@ -44,18 +44,18 @@ export const options = {
   teardownTimeout: '2m',
 };
 
-// ============================================================================
+// ========================================
 // VARIÁVEIS DE AMBIENTE
-// ============================================================================
+// ========================================
 const BASE_URL = __ENV.API_URL || 'http://localhost:3000';
 const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || 'admin@helpme.com';
 const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || 'Admin123!';
 const USER_EMAIL = __ENV.USER_EMAIL || 'user@helpme.com';
 const USER_PASSWORD = __ENV.USER_PASSWORD || 'User123!';
 
-// ============================================================================
+// ========================================
 // SETUP
-// ============================================================================
+// ========================================
 export function setup() {
   console.log('[INFO] Iniciando TESTE DE SOAK (Resistência)');
   console.log('[INFO] Duração estimada: ~30min');
@@ -163,9 +163,9 @@ export function setup() {
   };
 }
 
-// ============================================================================
+// ========================================
 // FUNÇÃO PRINCIPAL DO TESTE
-// ============================================================================
+// ========================================
 export default function(data) {
   if (!data || !data.adminToken) {
     console.error('[ERROR] Dados de setup não disponíveis');
@@ -275,9 +275,9 @@ export default function(data) {
   sleep(Math.random() * 3 + 2); // Entre 2-5 segundos
 }
 
-// ============================================================================
+// ========================================
 // TEARDOWN: EXECUTADO UMA VEZ NO FINAL
-// ============================================================================
+// ========================================
 export function teardown(data) {
   if (!data) return;
   
@@ -290,9 +290,9 @@ export function teardown(data) {
   console.log('='.repeat(60) + '\n');
 }
 
-// ============================================================================
+// ========================================
 // RELATÓRIO
-// ============================================================================
+// ========================================
 
 export function handleSummary(data) {
   // Helper para acessar valores de forma segura

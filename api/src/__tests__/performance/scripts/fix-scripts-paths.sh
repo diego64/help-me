@@ -35,7 +35,7 @@ if [[ "$SCRIPT_DIR" == *"/scripts" ]]; then
 else
     BASE_DIR="$SCRIPT_DIR"
     IN_SCRIPTS_DIR=false
-    echo -e "${YELLOW}[WAN]  Não está em scripts/, assumindo base: $BASE_DIR${NC}"
+    echo -e "${YELLOW}[WARN]  Não está em scripts/, assumindo base: $BASE_DIR${NC}"
 fi
 
 echo ""
@@ -57,7 +57,7 @@ if [ -f "$SCRIPT_DIR/check-env.sh" ]; then
     
     echo -e "${GREEN}[SUCESSO] check-env.sh corrigido${NC}"
 else
-    echo -e "${YELLOW}[WAN]  check-env.sh não encontrado${NC}"
+    echo -e "${YELLOW}[WARN]  check-env.sh não encontrado${NC}"
 fi
 
 echo ""
@@ -94,7 +94,7 @@ ENV_FILE="$BASE_DIR/.env.k6"
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
 else
-    echo -e "${YELLOW}[WAN]  Arquivo .env.k6 não encontrado${NC}"
+    echo -e "${YELLOW}[WARN]  Arquivo .env.k6 não encontrado${NC}"
     echo -e "${CYAN}Executando check-env.sh...${NC}"
     bash "$SCRIPT_DIR/check-env.sh"
     source "$ENV_FILE"
@@ -138,7 +138,7 @@ show_menu() {
     if [ -n "$API_BASE_URL" ]; then
         echo -e "${GREEN}[SUCESSO] API:${NC} $API_BASE_URL"
     else
-        echo -e "${YELLOW}[WAN]  URL da API não configurada${NC}"
+        echo -e "${YELLOW}[WARN]  URL da API não configurada${NC}"
     fi
     echo ""
 }
@@ -231,7 +231,7 @@ analyze_results() {
         if [ "$error_ok" -eq 1 ]; then
             echo -e "${GREEN}[SUCESSO] Taxa de erro aceitável (<15%)${NC}"
         else
-            echo -e "${YELLOW}[WAN]  Taxa de erro elevada${NC}"
+            echo -e "${YELLOW}[WARN]  Taxa de erro elevada${NC}"
         fi
     else
         echo -e "${YELLOW}[INFO]  Instale 'jq' para análise automática${NC}"
@@ -323,7 +323,7 @@ EOFSCRIPT
     
     echo -e "${GREEN}[SUCESSO] run-performance-tests-docker.sh corrigido${NC}"
 else
-    echo -e "${YELLOW}[WAN]  run-performance-tests-docker.sh não encontrado${NC}"
+    echo -e "${YELLOW}[WARN]  run-performance-tests-docker.sh não encontrado${NC}"
 fi
 
 echo ""
@@ -341,7 +341,7 @@ if [ -f "$SCRIPT_DIR/run-with-grafana.sh" ]; then
     
     echo -e "${GREEN}[SUCESSO] run-with-grafana.sh corrigido${NC}"
 else
-    echo -e "${YELLOW}[WAN]  run-with-grafana.sh não encontrado${NC}"
+    echo -e "${YELLOW}[WARN]  run-with-grafana.sh não encontrado${NC}"
 fi
 
 echo ""

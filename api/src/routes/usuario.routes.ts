@@ -3,7 +3,11 @@ import { prisma } from '../lib/prisma';
 import { Setor } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
+import {
+  authMiddleware,
+  authorizeRoles,
+  AuthRequest
+} from '../middleware/auth';
 import { cacheSet, cacheGet } from '../services/redisClient';
 
 const router = Router();
@@ -15,15 +19,15 @@ const router = Router();
  *   description: Gerenciamento de usuários do sistema
  */
 
-// ============================================================================
+// ====================================================
 // CONFIGURAÇÃO DE UPLOAD DE IMAGEM DO AVATAR
-// ============================================================================
+// ====================================================
 
 const upload = multer({ dest: 'uploads/' });
 
-// ============================================================================
+// ====================================================
 // DADOS NECESSARIOS PARA CRIAÇÃO DO USUARIO
-// ============================================================================
+// ====================================================
 
 interface usuarioInput {
   nome: string;
@@ -35,9 +39,9 @@ interface usuarioInput {
   setor: Setor;
 }
 
-// ============================================================================
+// ====================================================
 // CRIAÇÃO DO PERFIL USUARIO
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -123,9 +127,9 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
   }
 );
 
-// ============================================================================
+// ====================================================
 // LISTAGEM DE TODOS OS USUARIOS
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -178,7 +182,7 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
  */
 router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
     try {
-      const cacheKey = 'usuarios:list:admin'; // Chave descritiva
+      const cacheKey = 'usuarios:list:admin';
       const cached = await cacheGet(cacheKey);
       if (cached) {
         return res.json(JSON.parse(cached)); // Retorno acelerado do cache
@@ -210,9 +214,9 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   }
 );
 
-// ============================================================================
+// ====================================================
 // BUSCA PELO USUARIO ATRAVÉS DO EMAIL
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -316,9 +320,9 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
   }
 );
 
-// ============================================================================
+// ====================================================
 // EDIÇÃO DO PERFIL DO USUARIO
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -383,9 +387,9 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
   }
 });
 
-// ============================================================================
+// ====================================================
 // ALTERAÇÃO DE SENHA
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -447,9 +451,9 @@ router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), asy
   }
 });
 
-// ============================================================================
+// ====================================================
 // EXCLUSÃO DA CONTA DO USUARIO 
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger
@@ -491,9 +495,9 @@ router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async 
   }
 });
 
-// ============================================================================
+// ====================================================
 // ENVIO DA FOTO DE PERFIL DO USUARIO 
-// ============================================================================
+// ====================================================
 
 /**
  * @swagger

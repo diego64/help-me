@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  vi
+} from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
@@ -7,13 +14,12 @@ import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 15000 });
 
-
 const URL_BASE = '/filadechamados';
 
 describe('E2E - Rotas de Listagem de Chamados', () => {
-  // ============================================================================
-  // Dados de Teste & Configuração
-  // ============================================================================
+  // ========================================
+  // DADOS DE TESTES & CONFIGURAÇÃO
+  // ========================================
   
   let tokenAutenticacaoUsuario: string;
   let tokenAutenticacaoTecnico: string;
@@ -24,9 +30,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   let idChamadoAberto: string;
   let idChamadoEmAtendimento: string;
 
-  // ============================================================================
-  // Funções Auxiliares
-  // ============================================================================
+  // ========================================
+  // FUNÇÕES AUXILIARES
+  // ========================================
 
   const limparBancoDeDados = async () => {
     await prisma.ordemDeServico.deleteMany({});
@@ -148,13 +154,13 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     return { tokenUsuario, tokenTecnico, tokenAdmin };
   };
 
-  // ============================================================================
+  // ========================================
   // Hooks Globais
-  // ============================================================================
+  // ========================================
 
   beforeAll(async () => {
     // Arrange: Conectar ao MongoDB
-    const mongoUri = 
+    const mongoUri= 
       process.env.MONGO_INITDB_URI || 
       'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
     await mongoose.connect(mongoUri);
@@ -189,9 +195,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     await prisma.$disconnect();
   });
 
-  // ============================================================================
+  // ========================================
   // GET /meus-chamados - Listagem de Chamados do Usuário
-  // ============================================================================
+  // ========================================
 
   describe('GET /meus-chamados', () => {
     it('Dado usuário autenticado com role USUARIO, Quando consulta seus chamados, Então deve retornar apenas chamados criados por ele', async () => {
@@ -262,9 +268,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // GET /chamados-atribuidos - Listagem de Chamados do Técnico
-  // ============================================================================
+  // ========================================
 
   describe('GET /chamados-atribuidos', () => {
     it('Dado técnico autenticado, Quando consulta chamados atribuídos, Então deve retornar apenas seus chamados com status válido', async () => {
@@ -336,9 +342,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // GET /todos-chamados - Listagem Completa (Admin)
-  // ============================================================================
+  // ========================================
 
   describe('GET /todos-chamados', () => {
     it('Dado admin com filtro de status ABERTO, Quando consulta todos chamados, Então deve retornar apenas chamados com status ABERTO', async () => {
@@ -422,9 +428,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // GET /abertos - Listagem de Chamados Abertos/Reabertos
-  // ============================================================================
+  // ========================================
 
   describe('GET /abertos', () => {
     it('Dado admin autenticado, Quando consulta chamados abertos, Então deve retornar apenas chamados com status ABERTO ou REABERTO', async () => {
@@ -498,9 +504,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // Testes de Paginação e Ordenação
-  // ============================================================================
+  // ========================================
 
   describe('Paginação e Ordenação', () => {
     it('Dado múltiplos chamados cadastrados, Quando consulta com limite, Então deve respeitar paginação', async () => {
@@ -541,9 +547,9 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // Testes de Integridade de Dados
-  // ============================================================================
+  // ========================================
 
   describe('Integridade de Dados Retornados', () => {
     it('Dado chamado consultado, Quando retorna dados, Então deve incluir informações completas do usuário', async () => {

@@ -7,9 +7,9 @@ import {
   vi
 } from 'vitest';
 
-// ============================================================================
+// ========================================
 // CONFIGURAÇÃO DOS MOCKS
-// ============================================================================
+// ========================================
 
 vi.mock('express-session', () => ({
   default: vi.fn(() => (req: any, res: any, next: any) => next()),
@@ -38,9 +38,9 @@ vi.mock('../../../src/routes/chamado.routes', () => ({ default: criarMockMiddlew
 vi.mock('../../../src/routes/fila-de-chamados.routes', () => ({ default: criarMockMiddlewareRota() }));
 vi.mock('../../../src/routes/envio-email-teste.routes', () => ({ default: criarMockMiddlewareRota() }));
 
-// ============================================================================
+// ========================================
 // FUNÇÕES AUXILIARES
-// ============================================================================
+// ========================================
 
 const importarModuloApp = async () => await import('../../app');
 
@@ -56,14 +56,14 @@ const limparAmbiente = () => {
   delete process.env.JWT_SECRET;
 };
 
-// ============================================================================
+// ========================================
 // SUÍTE DE TESTES
-// ============================================================================
+// ========================================
 
 describe('Configuração da Aplicação', () => {
-  // ============================================================================
+  // ========================================
   // PREPARAÇÃO E LIMPEZA
-  // ============================================================================
+  // ========================================
   
   beforeEach(() => {
     vi.resetModules();
@@ -73,9 +73,9 @@ describe('Configuração da Aplicação', () => {
     limparAmbiente();
   });
 
-  // ============================================================================
+  // ========================================
   // TESTES DE SEGURANÇA
-  // ============================================================================
+  // ========================================
 
   describe('Configuração de Segurança', () => {
     it('deve lançar erro quando JWT_SECRET não está definido - DADO que JWT_SECRET está ausente QUANDO app inicializa ENTÃO deve lançar erro de configuração', async () => {
@@ -93,9 +93,9 @@ describe('Configuração da Aplicação', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // TESTES DE INICIALIZAÇÃO
-  // ============================================================================
+  // ========================================
 
   describe('Inicialização da Aplicação', () => {
     it('deve inicializar com sucesso quando JWT_SECRET está definido - DADO que JWT_SECRET é válido QUANDO app inicializa ENTÃO deve retornar app Express configurado', async () => {
@@ -134,9 +134,9 @@ describe('Configuração da Aplicação', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // TESTES DE ESTRUTURA DO EXPRESS
-  // ============================================================================
+  // ========================================
 
   describe('Estrutura da Aplicação Express', () => {
     beforeEach(() => {

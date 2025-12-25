@@ -1,10 +1,20 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach
+} from 'vitest';
 import {
   conectarKafkaProducer,
   desconectarKafkaProducer,
   getKafkaConfig,
   getProducerInstanceForTest,
-  producer
+  producer,
+  isKafkaConnected,
+  sendMessage
 } from '../../services/kafka';
 
 describe('E2E - Kafka Service', () => {
@@ -25,12 +35,12 @@ describe('E2E - Kafka Service', () => {
   });
 
   beforeEach(() => {
-    process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    process.env.KAFKA_BROKER_URL = 'localhost:9093';
   });
 
   afterEach(async () => {
     await desconectarKafkaProducer();
-    process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    process.env.KAFKA_BROKER_URL = 'localhost:9093';
   });
 
   describe('Dado um ambiente Kafka configurado, Quando obter configuração, Então deve retornar dados corretos', () => {
@@ -69,7 +79,6 @@ describe('E2E - Kafka Service', () => {
     });
 
     it('retorna mesma instância do producer em acessos subsequentes', () => {
-
       const primeiroProducer = producer;
       const segundoProducer = producer;
       const terceiroProducer = producer;
@@ -82,37 +91,42 @@ describe('E2E - Kafka Service', () => {
 
   describe('Dado um producer não conectado, Quando conectar ao Kafka, Então deve estabelecer conexão com sucesso', () => {
     it('conecta producer ao broker Kafka real', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
 
       await conectarKafkaProducer();
 
+      expect(isKafkaConnected()).toBe(true);
+      
       const producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
     }, 10000);
 
     it('permite múltiplas conexões sucessivas sem erro', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
 
       await conectarKafkaProducer();
       
+      expect(isKafkaConnected()).toBe(true);
       let producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
 
       await desconectarKafkaProducer();
 
+      expect(isKafkaConnected()).toBe(false);
       producerReal = getProducerInstanceForTest();
       expect(producerReal).toBeNull();
 
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
 
       await conectarKafkaProducer();
 
+      expect(isKafkaConnected()).toBe(true);
       producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
     }, 15000);
@@ -120,43 +134,45 @@ describe('E2E - Kafka Service', () => {
 
   describe('Dado um producer conectado, Quando desconectar, Então deve fechar conexão corretamente', () => {
     it('desconecta producer do broker Kafka', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
       await conectarKafkaProducer();
+      
+      expect(isKafkaConnected()).toBe(true);
       let producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
 
       await desconectarKafkaProducer();
 
+      expect(isKafkaConnected()).toBe(false);
       producerReal = getProducerInstanceForTest();
       expect(producerReal).toBeNull();
-
-      // A configuração pode persistir para reutilização (comportamento comum em singletons)
-      // Se sua implementação limpa a config também, descomente a linha abaixo:
-      // const kafkaConfiguration = getKafkaConfig();
-      // expect(kafkaConfiguration).toBeNull();
       
       // RE-DEFINE para não afetar próximos testes
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
     }, 10000);
 
     it('permite desconexão mesmo sem conexão prévia', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
+      expect(isKafkaConnected()).toBe(false);
       const producerReal = getProducerInstanceForTest();
       expect(producerReal).toBeNull();
 
       await expect(desconectarKafkaProducer()).resolves.not.toThrow();
       
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      expect(isKafkaConnected()).toBe(false);
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
     });
   });
 
   describe('Dado um producer conectado, Quando enviar mensagem, Então deve publicar no tópico Kafka', () => {
-    it('envia mensagem para tópico Kafka com sucesso', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+    it('envia mensagem para tópico Kafka com sucesso usando sendMessage', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
       await conectarKafkaProducer();
+      
+      expect(isKafkaConnected()).toBe(true);
       const producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
 
@@ -166,6 +182,27 @@ describe('E2E - Kafka Service', () => {
         value: JSON.stringify({
           id: '001',
           mensagem: 'Teste E2E Kafka',
+          timestamp: new Date().toISOString()
+        })
+      };
+
+      // Usa a função sendMessage do serviço
+      await expect(sendMessage(nomeTopico, [mensagemTeste])).resolves.not.toThrow();
+    }, 15000);
+
+    it('envia mensagem diretamente pelo producer com sucesso', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      await conectarKafkaProducer();
+      const producerReal = getProducerInstanceForTest();
+      expect(producerReal).not.toBeNull();
+
+      const nomeTopico = 'test-topic-direct-e2e';
+      const mensagemTeste = {
+        key: 'test-key-002',
+        value: JSON.stringify({
+          id: '002',
+          mensagem: 'Teste E2E Direto',
           timestamp: new Date().toISOString()
         })
       };
@@ -186,7 +223,7 @@ describe('E2E - Kafka Service', () => {
     }, 15000);
 
     it('envia múltiplas mensagens em lote com sucesso', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
 
       await conectarKafkaProducer();
       const producerReal = getProducerInstanceForTest();
@@ -208,13 +245,11 @@ describe('E2E - Kafka Service', () => {
         }
       ];
 
-      // Act: Envia lote de mensagens
       const resultadoEnvio = await producerReal!.send({
         topic: nomeTopico,
         messages: mensagensLote
       });
 
-      // Assert: Valida que todas mensagens foram enviadas
       expect(resultadoEnvio).toBeDefined();
       expect(Array.isArray(resultadoEnvio)).toBe(true);
       expect(resultadoEnvio.length).toBeGreaterThan(0);
@@ -226,15 +261,35 @@ describe('E2E - Kafka Service', () => {
         expect(metadata).toHaveProperty('baseOffset');
       });
     }, 15000);
+
+    it('loga warning quando tenta enviar sem estar conectado', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      // Não conecta propositalmente
+      expect(isKafkaConnected()).toBe(false);
+
+      const nomeTopico = 'test-topic-sem-conexao';
+      const mensagemTeste = {
+        key: 'test-key-003',
+        value: JSON.stringify({ mensagem: 'Sem conexão' })
+      };
+
+      // Deve retornar sem erro, apenas logando warning
+      await expect(sendMessage(nomeTopico, [mensagemTeste])).resolves.not.toThrow();
+      
+      expect(isKafkaConnected()).toBe(false);
+    }, 10000);
   });
 
   describe('Dado um ciclo completo de conexão, Quando executar operações, Então deve manter estabilidade', () => {
     it('executa ciclo completo: conectar -> enviar -> desconectar -> reconectar', async () => {
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
 
+      // Primeira conexão
       await conectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(true);
+      
       let producerReal = getProducerInstanceForTest();
-
       expect(producerReal).not.toBeNull();
 
       const nomeTopico = 'test-topic-ciclo-e2e';
@@ -243,6 +298,7 @@ describe('E2E - Kafka Service', () => {
         value: JSON.stringify({ mensagem: 'Ciclo completo' })
       };
       
+      // Primeiro envio
       const primeiroEnvio = await producerReal!.send({
         topic: nomeTopico,
         messages: [mensagemTeste]
@@ -250,18 +306,22 @@ describe('E2E - Kafka Service', () => {
 
       expect(primeiroEnvio[0].errorCode).toBe(0);
 
+      // Desconecta
       await desconectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(false);
+      
       producerReal = getProducerInstanceForTest();
-
       expect(producerReal).toBeNull();
 
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
-
+      // Reconecta
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
       await conectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(true);
+      
       producerReal = getProducerInstanceForTest();
-
       expect(producerReal).not.toBeNull();
 
+      // Segundo envio após reconexão
       const segundoEnvio = await producerReal!.send({
         topic: nomeTopico,
         messages: [{
@@ -272,25 +332,92 @@ describe('E2E - Kafka Service', () => {
 
       expect(segundoEnvio[0].errorCode).toBe(0);
 
+      // Desconecta novamente
       await desconectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(false);
+      
       producerReal = getProducerInstanceForTest();
-
       expect(producerReal).toBeNull();
       
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
     }, 20000);
   });
 
   describe('Dado um broker Kafka indisponível, Quando tentar conectar, Então deve tratar erro apropriadamente', () => {
-    it('lança erro quando broker está inacessível', async () => {
+    it('não lança erro quando broker está inacessível, apenas loga warning', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9999'; // Porta inexistente
       await desconectarKafkaProducer(); // Limpa instâncias anteriores
 
-      await expect(async () => {
-        await conectarKafkaProducer();
-      }).rejects.toThrow();
+      // Agora não deve lançar erro, apenas logar warning
+      await expect(conectarKafkaProducer()).resolves.not.toThrow();
       
-      process.env.KAFKA_BROKER_URL = 'localhost:9092';
+      // Deve estar desconectado
+      expect(isKafkaConnected()).toBe(false);
+      
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
     }, 15000);
+
+    it('permite operação normal após falha de conexão e correção da URL', async () => {
+      // Tenta conectar em broker inválido
+      process.env.KAFKA_BROKER_URL = 'localhost:9999';
+      await desconectarKafkaProducer();
+      
+      await conectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(false);
+
+      // Corrige a URL e desconecta
+      await desconectarKafkaProducer();
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+
+      // Conecta com URL correta
+      await conectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(true);
+
+      const producerReal = getProducerInstanceForTest();
+      expect(producerReal).not.toBeNull();
+
+      // Valida que consegue enviar mensagem
+      const resultado = await producerReal!.send({
+        topic: 'test-topic-recuperacao',
+        messages: [{
+          key: 'recuperacao-001',
+          value: JSON.stringify({ mensagem: 'Recuperado com sucesso' })
+        }]
+      });
+
+      expect(resultado[0].errorCode).toBe(0);
+    }, 20000);
+  });
+
+  describe('Dado diferentes cenários de uso, Quando usar função sendMessage, Então deve comportar-se corretamente', () => {
+    it('sendMessage envia quando conectado', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      await conectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(true);
+
+      await expect(
+        sendMessage('test-send-message', [{ 
+          value: JSON.stringify({ teste: 'sendMessage' }) 
+        }])
+      ).resolves.not.toThrow();
+    }, 10000);
+
+    it('sendMessage loga warning quando desconectado', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      
+      // Garante que está desconectado
+      await desconectarKafkaProducer();
+      expect(isKafkaConnected()).toBe(false);
+
+      // Deve retornar sem erro
+      await expect(
+        sendMessage('test-send-message-offline', [{ 
+          value: JSON.stringify({ teste: 'offline' }) 
+        }])
+      ).resolves.not.toThrow();
+      
+      expect(isKafkaConnected()).toBe(false);
+    }, 10000);
   });
 });

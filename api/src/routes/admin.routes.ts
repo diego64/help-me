@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../middleware/auth';
+import {
+  authMiddleware,
+  authorizeRoles,
+  AuthRequest
+} from '../middleware/auth';
 
 const router = Router();
 
@@ -12,9 +16,9 @@ const router = Router();
  *   description: Gerenciamento de usuários administradores
  */
 
-// ============================================================================
+// ========================================
 // CRIAÇÃO DE USUARIO COM PERFIL ADMIN
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -79,9 +83,9 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
   }
 );
 
-// ============================================================================
+// ========================================
 // LISTAGEM DE TODOS OS USUÁRIOS COM A REGRA DE PERFIL ADMIN
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -111,9 +115,9 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
   }
 });
 
-// ============================================================================
+// ========================================
 // EDIÇÃO DE USUÁRIOS COM A REGRA DE PERFIL ADMIN
-// ============================================================================
+// ========================================
 
 /**
  * @swagger
@@ -177,9 +181,9 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequ
   }
 });
 
-// ============================================================================
+// ========================================
 // EXCLUSÃO DOS USUÁRIOS COM A REGRA DE PERFIL ADMIN
-// ============================================================================
+// ========================================
 
 /**
  * @swagger

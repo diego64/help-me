@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  vi
+} from 'vitest';
 import ChamadoAtualizacao from '../../models/chamadoAtualizacao.model';
 import {
   listarHistoricoChamado,
@@ -6,9 +12,9 @@ import {
 } from '../../repositories/chamadoAtualizacao.repository';
 
 describe('ChamadoAtualizacao Repository', () => {
-  // ============================================================================
-  // Dados de Teste
-  // ============================================================================
+  // ========================================
+  // DADOS DE TESTES
+  // ========================================
   
   const createMockHistorico = () => ({
     _id: 'fake_mongo_id',
@@ -28,17 +34,17 @@ describe('ChamadoAtualizacao Repository', () => {
     },
   });
 
-  // ============================================================================
-  // Configuração e Limpeza
-  // ============================================================================
+  // ========================================
+  // CONFIGURAÇÃO E LIMPEZA
+  // ========================================
 
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  // ============================================================================
+  // ========================================
   // Testes de salvarHistoricoChamado
-  // ============================================================================
+  // ========================================
 
   describe('salvarHistoricoChamado', () => {
     it('Dado um conjunto válido de dados de histórico, quando salvarHistoricoChamado é chamado, então registra no banco e retorna o histórico salvo completo', async () => {
@@ -81,9 +87,9 @@ describe('ChamadoAtualizacao Repository', () => {
     });
   });
 
-  // ============================================================================
+  // ========================================
   // Testes de listarHistoricoChamado
-  // ============================================================================
+  // ========================================
 
   describe('listarHistoricoChamado', () => {
     it('Dado um ID de chamado válido, quando listarHistoricoChamado é chamado, então retorna a lista de históricos do chamado ordenada por data crescente e completa', async () => {

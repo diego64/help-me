@@ -1,4 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach
+} from 'vitest';
 import jwt from 'jsonwebtoken';
 import { Regra, Setor } from '@prisma/client';
 import {
@@ -11,9 +16,9 @@ import {
   TokenPayload,
 } from '../../auth/jwt';
 
-// ============================================================================
+// ========================================
 // HELPER FUNCTIONS
-// ============================================================================
+// ========================================
 
 /**
  * Verifica token JWT sem cache, buscando o secret dinamicamente
@@ -47,9 +52,9 @@ function verifyTokenForTesting(token: string, expectedType: 'access' | 'refresh'
   }
 }
 
-// ============================================================================
+// ========================================
 // TEST FIXTURES
-// ============================================================================
+// ========================================
 
 const FAKE_SECRET = 'a'.repeat(32);
 const FAKE_REFRESH_SECRET = 'b'.repeat(32);
@@ -86,9 +91,9 @@ const defaultUserMock: {
   refreshToken: null,
 };
 
-// ============================================================================
+// ========================================
 // SETUP E TEARDOWN
-// ============================================================================
+// ========================================
 
 beforeEach(() => {
   // Arrange: Configurar variáveis de ambiente para cada teste
@@ -98,9 +103,9 @@ beforeEach(() => {
   process.env.JWT_REFRESH_EXPIRATION = '2h';
 });
 
-// ============================================================================
+// ========================================
 // TESTES - VALIDAÇÃO DE SECRETS
-// ============================================================================
+// ========================================
 
 describe('validateSecrets - Validação de Configurações JWT', () => {
   describe('Dado secrets JWT válidos configurados no ambiente', () => {
@@ -150,9 +155,9 @@ describe('validateSecrets - Validação de Configurações JWT', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES - GERAÇÃO DE TOKENS
-// ============================================================================
+// ========================================
 
 describe('generateToken - Geração de Token Individual', () => {
   describe('Dado usuário válido e tipo "access"', () => {
@@ -225,9 +230,9 @@ describe('generateTokenPair - Geração de Par de Tokens', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES - VERIFICAÇÃO DE TOKENS
-// ============================================================================
+// ========================================
 
 describe('verifyToken - Verificação e Validação de Tokens', () => {
   describe('Dado token válido do tipo "access"', () => {
@@ -314,9 +319,9 @@ describe('verifyToken - Verificação e Validação de Tokens', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES - DECODIFICAÇÃO DE TOKENS
-// ============================================================================
+// ========================================
 
 describe('decodeToken - Decodificação sem Verificação', () => {
   describe('Dado token válido', () => {
@@ -354,9 +359,9 @@ describe('decodeToken - Decodificação sem Verificação', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES - VERIFICAÇÃO DE EXPIRAÇÃO
-// ============================================================================
+// ========================================
 
 describe('isTokenExpired - Verificação de Validade Temporal', () => {
   describe('Dado token expirado', () => {
@@ -414,9 +419,9 @@ describe('isTokenExpired - Verificação de Validade Temporal', () => {
   });
 });
 
-// ============================================================================
+// ========================================
 // TESTES - EXTRAÇÃO DE HEADER
-// ============================================================================
+// ========================================
 
 describe('extractTokenFromHeader - Extração de Token do Header', () => {
   describe('Dado Authorization header no formato Bearer correto', () => {

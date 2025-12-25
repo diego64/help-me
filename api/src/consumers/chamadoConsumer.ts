@@ -5,9 +5,9 @@ import handlebars from 'handlebars';
 
 const consumer = kafka.consumer({ groupId: 'chamado-group' });
 
-// ============================================================================
+// ========================================
 // RENDERIZAÇÃO DO TEMPLATE DO E-MAIL COM BASE NO MODELO .hbs
-// ============================================================================
+// ========================================
 
 function renderTemplate(templatePath: string, data: object) {
   const templateStr = fs.readFileSync(templatePath, 'utf-8');
@@ -15,9 +15,9 @@ function renderTemplate(templatePath: string, data: object) {
   return template(data);
 }
 
-// ============================================================================
+// ========================================
 // E-MAIL PARA ABERTURA DE CHAMADO
-// ============================================================================
+// ========================================
 
 async function sendChamadoAbertoEmail(chamado: any) {
   const html = renderTemplate(
@@ -37,9 +37,9 @@ async function sendChamadoAbertoEmail(chamado: any) {
   });
 }
 
-// ============================================================================
+// ========================================
 // E-MAIL PARA ENCERRAMENTO DE CHAMADO
-// ============================================================================
+// ========================================
 
 async function sendChamadoEncerradoEmail(chamado: any) {
   const html = renderTemplate(

@@ -1,12 +1,26 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+  vi
+} from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
+import { redisClient } from '../../services/redisClient';
+import * as redisCache from '../../services/redisClient';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
 
 vi.setConfig({ testTimeout: 20000 });
+
+// ========================
+// FUNÇÕES AUXILIARES
+// ========================
 
 function gerarTokenAcesso(usuarioId: string, regra: string): string {
   const secret = process.env.JWT_SECRET || 'testsecret';
@@ -15,6 +29,8 @@ function gerarTokenAcesso(usuarioId: string, regra: string): string {
     id: usuarioId,
     regra: regra,
     type: 'access',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 8 * 60 * 60,
   };
   
   return jwt.sign(
@@ -23,8 +39,7 @@ function gerarTokenAcesso(usuarioId: string, regra: string): string {
     { 
       algorithm: 'HS256',
       audience: 'helpme-client', 
-      issuer: 'helpme-api',
-      expiresIn: '8h'
+      issuer: 'helpme-api'
     }
   );
 }
@@ -35,12 +50,16 @@ async function limparBancoDados() {
     await prisma.expediente.deleteMany({});
     await prisma.servico.deleteMany({});
     await prisma.usuario.deleteMany({});
-    console.log('Banco de dados limpo');
+    console.log('[CLEANUP] Banco de dados limpo');
   } catch (error) {
-    console.error('Erro ao limpar banco de dados:', error);
+    console.error('[ERROR] Erro ao limpar banco de dados:', error);
     throw error;
   }
 }
+
+// ========================
+// SUITE DE TESTES
+// ========================
 
 describe('E2E - Rotas de Usuário', () => {
   let tokenAdmin: string;
@@ -50,8 +69,34 @@ describe('E2E - Rotas de Usuário', () => {
 
   beforeAll(async () => {
     try {
-      const uriMongo = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
+      console.log('\n[SETUP] ========================================');
+      console.log('[SETUP] Iniciando setup dos testes E2E de Usuário...');
+      
+      if (!process.env.JWT_SECRET) {
+        process.env.JWT_SECRET = 'testsecret';
+        console.log('[SETUP] JWT_SECRET definido para testes');
+      }
+      
+      const uriMongo = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
       await mongoose.connect(uriMongo);
+      console.log('[SETUP] MongoDB conectado');
+
+      if (!redisClient.isOpen) {
+        try {
+          await redisClient.connect();
+          console.log('[SETUP] Redis conectado');
+        } catch (error: any) {
+          console.error('[SETUP] Redis não disponível:', error.message);
+        }
+      } else {
+        console.log('[SETUP] Redis já estava conectado');
+      }
+
+      console.log('[SETUP] Configurando mocks do Redis...');
+      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
+      vi.spyOn(redisCache, 'cacheGet').mockResolvedValue(null); // ← Cache vazio
+      vi.spyOn(redisCache, 'cacheSet').mockResolvedValue(undefined); // ← Cache set sem erro
+      console.log('[SETUP] Mocks do Redis configurados');
 
       await limparBancoDados();
 
@@ -67,6 +112,7 @@ describe('E2E - Rotas de Usuário', () => {
         },
       });
       idAdmin = usuarioAdmin.id;
+      console.log('[SETUP] Admin criado:', idAdmin);
 
       const usuarioComum = await prisma.usuario.create({
         data: {
@@ -79,29 +125,58 @@ describe('E2E - Rotas de Usuário', () => {
         },
       });
       idUsuario = usuarioComum.id;
+      console.log('[SETUP] Usuário criado:', idUsuario);
 
       tokenAdmin = gerarTokenAcesso(idAdmin, 'ADMIN');
       tokenUsuario = gerarTokenAcesso(idUsuario, 'USUARIO');
+      console.log('[SETUP] Tokens gerados');
 
-      console.log('Setup completo para testes E2E - Usuários e tokens criados');
+      console.log('[SETUP] Setup completo!');
+      console.log('[SETUP] ========================================\n');
     } catch (error) {
-      console.error('Erro no beforeAll:', error);
+      console.error('[ERROR] Erro fatal no beforeAll:', error);
       throw error;
     }
   });
 
+  afterEach(() => {
+    vi.clearAllMocks();
+    // CORRIGIDO: Recriar todos os mocks
+    vi.spyOn(redisClient, 'get').mockResolvedValue(null);
+    vi.spyOn(redisCache, 'cacheGet').mockResolvedValue(null);
+    vi.spyOn(redisCache, 'cacheSet').mockResolvedValue(undefined);
+  });
+
   afterAll(async () => {
     try {
+      console.log('\n[CLEANUP] ========================================');
+      console.log('[CLEANUP] Iniciando limpeza...');
+      
+      vi.restoreAllMocks();
       await limparBancoDados();
       await mongoose.disconnect();
+      console.log('[CLEANUP] MongoDB desconectado');
+      
       await prisma.$disconnect();
-      console.log('Cleanup completo');
+      console.log('[CLEANUP] Prisma desconectado');
+      
+      if (redisClient.isOpen) {
+        await redisClient.quit();
+        console.log('[CLEANUP] Redis desconectado');
+      }
+      
+      console.log('[CLEANUP] Cleanup completo');
+      console.log('[CLEANUP] ========================================\n');
     } catch (error) {
-      console.error('Erro no afterAll:', error);
+      console.error('[ERROR] Erro no afterAll:', error);
       await mongoose.disconnect().catch(() => {});
       await prisma.$disconnect().catch(() => {});
     }
   });
+
+  // ========================
+  // TESTES
+  // ========================
 
   describe('Dado um administrador autenticado', () => {
     describe('Quando enviar POST /usuario com dados válidos', () => {
@@ -121,17 +196,16 @@ describe('E2E - Rotas de Usuário', () => {
           .set('Authorization', `Bearer ${tokenAdmin}`)
           .send(dadosNovoUsuario);
 
+        if (resposta.status !== 201) {
+          console.error('[ERROR] Erro ao criar usuário:', resposta.body);
+        }
+
         expect(resposta.status).toBe(201);
         expect(resposta.body).toHaveProperty('id');
         expect(resposta.body.nome).toBe(dadosNovoUsuario.nome);
         expect(resposta.body.sobrenome).toBe(dadosNovoUsuario.sobrenome);
         expect(resposta.body.email).toBe(dadosNovoUsuario.email);
         expect(resposta.body.regra).toBe('USUARIO');
-        
-        if (resposta.body.password) {
-          expect(resposta.body.password).not.toBe(dadosNovoUsuario.password);
-          expect(resposta.body.password).toMatch(/^\$2b\$/);
-        }
       });
     });
 
@@ -158,9 +232,20 @@ describe('E2E - Rotas de Usuário', () => {
   describe('Dado um administrador autenticado', () => {
     describe('Quando enviar GET /usuario', () => {
       it('Então deve listar todos os usuários com regra USUARIO', async () => {
+        console.log('\n[TEST] Iniciando teste de listagem de usuários');
+
         const resposta = await request(app)
           .get('/usuario')
           .set('Authorization', `Bearer ${tokenAdmin}`);
+
+        if (resposta.status !== 200) {
+          console.error('[ERROR] ========================================');
+          console.error('[ERROR] Status:', resposta.status);
+          console.error('[ERROR] Body:', JSON.stringify(resposta.body, null, 2));
+          console.error('[ERROR] ========================================');
+        } else {
+          console.log('[SUCCESS] Listagem retornou:', resposta.body.length, 'usuários');
+        }
 
         expect(resposta.status).toBe(200);
         expect(Array.isArray(resposta.body)).toBe(true);

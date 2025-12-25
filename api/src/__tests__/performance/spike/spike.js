@@ -45,7 +45,7 @@ const ADMIN_CREDENTIALS = {
 };
 
 // ============================================
-// Funções Auxiliares
+// FUNÇÕES AUXILIARES
 // ============================================
 
 function randomString(length = 8) {
