@@ -279,19 +279,19 @@ jobs:
         run: |
           docker compose -f docker-compose.test.yml up -d
           echo "Aguardando serviços ficarem prontos..."
-          sleep 30
+          sleep 60
           docker compose -f docker-compose.test.yml ps
       
       - name: Verificar saúde dos serviços
         working-directory: ./api
         run: |
           echo "Verificando PostgreSQL..."
-          docker compose -f docker-compose.test.yml exec -T postgres pg_isready || echo "PostgreSQL não está pronto"
+          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; do echo "Aguardando PostgreSQL..."; sleep 2; done' || echo "⚠️ PostgreSQL timeout"
           
           echo "Verificando Redis..."
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli ping || echo "Redis não está pronto"
+          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; do echo "Aguardando Redis..."; sleep 2; done' || echo "⚠️ Redis timeout"
           
-          echo "Status dos containers:"
+          echo "Status final dos containers:"
           docker compose -f docker-compose.test.yml ps
       
       - name: Executar migrations
@@ -322,15 +322,15 @@ jobs:
         if: failure()
         run: |
           echo "=== PostgreSQL Logs ==="
-          docker compose -f docker-compose.test.yml logs postgres
+          docker compose -f docker-compose.test.yml logs --tail=100 postgres
           echo "=== MongoDB Logs ==="
-          docker compose -f docker-compose.test.yml logs mongodb
+          docker compose -f docker-compose.test.yml logs --tail=100 mongodb
           echo "=== Kafka Logs ==="
-          docker compose -f docker-compose.test.yml logs kafka
+          docker compose -f docker-compose.test.yml logs --tail=100 kafka
           echo "=== Redis Logs ==="
-          docker compose -f docker-compose.test.yml logs redis
+          docker compose -f docker-compose.test.yml logs --tail=100 redis
           echo "=== InfluxDB Logs ==="
-          docker compose -f docker-compose.test.yml logs influxdb
+          docker compose -f docker-compose.test.yml logs --tail=100 influxdb
       
       - name: Derrubar infraestrutura
         working-directory: ./api 
@@ -381,7 +381,7 @@ jobs:
             echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
             exit 1
           fi
-          echo "✓ Versão válida: ${{ steps.version.outputs.version }}"
+          echo "Versão válida: ${{ steps.version.outputs.version }}"
       
       - name: Extrair metadados Docker
         id: meta
@@ -452,7 +452,7 @@ jobs:
           git config user.email "actions@github.com"
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
-          echo "✓ Tag v${{ steps.version.outputs.version }} criada e enviada"
+          echo "Tag v${{ steps.version.outputs.version }} criada e enviada"
       
       - name: Resumo da release
         run: |
