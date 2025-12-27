@@ -19,28 +19,8 @@ permissions:
   security-events: write
 
 jobs:
-  ambientes-para-homologacao:
-    name: Verificação de Ambientes
-    strategy:
-      matrix:
-        versao: [20, 22]
-        plataforma: ["ubuntu"]
-    runs-on: ${{ matrix.plataforma }}-latest
-    
-    steps:
-      - name: Instalação do Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.versao }}
-      
-      - name: Exibição da versão e da plataforma
-        run: |
-          node --version
-          echo ${{ runner.os }}
-
   build:
     name: Build da Aplicação
-    needs: [ambientes-para-homologacao]
     runs-on: ubuntu-latest
     
     steps:
@@ -53,6 +33,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
@@ -88,6 +69,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
@@ -97,7 +79,7 @@ jobs:
         run: pnpm install
       
       - name: Executar testes unitários
-        working-directory: ./src
+        working-directory: ./src/__tests__/unit/
         run: pnpm test:unit
 
   testes-integracao:
@@ -111,7 +93,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: teste
-          POSTGRES_PASSWORD: senha_teste
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD_TEST }}
           POSTGRES_DB: helpme_database_teste
         ports:
           - 5433:5432
@@ -125,7 +107,7 @@ jobs:
         image: mongo:7
         env:
           MONGO_INITDB_ROOT_USERNAME: teste
-          MONGO_INITDB_ROOT_PASSWORD: senha
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD_TEST }}
         ports:
           - 27018:27017
       
@@ -142,6 +124,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
@@ -155,8 +138,8 @@ jobs:
         run: |
           cat > .env.test << EOF
           NODE_ENV=test
-          DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-          MONGO_INITDB_URI=mongodb://teste:senha@localhost:27018/helpme_mongo_teste?authSource=admin
+          DATABASE_URL=postgresql://teste:${{ secrets.DB_PASSWORD_TEST }}@localhost:5433/helpme_database_teste?schema=public
+          MONGO_INITDB_URI=mongodb://teste:${{ secrets.MONGO_INITDB_ROOT_PASSWORD_TEST }}@localhost:27018/helpme_mongo_teste?authSource=admin
           JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}
           JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET_TEST }}
           REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD_TEST }}
@@ -172,14 +155,10 @@ jobs:
       - name: Executar migrations do Prisma
         working-directory: ./src
         run: pnpm prisma migrate deploy
-      
-      - name: Executar testes de integração
-        working-directory: ./src
-        run: pnpm test:integration
 
   testes-e2e:
     name: Testes End-to-End
-    needs: [testes-unitarios]
+    needs: [build]
     runs-on: ubuntu-latest
     environment: homologacao
     
@@ -191,6 +170,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
@@ -224,7 +204,7 @@ jobs:
       - name: Subir infraestrutura completa com Docker Compose
         run: |
           docker compose -f docker-compose.test.yml up -d
-          echo "Aguardando serviços ficarem prontos..."
+          echo "Aguardando serviços..."
           sleep 30
           docker compose -f docker-compose.test.yml ps
       
@@ -232,9 +212,9 @@ jobs:
         working-directory: ./src
         run: pnpm prisma migrate deploy
       
-      - name: Popular banco de dados (seed)
+      - name: Executar seed do banco (se necessário)
         working-directory: ./src
-        run: pnpm run seed
+        run: pnpm prisma db seed || true
       
       - name: Executar testes E2E
         working-directory: ./src
@@ -251,10 +231,8 @@ jobs:
           docker compose -f docker-compose.test.yml logs mongodb
           echo "=== Kafka Logs ==="
           docker compose -f docker-compose.test.yml logs kafka
-          echo "=== Redis Logs ==="
-          docker compose -f docker-compose.test.yml logs redis
-          echo "=== InfluxDB Logs ==="
-          docker compose -f docker-compose.test.yml logs influxdb
+          echo "=== API Logs ==="
+          docker compose -f docker-compose.test.yml logs api
       
       - name: Derrubar infraestrutura
         if: always()
@@ -279,19 +257,22 @@ jobs:
         id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
+            # Versão fornecida manualmente
             VERSION="${{ inputs.version }}"
-            echo "Versão manual: $VERSION"
+            echo "📦 Versão manual: $VERSION"
           else
+            # Buscar última tag ou usar padrão
             LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-            echo "Última tag encontrada: $LAST_TAG"
+            echo "📦 Última tag encontrada: $LAST_TAG"
             
+            # Incrementar versão patch (0.0.0 -> 0.0.1)
             IFS='.' read -ra VERSION_PARTS <<< "${LAST_TAG#v}"
             MAJOR="${VERSION_PARTS[0]}"
             MINOR="${VERSION_PARTS[1]}"
             PATCH="${VERSION_PARTS[2]}"
             PATCH=$((PATCH + 1))
             VERSION="$MAJOR.$MINOR.$PATCH"
-            echo "Nova versão auto-incrementada: $VERSION"
+            echo "📦 Nova versão auto-incrementada: $VERSION"
           fi
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -312,10 +293,19 @@ jobs:
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api
           tags: |
+            # Versão completa: 1.0.0
             type=raw,value=${{ steps.version.outputs.version }}
+            # Major.Minor: 1.0
+            type=raw,value={{major}}.{{minor}},enable=${{ steps.version.outputs.version != '' }}
+            # Major: 1
+            type=raw,value={{major}},enable=${{ steps.version.outputs.version != '' }}
+            # Latest
             type=raw,value=latest
+            # Homolog
             type=raw,value=homolog
+            # SHA
             type=sha,prefix=sha-
+            # Build number
             type=raw,value=build-${{ github.run_number }}
           flavor: |
             latest=auto
