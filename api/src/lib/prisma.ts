@@ -1,45 +1,33 @@
-import dotenv from 'dotenv';
-import path from 'path';
+import { PrismaClient } from '@prisma/client'
+import { Pool } from 'pg'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Criar instância do Prisma
+export const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+})
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+// Criar pool do PostgreSQL para conexões diretas (se necessário)
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString || typeof connectionString !== 'string') {
-  console.error('DATABASE_URL não encontrada!');
-  console.error('Variáveis disponíveis:', Object.keys(process.env).filter(k => k.includes('DATABASE')));
-  throw new Error('DATABASE_URL não está definida ou não é uma string');
-}
-
-const pool = new Pool({
-  connectionString,
-  max: parseInt(process.env.DB_MAX_CONNECTIONS || '10', 10),
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-const adapter = new PrismaPg(pool);
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+// Apenas executar cleanup em ambientes que NÃO são de teste
+if (process.env.NODE_ENV !== 'test') {
+  process.on('beforeExit', async () => {
+    await prisma.$disconnect();
+    await pool.end();
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+  // Também adicionar para SIGINT e SIGTERM (opcional, mas recomendado)
+  process.on('SIGINT', async () => {
+    await prisma.$disconnect();
+    await pool.end();
+    process.exit(0);
+  });
 
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-  await pool.end();
-});
+  process.on('SIGTERM', async () => {
+    await prisma.$disconnect();
+    await pool.end();
+    process.exit(0);
+  });
+}
