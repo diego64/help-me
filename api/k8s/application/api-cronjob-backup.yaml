@@ -1,0 +1,61 @@
+# CronJob para backup periódico
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: helpme-backup
+  namespace: helpme
+  labels:
+    app: helpme-backup
+spec:
+  schedule: "0 2 * * *"  # Todo dia às 2h da manhã
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: helpme-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command:
+            - sh
+            - -c
+            - |
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              pg_dump -h postgres-service -U helpme_user -d helpme_db > /backup/helpme_backup_${TIMESTAMP}.sql
+              echo "Backup completed: helpme_backup_${TIMESTAMP}.sql"
+            env:
+            - name: PGPASSWORD
+              value: "helpme_secure_password_2024"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: helpme
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard

@@ -1,39 +1,75 @@
 # ================================
-# Node.js & Package Managers
+# Dependências
 # ================================
-node_modules/
-.pnpm-store/
+node_modules
+npm-debug.log*
 pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # ================================
-# Environment & Secrets
+# Build e dist
 # ================================
-.env
+dist
+build
+.next
+out
+
+# ================================
+# Testes e cobertura
+# ================================
+coverage
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# ================================
+# Ambientes e configurações
+# ================================
 .env.local
-.env.*.local
+.env*.local
+.gitignore
 
 # ================================
-# Build Output / Dist Files
+# Git e controle de versão
 # ================================
-dist/
-build/
-out/
-coverage/
-tmp/
-temp/
-.cache/
-.cache-loader/
-.next/
-.nuxt/
-vite-cache/
-.vitest/
+.git
+.github
+.husky
 
 # ================================
-# Testing & Coverage
+# Docker
 # ================================
-coverage/
-.nyc_output/
-jest-cache/
-jest-html-reporters-*
-vitest-report/
-test-results/
+.docker
+docker-compose*.yml
+Dockerfile*
+
+# ================================
+# IDEs e editores
+# ================================
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# ================================
+# Documentação
+# ================================
+README.md
+*.md
+docs
+
+# ================================
+# Logs
+# ================================
+logs
+*.log
+
+# ================================
+# Temporários
+# ================================
+tmp
+temp
+.cache

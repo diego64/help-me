@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: helpme
+  labels:
+    app: grafana
+data:
+  grafana.ini: |
+    [server]
+    protocol = http
+    http_port = 3000
+    domain = grafana.helpme.com
+    root_url = %(protocol)s://%(domain)s/
+    
+    [database]
+    type = postgres
+    host = postgres-service:5432
+    name = grafana_db
+    user = helpme_user
+    password = helpme_secure_password_2024
+    
+    [security]
+    admin_user = admin
+    admin_password = grafana_secure_password_2024
+    secret_key = SW2YcwTIb9zpOOhoPsMm
+    disable_gravatar = true
+    
+    [users]
+    allow_sign_up = false
+    allow_org_create = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+    
+    [auth.anonymous]
+    enabled = false
+    
+    [auth.basic]
+    enabled = true
+    
+    [analytics]
+    reporting_enabled = false
+    check_for_updates = false
+    
+    [log]
+    mode = console
+    level = info
+
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-service:9090
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: 15s
+      
+      - name: InfluxDB
+        type: influxdb
+        access: proxy
+        url: http://influxdb-service:8086
+        database: helpme_metrics
+        user: admin
+        secureJsonData:
+          password: influx_secure_password_2024
+        jsonData:
+          httpMode: GET
+          timeInterval: 15s
+      
+      - name: PostgreSQL
+        type: postgres
+        url: postgres-service:5432
+        database: helpme_db
+        user: helpme_user
+        secureJsonData:
+          password: helpme_secure_password_2024
+        jsonData:
+          sslmode: disable
+          postgresVersion: 1500
+
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards

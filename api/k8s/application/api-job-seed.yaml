@@ -1,0 +1,45 @@
+# Job para popular banco de dados inicial
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: helpme-seed-database
+  namespace: helpme
+  labels:
+    app: helpme-seed
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: helpme-seed
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+      - name: wait-for-api
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z helpme-api-service 3000; do
+            echo "Waiting for API..."
+            sleep 5
+          done
+          echo "API is ready!"
+      
+      containers:
+      - name: seed
+        image: diegoferreira/helpme-api:latest
+        command: ["npm", "run", "seed"]
+        envFrom:
+        - configMapRef:
+            name: helpme-api-config
+        - secretRef:
+            name: helpme-api-secret
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

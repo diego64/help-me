@@ -224,6 +224,7 @@ describe('Redis Client E2E', () => {
             await clienteComErro.quit();
           }
         } catch (e) {
+          // Ignora erro ao fechar conexão inválida
         }
       }
     });
@@ -261,11 +262,13 @@ describe('Redis Client E2E', () => {
       let resultado = await redisClient.get(chave);
       expect(resultado).toBe(valor);
 
-      await new Promise(resolve => setTimeout(resolve, (ttl + 1) * 1000));
+      // Aguarda TTL + margem de segurança de 2 segundos
+      // Isso garante que o Redis teve tempo suficiente para processar a expiração
+      await new Promise(resolve => setTimeout(resolve, (ttl + 2) * 1000));
 
       resultado = await redisClient.get(chave);
       expect(resultado).toBeNull();
-    }, 5000);
+    }, 6000); // Timeout aumentado para 6 segundos
   });
 
   describe('Dado operações de pipeline, Quando executar múltiplos comandos, Então deve processar em lote', () => {

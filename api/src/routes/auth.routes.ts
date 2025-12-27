@@ -6,7 +6,7 @@ import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { cacheSet } from '../services/redisClient'; 
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

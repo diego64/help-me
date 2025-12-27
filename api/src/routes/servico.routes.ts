@@ -6,7 +6,7 @@ import {
   AuthRequest
 } from '../middleware/auth';
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

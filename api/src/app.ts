@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Express } from 'express';
 import session from 'express-session';
 import { RedisStore } from 'connect-redis';
 import { redisClient } from './services/redisClient';
@@ -20,7 +20,7 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET não definido nas variáveis de ambiente!');
 }
 
-const app = express();
+export const app: Express = express();
 
 // ========================================
 // MIDDLEWARE

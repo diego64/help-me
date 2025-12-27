@@ -1,0 +1,42 @@
+# Ingress para rotas administrativas com proteção adicional
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpme-admin-ingress
+  namespace: helpme
+  labels:
+    app: help-me-api
+    tier: admin
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # Whitelist para IPs internos/VPN (ajustar conforme necessário)
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    
+    # Autenticação básica adicional (opcional)
+    # nginx.ingress.kubernetes.io/auth-type: basic
+    # nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    # nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Admin Area'
+    
+spec:
+  tls:
+  - hosts:
+    - api.helpme.com
+    secretName: helpme-tls-secret
+  
+  rules:
+  - host: api.helpme.com
+    http:
+      paths:
+      - path: /api/admin
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-api-service
+            port:
+              number: 3000

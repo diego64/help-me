@@ -1,0 +1,50 @@
+# Ingress para ferramentas de monitoramento
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpme-monitoring-ingress
+  namespace: helpme
+  labels:
+    app: monitoring
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # Whitelist apenas para rede interna
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    
+    # Autenticação básica
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: monitoring-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Monitoring'
+    
+spec:
+  tls:
+  - hosts:
+    - monitoring.helpme.com
+    secretName: helpme-tls-secret
+  
+  rules:
+  # Grafana
+  - host: grafana.helpme.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana-service
+            port:
+              number: 3000
+  
+  # Prometheus
+  - host: prometheus.helpme.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-service
+            port:
+              number: 9090

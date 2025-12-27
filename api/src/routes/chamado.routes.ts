@@ -11,7 +11,7 @@ import {
 } from '../repositories/chamadoAtualizacao.repository';
 import ChamadoAtualizacaoModel from '../models/chamadoAtualizacao.model';
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

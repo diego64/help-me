@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rate-limit-config
+  namespace: helpme
+data:
+  # Rate limiting zones
+  http-snippet: |
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=100r/m;
+    limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=20r/m;
+    limit_req_zone $binary_remote_addr zone=upload_limit:10m rate=10r/m;

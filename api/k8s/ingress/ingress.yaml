@@ -1,0 +1,93 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpme-ingress
+  namespace: helpme
+  labels:
+    app: help-me-api
+  annotations:
+    # Nginx Ingress Controller
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    
+    # SSL/TLS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Se usar cert-manager
+    
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    
+    # Body size
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    
+    # Rate limiting global
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    
+    # Whitelist (opcional - ajustar conforme necessário)
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    
+    # ModSecurity WAF (opcional)
+    # nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    # nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+    
+spec:
+  tls:
+  - hosts:
+    - api.helpme.com
+    - helpme.com
+    secretName: helpme-tls-secret
+  
+  rules:
+  # Regra principal da API
+  - host: api.helpme.com
+    http:
+      paths:
+      # Health check
+      - path: /health
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-api-service
+            port:
+              number: 3000
+      
+      # Metrics (Prometheus)
+      - path: /metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-api-service
+            port:
+              number: 3000
+      
+      # API Routes
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-api-service
+            port:
+              number: 3000
+  
+  # Regra para o domínio principal (se tiver frontend)
+  - host: helpme.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-frontend-service  # Se tiver frontend
+            port:
+              number: 80
