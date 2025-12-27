@@ -314,7 +314,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run seed
       
-      - name: 🔍 DEBUG - Verificar variáveis de ambiente
+      - name: DEBUG - Verificar variáveis de ambiente
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO VARIÁVEIS DE AMBIENTE ==="
