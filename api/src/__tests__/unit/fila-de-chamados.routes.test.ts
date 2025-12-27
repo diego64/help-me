@@ -19,6 +19,7 @@ export const createBasePrismaMock = () => ({
 });
 
 const prismaMock = {
+  ...createBasePrismaMock(),
   chamado: {
     findMany: vi.fn(),
   },
@@ -26,6 +27,11 @@ const prismaMock = {
 
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () { return prismaMock; }
+}));
+
+// Mockar o módulo prisma.ts para evitar conflitos com event listeners
+vi.mock('../../lib/prisma', () => ({
+  prisma: prismaMock,
 }));
 
 // ========================================
@@ -77,6 +83,11 @@ vi.mock('../../middleware/auth', () => ({
 let router: any;
 
 beforeAll(async () => {
+  // Remover listeners do process para evitar erros
+  process.removeAllListeners('beforeExit');
+  process.removeAllListeners('SIGINT');
+  process.removeAllListeners('SIGTERM');
+  
   router = (await import('../../routes/fila-de-chamados.routes')).default;
 });
 
