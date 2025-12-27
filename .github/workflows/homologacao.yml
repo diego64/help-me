@@ -97,6 +97,8 @@ jobs:
       
       - name: Gerar Prisma Client
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run generate
       
       - name: Verificar TypeScript
@@ -167,7 +169,6 @@ jobs:
           MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
           JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD_TEST }}
           SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
           SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
         run: |
@@ -177,7 +178,7 @@ jobs:
           MONGO_INITDB_URI=${MONGO_INITDB_URI}
           JWT_SECRET=${JWT_SECRET}
           JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          REDIS_PASSWORD=${REDIS_PASSWORD}
+          REDIS_PASSWORD=
           REDIS_HOST=localhost
           REDIS_PORT=6379
           SMTP_HOST=sandbox.smtp.mailtrap.io
@@ -186,10 +187,11 @@ jobs:
           SMTP_PASS=${SMTP_PASS}
           API_BASE_URL=http://localhost:3000
           EOF
-          cp .env.test .env
       
       - name: Gerar Prisma Client
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run generate
       
       - name: Executar testes unitários
@@ -244,7 +246,6 @@ jobs:
           MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
           JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD_TEST }}
           SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
           SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
           INFLUX_ADMIN_TOKEN: ${{ secrets.INFLUX_ADMIN_TOKEN }}
@@ -256,7 +257,7 @@ jobs:
           MONGO_INITDB_URI=${MONGO_INITDB_URI}
           JWT_SECRET=${JWT_SECRET}
           JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          REDIS_PASSWORD=${REDIS_PASSWORD}
+          REDIS_PASSWORD=
           REDIS_HOST=localhost
           REDIS_PORT=6379
           KAFKA_BROKER_URL=localhost:9093
@@ -268,7 +269,6 @@ jobs:
           SMTP_PASS=${SMTP_PASS}
           API_BASE_URL=http://localhost:3000
           EOF
-          cp .env.test .env
       
       - name: Gerar Prisma Client
         working-directory: ./api
@@ -310,8 +310,7 @@ jobs:
       
       - name: Executar testes E2E
         working-directory: ./api
-        run: |
-          pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
+        run: pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
       
       - name: Upload de coverage E2E (se disponível)
         if: always()
