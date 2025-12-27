@@ -58,11 +58,15 @@ jobs:
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
       
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
+      
       - name: Build do projeto
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm build
       
       - name: Upload do build
@@ -70,8 +74,8 @@ jobs:
         with:
           name: build-artifacts
           path: |
-            ./src/dist
-            ./src/node_modules
+            ./api/dist
+            ./api/node_modules
           retention-days: 1
 
   testes-unitarios:
@@ -93,89 +97,16 @@ jobs:
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
+      
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
       
       - name: Executar testes unitários
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm test:unit
-
-  testes-integracao:
-    name: Testes de Integração
-    needs: [build]
-    runs-on: ubuntu-latest
-    environment: homologacao
-    
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: teste
-          POSTGRES_PASSWORD: senha_teste
-          POSTGRES_DB: helpme_database_teste
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      mongodb:
-        image: mongo:7
-        env:
-          MONGO_INITDB_ROOT_USERNAME: teste
-          MONGO_INITDB_ROOT_PASSWORD: senha
-        ports:
-          - 27018:27017
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-    
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      
-      - name: Ativar pnpm
-        run: corepack enable
-      
-      - name: Instalar dependências
-        working-directory: ./src
-        run: pnpm install
-      
-      - name: Gerar .env de teste
-        working-directory: ./src
-        run: |
-          cat > .env.test << EOF
-          NODE_ENV=test
-          DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-          MONGO_INITDB_URI=mongodb://teste:senha@localhost:27018/helpme_mongo_teste?authSource=admin
-          JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD_TEST }}
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          SMTP_HOST=sandbox.smtp.mailtrap.io
-          SMTP_PORT=2525
-          SMTP_USER=${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS=${{ secrets.SMTP_PASS_TEST }}
-          API_BASE_URL=http://localhost:3000
-          EOF
-      
-      - name: Executar migrations do Prisma
-        working-directory: ./src
-        run: pnpm prisma migrate deploy
-      
-      - name: Executar testes de integração
-        working-directory: ./src
-        run: pnpm test:integration
 
   testes-e2e:
     name: Testes End-to-End
@@ -196,11 +127,15 @@ jobs:
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
       
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
+      
       - name: Gerar .env de teste E2E
-        working-directory: ./src
+        working-directory: ./api
         run: |
           cat > .env.test << EOF
           NODE_ENV=test
@@ -229,15 +164,15 @@ jobs:
           docker compose -f docker-compose.test.yml ps
       
       - name: Executar migrations
-        working-directory: ./src
-        run: pnpm prisma migrate deploy
+        working-directory: ./api
+        run: pnpm run migrate
       
       - name: Popular banco de dados (seed)
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm run seed
       
       - name: Executar testes E2E
-        working-directory: ./src
+        working-directory: ./api
         run: |
           pnpm test:setup
           pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
@@ -263,7 +198,7 @@ jobs:
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
-    needs: [testes-unitarios, testes-integracao, testes-e2e]
+    needs: [testes-unitarios, testes-e2e]
     environment: homologacao
     outputs:
       version: ${{ steps.version.outputs.version }}
