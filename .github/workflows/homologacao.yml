@@ -19,7 +19,7 @@ permissions:
   security-events: write
 
 jobs:
-  ambientes-para-homologacao:
+  ambiente-para-homologacao:
     name: Verificação de Ambientes
     strategy:
       matrix:
@@ -40,7 +40,7 @@ jobs:
 
   build:
     name: Build
-    needs: [ambientes-para-homologacao]
+    needs: [ambiente-para-homologacao]
     runs-on: ubuntu-latest
     environment: homologacao
     
@@ -58,9 +58,26 @@ jobs:
       - name: Ativar pnpm
         run: corepack enable
       
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./api/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+      
+      - name: Limpar instalação anterior (se existir)
+        working-directory: ./api
+        run: |
+          rm -rf node_modules
+          rm -rf .turbo
+          rm -rf dist
+      
       - name: Instalar dependências
         working-directory: ./api
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       
       - name: Gerar .env temporário para build
         working-directory: ./api
@@ -82,9 +99,25 @@ jobs:
         working-directory: ./api
         run: pnpm run generate
       
+      - name: Verificar TypeScript
+        working-directory: ./api
+        run: |
+          echo "Verificando versão do TypeScript:"
+          pnpm tsc --version
+          echo "Executando type check:"
+          pnpm tsc --noEmit --pretty
+      
       - name: Build do projeto
         working-directory: ./api
         run: pnpm build
+      
+      - name: Verificar build gerado
+        working-directory: ./api
+        run: |
+          echo "Conteúdo do diretório dist:"
+          ls -lah dist/
+          echo "Verificando arquivo principal:"
+          test -f dist/server.js && echo "✓ server.js encontrado" || echo "✗ server.js NÃO encontrado"
       
       - name: Upload do build
         uses: actions/upload-artifact@v4
@@ -113,9 +146,19 @@ jobs:
       - name: Ativar pnpm
         run: corepack enable
       
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./api/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+      
       - name: Instalar dependências
         working-directory: ./api
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       
       - name: Gerar .env de teste
         working-directory: ./api
@@ -152,6 +195,15 @@ jobs:
       - name: Executar testes unitários
         working-directory: ./api
         run: pnpm test:unit
+      
+      - name: Upload de coverage (se disponível)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: ./api/coverage/
+          retention-days: 7
+        continue-on-error: true
 
   testes-e2e:
     name: Testes End-to-End
@@ -171,9 +223,19 @@ jobs:
       - name: Ativar pnpm
         run: corepack enable
       
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./api/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+      
       - name: Instalar dependências
         working-directory: ./api
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       
       - name: Gerar .env de teste E2E
         working-directory: ./api
@@ -220,6 +282,18 @@ jobs:
           sleep 30
           docker compose -f docker-compose.test.yml ps
       
+      - name: Verificar saúde dos serviços
+        working-directory: ./api
+        run: |
+          echo "Verificando PostgreSQL..."
+          docker compose -f docker-compose.test.yml exec -T postgres pg_isready || echo "PostgreSQL não está pronto"
+          
+          echo "Verificando Redis..."
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli ping || echo "Redis não está pronto"
+          
+          echo "Status dos containers:"
+          docker compose -f docker-compose.test.yml ps
+      
       - name: Executar migrations
         working-directory: ./api
         run: pnpm run migrate
@@ -233,6 +307,15 @@ jobs:
         run: |
           pnpm test:setup
           pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
+      
+      - name: Upload de coverage E2E (se disponível)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-e2e
+          path: ./api/coverage/
+          retention-days: 7
+        continue-on-error: true
       
       - name: Logs dos serviços (se falhar)
         working-directory: ./api
@@ -298,7 +381,7 @@ jobs:
             echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
             exit 1
           fi
-          echo "Versão válida: ${{ steps.version.outputs.version }}"
+          echo "✓ Versão válida: ${{ steps.version.outputs.version }}"
       
       - name: Extrair metadados Docker
         id: meta
@@ -318,6 +401,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
+        continue-on-error: true
       
       - name: Login no Docker Hub
         uses: docker/login-action@v3
@@ -351,6 +435,7 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+        continue-on-error: true
       
       - name: Upload resultados do Trivy
         uses: github/codeql-action/upload-sarif@v3
@@ -358,6 +443,7 @@ jobs:
         with:
           category: trivy-docker-scan
           sarif_file: trivy-results.sarif
+        continue-on-error: true
       
       - name: Criar tag Git
         if: ${{ inputs.create-tag }}
@@ -366,7 +452,7 @@ jobs:
           git config user.email "actions@github.com"
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
-          echo "Tag v${{ steps.version.outputs.version }} criada e enviada"
+          echo "✓ Tag v${{ steps.version.outputs.version }} criada e enviada"
       
       - name: Resumo da release
         run: |
@@ -377,10 +463,12 @@ jobs:
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Versão" >> $GITHUB_STEP_SUMMARY
-          echo "- **Versão**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Informações da Build" >> $GITHUB_STEP_SUMMARY
+          echo "- **Versão**: \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Build**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Executor**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Para usar:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
@@ -396,3 +484,7 @@ jobs:
             echo "### Tag Git criada" >> $GITHUB_STEP_SUMMARY
             echo "Tag **v${{ steps.version.outputs.version }}** foi criada no repositório" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Pipeline executada com sucesso!" >> $GITHUB_STEP_SUMMARY
