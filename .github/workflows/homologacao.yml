@@ -19,8 +19,28 @@ permissions:
   security-events: write
 
 jobs:
+  ambientes-para-homologacao:
+    name: Verificação de Ambientes
+    strategy:
+      matrix:
+        versao: [20, 22]
+        plataforma: ["ubuntu"]
+    runs-on: ${{ matrix.plataforma }}-latest
+    
+    steps:
+      - name: Instalação do Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.versao }}
+      
+      - name: Exibição da versão e da plataforma
+        run: |
+          node --version
+          echo ${{ runner.os }}
+
   build:
     name: Build da Aplicação
+    needs: [ambientes-para-homologacao]
     runs-on: ubuntu-latest
     
     steps:
@@ -33,17 +53,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
       
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
+      
       - name: Build do projeto
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm build
       
       - name: Upload do build
@@ -51,8 +74,8 @@ jobs:
         with:
           name: build-artifacts
           path: |
-            ./src/dist
-            ./src/node_modules
+            ./api/dist
+            ./api/node_modules
           retention-days: 1
 
   testes-unitarios:
@@ -69,96 +92,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
+      
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
       
       - name: Executar testes unitários
-        working-directory: ./src/__tests__/unit/
+        working-directory: ./api
         run: pnpm test:unit
-
-  testes-integracao:
-    name: Testes de Integração
-    needs: [build]
-    runs-on: ubuntu-latest
-    environment: homologacao
-    
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: teste
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD_TEST }}
-          POSTGRES_DB: helpme_database_teste
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      mongodb:
-        image: mongo:7
-        env:
-          MONGO_INITDB_ROOT_USERNAME: teste
-          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD_TEST }}
-        ports:
-          - 27018:27017
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-    
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-      
-      - name: Ativar pnpm
-        run: corepack enable
-      
-      - name: Instalar dependências
-        working-directory: ./src
-        run: pnpm install
-      
-      - name: Gerar .env de teste
-        working-directory: ./src
-        run: |
-          cat > .env.test << EOF
-          NODE_ENV=test
-          DATABASE_URL=postgresql://teste:${{ secrets.DB_PASSWORD_TEST }}@localhost:5433/helpme_database_teste?schema=public
-          MONGO_INITDB_URI=mongodb://teste:${{ secrets.MONGO_INITDB_ROOT_PASSWORD_TEST }}@localhost:27018/helpme_mongo_teste?authSource=admin
-          JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD_TEST }}
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          SMTP_HOST=sandbox.smtp.mailtrap.io
-          SMTP_PORT=2525
-          SMTP_USER=${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS=${{ secrets.SMTP_PASS_TEST }}
-          API_BASE_URL=http://localhost:3000
-          EOF
-      
-      - name: Executar migrations do Prisma
-        working-directory: ./src
-        run: pnpm prisma migrate deploy
 
   testes-e2e:
     name: Testes End-to-End
-    needs: [build]
+    needs: [testes-unitarios]
     runs-on: ubuntu-latest
     environment: homologacao
     
@@ -170,17 +122,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
       
       - name: Ativar pnpm
         run: corepack enable
       
       - name: Instalar dependências
-        working-directory: ./src
+        working-directory: ./api
         run: pnpm install
       
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
+      
       - name: Gerar .env de teste E2E
-        working-directory: ./src
+        working-directory: ./api
         run: |
           cat > .env.test << EOF
           NODE_ENV=test
@@ -204,20 +159,20 @@ jobs:
       - name: Subir infraestrutura completa com Docker Compose
         run: |
           docker compose -f docker-compose.test.yml up -d
-          echo "Aguardando serviços..."
+          echo "Aguardando serviços ficarem prontos..."
           sleep 30
           docker compose -f docker-compose.test.yml ps
       
       - name: Executar migrations
-        working-directory: ./src
-        run: pnpm prisma migrate deploy
+        working-directory: ./api
+        run: pnpm run migrate
       
-      - name: Executar seed do banco (se necessário)
-        working-directory: ./src
-        run: pnpm prisma db seed || true
+      - name: Popular banco de dados (seed)
+        working-directory: ./api
+        run: pnpm run seed
       
       - name: Executar testes E2E
-        working-directory: ./src
+        working-directory: ./api
         run: |
           pnpm test:setup
           pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
@@ -231,8 +186,10 @@ jobs:
           docker compose -f docker-compose.test.yml logs mongodb
           echo "=== Kafka Logs ==="
           docker compose -f docker-compose.test.yml logs kafka
-          echo "=== API Logs ==="
-          docker compose -f docker-compose.test.yml logs api
+          echo "=== Redis Logs ==="
+          docker compose -f docker-compose.test.yml logs redis
+          echo "=== InfluxDB Logs ==="
+          docker compose -f docker-compose.test.yml logs influxdb
       
       - name: Derrubar infraestrutura
         if: always()
@@ -241,7 +198,7 @@ jobs:
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
-    needs: [testes-unitarios, testes-integracao, testes-e2e]
+    needs: [testes-unitarios, testes-e2e]
     environment: homologacao
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -257,22 +214,19 @@ jobs:
         id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
-            # Versão fornecida manualmente
             VERSION="${{ inputs.version }}"
-            echo "📦 Versão manual: $VERSION"
+            echo "Versão manual: $VERSION"
           else
-            # Buscar última tag ou usar padrão
             LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-            echo "📦 Última tag encontrada: $LAST_TAG"
+            echo "Última tag encontrada: $LAST_TAG"
             
-            # Incrementar versão patch (0.0.0 -> 0.0.1)
             IFS='.' read -ra VERSION_PARTS <<< "${LAST_TAG#v}"
             MAJOR="${VERSION_PARTS[0]}"
             MINOR="${VERSION_PARTS[1]}"
             PATCH="${VERSION_PARTS[2]}"
             PATCH=$((PATCH + 1))
             VERSION="$MAJOR.$MINOR.$PATCH"
-            echo "📦 Nova versão auto-incrementada: $VERSION"
+            echo "Nova versão auto-incrementada: $VERSION"
           fi
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -293,19 +247,10 @@ jobs:
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api
           tags: |
-            # Versão completa: 1.0.0
             type=raw,value=${{ steps.version.outputs.version }}
-            # Major.Minor: 1.0
-            type=raw,value={{major}}.{{minor}},enable=${{ steps.version.outputs.version != '' }}
-            # Major: 1
-            type=raw,value={{major}},enable=${{ steps.version.outputs.version != '' }}
-            # Latest
             type=raw,value=latest
-            # Homolog
             type=raw,value=homolog
-            # SHA
             type=sha,prefix=sha-
-            # Build number
             type=raw,value=build-${{ github.run_number }}
           flavor: |
             latest=auto
