@@ -39,7 +39,7 @@ jobs:
           echo ${{ runner.os }}
 
   build:
-    name: Build da Aplicação
+    name: Build
     needs: [ambientes-para-homologacao]
     runs-on: ubuntu-latest
     environment: homologacao
@@ -213,9 +213,10 @@ jobs:
         run: pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
+        working-directory: ./api 
         run: |
           docker compose -f docker-compose.test.yml up -d
-          echo "⏳ Aguardando serviços ficarem prontos..."
+          echo "Aguardando serviços ficarem prontos..."
           sleep 30
           docker compose -f docker-compose.test.yml ps
       
@@ -234,6 +235,7 @@ jobs:
           pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
       
       - name: Logs dos serviços (se falhar)
+        working-directory: ./api
         if: failure()
         run: |
           echo "=== PostgreSQL Logs ==="
@@ -248,6 +250,7 @@ jobs:
           docker compose -f docker-compose.test.yml logs influxdb
       
       - name: Derrubar infraestrutura
+        working-directory: ./api 
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
 
