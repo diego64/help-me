@@ -3,6 +3,7 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16
+    container_name: helpme-postgres-test
     environment:
       POSTGRES_USER: teste
       POSTGRES_PASSWORD: senha_teste
@@ -14,42 +15,70 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - helpme-test-network
 
   mongodb:
     image: mongo:7
+    container_name: helpme-mongodb-test
     environment:
       MONGO_INITDB_ROOT_USERNAME: teste
       MONGO_INITDB_ROOT_PASSWORD: senha
     ports:
       - "27018:27017"
+    networks:
+      - helpme-test-network
 
   redis:
     image: redis:7-alpine
+    container_name: helpme-redis-test
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - helpme-test-network
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
+    container_name: helpme-zookeeper-test
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    networks:
+      - helpme-test-network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    container_name: helpme-kafka-test
     depends_on:
       - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9093:9093"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9093"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - helpme-test-network
 
   influxdb:
     image: influxdb:2.7-alpine
+    container_name: helpme-influxdb-test
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: administrador
@@ -59,3 +88,14 @@ services:
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: UwopC15GvVlz7By6
     ports:
       - "8086:8086"
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - helpme-test-network
+
+networks:
+  helpme-test-network:
+    driver: bridge
