@@ -308,6 +308,24 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run seed
       
+      - name: DEBUG - Verificar variáveis de ambiente
+        working-directory: ./api
+        run: |
+          echo "=== VERIFICANDO VARIÁVEIS DE AMBIENTE ==="
+          echo "DATABASE_URL (primeiros 50 caracteres):"
+          echo "$DATABASE_URL" | cut -c1-50
+          echo ""
+          echo "MONGO_INITDB_URI (primeiros 50 caracteres):"
+          echo "$MONGO_INITDB_URI" | cut -c1-50
+          echo ""
+          echo "Conteúdo do .env.test (primeiras 15 linhas):"
+          head -n 15 .env.test
+          echo ""
+          echo "=== FIM DA VERIFICAÇÃO ==="
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
+      
       - name: Executar testes E2E
         working-directory: ./api
         env:
