@@ -1,0 +1,13 @@
+# Pod Disruption Budget - garante alta disponibilidade
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: helpme-api-pdb
+  namespace: helpme
+  labels:
+    app: helpme-api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: helpme-api

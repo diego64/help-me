@@ -1,4 +1,8 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -6,6 +10,8 @@ import { Pool } from 'pg';
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString || typeof connectionString !== 'string') {
+  console.error('DATABASE_URL não encontrada!');
+  console.error('Variáveis disponíveis:', Object.keys(process.env).filter(k => k.includes('DATABASE')));
   throw new Error('DATABASE_URL não está definida ou não é uma string');
 }
 

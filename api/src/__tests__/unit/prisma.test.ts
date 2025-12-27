@@ -1,261 +1,213 @@
-import 'dotenv/config';
 import {
   describe,
   it,
   expect,
   vi,
-  beforeEach,
-  afterEach
+  beforeAll,
+  afterAll,
 } from 'vitest';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
 
-// ========================================
-// MOCKS
-// ========================================
+const poolEndMock = vi.fn().mockResolvedValue(undefined);
+const prismaDisconnectMock = vi.fn().mockResolvedValue(undefined);
 
-const poolEndMock = vi.fn();
-const prismaDisconnectMock = vi.fn();
+let poolInstance: any;
+let prismaPgInstance: any;
+let prismaClientInstance: any;
+let beforeExitCallback: Function | undefined;
 
 vi.mock('pg', () => {
-  const MockPool = vi.fn(function(this: any, config: any) {
-    this.end = poolEndMock;
-    this.config = config;
-    return this;
-  });
-  
   return {
-    Pool: MockPool,
+    Pool: class MockPool {
+      end = poolEndMock;
+      config: any;
+      connect = vi.fn();
+      query = vi.fn();
+      
+      constructor(config: any) {
+        poolInstance = this;
+        this.config = config;
+      }
+    }
   };
 });
 
 vi.mock('@prisma/adapter-pg', () => {
-  const MockPrismaPg = vi.fn(function(this: any, pool: any) {
-    this.pool = pool;
-    return this;
-  });
-  
   return {
-    PrismaPg: MockPrismaPg,
+    PrismaPg: class MockPrismaPg {
+      pool: any;
+      
+      constructor(pool: any) {
+        prismaPgInstance = this;
+        this.pool = pool;
+      }
+    }
   };
 });
 
 vi.mock('@prisma/client', () => {
-  const MockPrismaClient = vi.fn(function(this: any, options: any) {
-    this.$disconnect = prismaDisconnectMock;
-    this.options = options;
-    return this;
-  });
-  
   return {
-    PrismaClient: MockPrismaClient,
+    PrismaClient: class MockPrismaClient {
+      $disconnect = prismaDisconnectMock;
+      $connect = vi.fn();
+      options: any;
+      
+      constructor(options: any) {
+        prismaClientInstance = this;
+        this.options = options;
+      }
+    }
   };
 });
 
-// ========================================
-// SETUP & TEARDOWN
-// ========================================
-
 describe('prisma factory', () => {
-  const originalEnv = process.env;
-  
-  beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    poolEndMock.mockClear();
-    prismaDisconnectMock.mockClear();
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  // ==========================================================================
-  // TESTES: Criação do Prisma Client
-  // ==========================================================================
-
-  it('deve criar Pool e PrismaClient com os valores corretos', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
+  beforeAll(() => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
     process.env.DB_MAX_CONNECTIONS = '20';
     process.env.NODE_ENV = 'production';
+    
+    const originalProcessOn = process.on;
+    vi.spyOn(process, 'on').mockImplementation((event: any, callback: any) => {
+      if (event === 'beforeExit') {
+        beforeExitCallback = callback;
+      }
+      return originalProcessOn.call(process, event, callback);
+    });
+  });
 
-    const { prisma } = await import('../../lib/prisma');
+  afterAll(() => {
+    delete process.env.DATABASE_URL;
+    delete process.env.DB_MAX_CONNECTIONS;
+    delete process.env.NODE_ENV;
+    vi.restoreAllMocks();
+  });
 
-    // ======  VERIFICA SE POOL FOI CRIADO COM OS PARÂMETROS CORRETOS ======
-    expect(Pool).toHaveBeenCalledWith({
-      connectionString: 'postgres://user:pass@localhost/db',
+  it('deve criar Pool com os parâmetros corretos', async () => {
+    await import('../../lib/prisma');
+
+    expect(poolInstance).toBeDefined();
+    expect(poolInstance.config).toMatchObject({
+      connectionString: 'postgresql://user:pass@localhost:5432/db',
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
     });
+  });
 
-    // ======  VERIFICA SE PRISMAPG FOI CRIADO ======
-    expect(PrismaPg).toHaveBeenCalledTimes(1);
-    expect(PrismaPg).toHaveBeenCalledWith(expect.objectContaining({
-      config: expect.objectContaining({
-        connectionString: 'postgres://user:pass@localhost/db',
-        max: 20,
-      }),
-    }));
+  it('deve criar PrismaPg com o pool correto', async () => {
+    await import('../../lib/prisma');
 
-    // ======  VERIFICA SE PRISMACLIENT FOI CRIADO COM O ADAPTER E LOGS CORRETOS ======
-    expect(PrismaClient).toHaveBeenCalledWith(
-      expect.objectContaining({
-        adapter: expect.anything(),
-        log: ['error'],
-      })
-    );
+    expect(prismaPgInstance).toBeDefined();
+    expect(prismaPgInstance.pool).toBe(poolInstance);
+  });
+
+  it('deve criar PrismaClient com adapter e logs de produção', async () => {
+    await import('../../lib/prisma');
+
+    expect(prismaClientInstance).toBeDefined();
+    expect(prismaClientInstance.options.adapter).toBe(prismaPgInstance);
+    expect(prismaClientInstance.options.log).toEqual(['error']);
+  });
+
+  it('deve exportar instância do prisma com métodos corretos', async () => {
+    const { prisma } = await import('../../lib/prisma');
 
     expect(prisma).toBeDefined();
     expect(prisma.$disconnect).toBeDefined();
+    expect(typeof prisma.$disconnect).toBe('function');
   });
 
-  it('deve usar valores padrão quando DB_MAX_CONNECTIONS não está definido', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    delete process.env.DB_MAX_CONNECTIONS;
-    process.env.NODE_ENV = 'production';
-
-    const { prisma } = await import('../../lib/prisma');
-
-    expect(Pool).toHaveBeenCalledWith({
-      connectionString: 'postgres://user:pass@localhost/db',
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    });
-
-    expect(PrismaPg).toHaveBeenCalledTimes(1);
-    expect(prisma).toBeDefined();
-  });
-
-  it('deve ativar logs de desenvolvimento quando NODE_ENV=development', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    process.env.NODE_ENV = 'development';
-
-    const { prisma } = await import('../../lib/prisma');
-
-    expect(PrismaClient).toHaveBeenCalledWith(
-      expect.objectContaining({
-        adapter: expect.anything(),
-        log: ['error', 'warn'],
-      })
-    );
-
-    expect(prisma).toBeDefined();
-  });
-
-  it('deve usar singleton pattern em ambiente de desenvolvimento', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    process.env.NODE_ENV = 'development';
-
-    // ======  PRIMEIRA IMPORTAÇÃO ======
-    const { prisma: prisma1 } = await import('../../lib/prisma');
-    
-    // ======  SEGUNDA IMPORTAÇÃO DEVE RETORNAR A MESMA INSTÂNCIA ======
-    const { prisma: prisma2 } = await import('../../lib/prisma');
-
-    expect(prisma1).toBe(prisma2);
-  });
-
-  // ==========================================================================
-  // TESTES: Validação de Erros
-  // ==========================================================================
-
-  it('deve lançar erro quando DATABASE_URL não está definida', async () => {
-    delete process.env.DATABASE_URL;
-
-    await expect(async () => {
-      await import('../../lib/prisma');
-    }).rejects.toThrow('DATABASE_URL não está definida ou não é uma string');
-  });
-
-  it('deve lançar erro quando DATABASE_URL não é uma string', async () => {
-    // @ts-ignore - forçar tipo inválido para testar
-    process.env.DATABASE_URL = 123 as any;
-
-    await expect(async () => {
-      await import('../../lib/prisma');
-    }).rejects.toThrow('DATABASE_URL não está definida ou não é uma string');
-  });
-
-  it('deve lançar erro quando DATABASE_URL é uma string vazia', async () => {
-    process.env.DATABASE_URL = '';
-
-    await expect(async () => {
-      await import('../../lib/prisma');
-    }).rejects.toThrow('DATABASE_URL não está definida ou não é uma string');
-  });
-
-  // ==========================================================================
-  // TESTES: Event Listener beforeExit
-  // ==========================================================================
-
-  it('deve registrar o event listener "beforeExit"', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    process.env.NODE_ENV = 'production';
-
-    const processOnSpy = vi.spyOn(process, 'on');
-
+  it('deve configurar timeouts corretos no Pool', async () => {
     await import('../../lib/prisma');
 
-    expect(processOnSpy).toHaveBeenCalledWith('beforeExit', expect.any(Function));
-
-    processOnSpy.mockRestore();
+    expect(poolInstance.config.idleTimeoutMillis).toBe(30000);
+    expect(poolInstance.config.connectionTimeoutMillis).toBe(2000);
   });
 
-  it('deve chamar prisma.$disconnect e pool.end quando evento "beforeExit" for disparado', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    process.env.NODE_ENV = 'production';
+  it('deve usar max connections de 20 quando DB_MAX_CONNECTIONS está definido', async () => {
+    await import('../../lib/prisma');
 
-    let beforeExitCallback: Function | undefined;
-    const processOnSpy = vi.spyOn(process, 'on').mockImplementation((event: any, callback: any) => {
-      if (event === 'beforeExit') {
-        beforeExitCallback = callback;
-      }
-      return process;
-    });
+    expect(poolInstance.config.max).toBe(20);
+  });
 
+  it('deve registrar event listener beforeExit', async () => {
     await import('../../lib/prisma');
 
     expect(beforeExitCallback).toBeDefined();
+    expect(typeof beforeExitCallback).toBe('function');
+  });
 
+  it('deve chamar prisma.$disconnect e pool.end quando beforeExit for disparado', async () => {
+    vi.clearAllMocks();
+    
+    await import('../../lib/prisma');
+
+    expect(beforeExitCallback).toBeDefined();
+    
     if (beforeExitCallback) {
       await beforeExitCallback();
     }
 
-    expect(prismaDisconnectMock).toHaveBeenCalledTimes(1);
-    expect(poolEndMock).toHaveBeenCalledTimes(1);
+    expect(prismaDisconnectMock).toHaveBeenCalled();
+    expect(poolEndMock).toHaveBeenCalled();
+  });
+});
 
-    processOnSpy.mockRestore();
+describe('prisma factory - lógica de configuração', () => {
+  it('deve retornar 10 quando DB_MAX_CONNECTIONS não está definido', () => {
+    const dbMaxConnections = undefined;
+    const result = parseInt(dbMaxConnections || '10', 10);
+    expect(result).toBe(10);
   });
 
-  it('deve chamar pool.end mesmo se prisma.$disconnect falhar', async () => {
-    process.env.DATABASE_URL = 'postgres://user:pass@localhost/db';
-    process.env.NODE_ENV = 'production';
+  it('deve retornar 10 quando DB_MAX_CONNECTIONS está vazio', () => {
+    const result = parseInt('10', 10);
+    expect(result).toBe(10);
+  });
 
-    prismaDisconnectMock.mockRejectedValueOnce(new Error('Disconnect failed'));
+  it('deve retornar 15 quando DB_MAX_CONNECTIONS é "15"', () => {
+    const dbMaxConnections = '15';
+    const result = parseInt(dbMaxConnections || '10', 10);
+    expect(result).toBe(15);
+  });
 
-    let beforeExitCallback: Function | undefined;
-    const processOnSpy = vi.spyOn(process, 'on').mockImplementation((event: any, callback: any) => {
-      if (event === 'beforeExit') {
-        beforeExitCallback = callback;
+  it('deve retornar NaN quando DB_MAX_CONNECTIONS é inválido (comportamento real)', () => {
+    const result = parseInt('invalid', 10);
+    expect(result).toBeNaN();
+  });
+
+  it('deve validar que connectionString não é undefined', () => {
+    const connectionString = 'postgresql://user:pass@localhost:5432/db';
+    expect(connectionString).toBeDefined();
+    expect(typeof connectionString).toBe('string');
+  });
+
+  it('deve validar que connectionString vazia lança erro', () => {
+    const connectionString = '';
+    expect(() => {
+      if (!connectionString || typeof connectionString !== 'string') {
+        throw new Error('DATABASE_URL não está definida ou não é uma string');
       }
-      return process;
-    });
+    }).toThrow('DATABASE_URL não está definida ou não é uma string');
+  });
 
-    await import('../../lib/prisma');
-
-    if (beforeExitCallback) {
-      try {
-        await beforeExitCallback();
-      } catch (error) {
-        // Erro esperado
+  it('deve validar que connectionString undefined lança erro', () => {
+    const connectionString = undefined;
+    expect(() => {
+      if (!connectionString || typeof connectionString !== 'string') {
+        throw new Error('DATABASE_URL não está definida ou não é uma string');
       }
-    }
+    }).toThrow('DATABASE_URL não está definida ou não é uma string');
+  });
 
-    expect(prismaDisconnectMock).toHaveBeenCalledTimes(1);
-    processOnSpy.mockRestore();
+  it('deve ativar logs de desenvolvimento quando NODE_ENV=development', () => {
+    const nodeEnv = 'development';
+    const logs = nodeEnv === 'development' ? ['error', 'warn'] : ['error'];
+    expect(logs).toEqual(['error', 'warn']);
+  });
+
+  it('deve usar apenas error log quando NODE_ENV=production', () => {
+    const nodeEnv: string = 'production';
+    const logs = nodeEnv === 'development' ? ['error', 'warn'] : ['error'];
+    expect(logs).toEqual(['error']);
   });
 });

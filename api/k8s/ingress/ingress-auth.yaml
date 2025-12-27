@@ -1,0 +1,40 @@
+# Ingress específico para rotas de autenticação com rate limiting mais restritivo
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpme-auth-ingress
+  namespace: helpme
+  labels:
+    app: help-me-api
+    tier: auth
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # Rate limiting mais restritivo para auth
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-rpm: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "5"
+    
+    # Timeouts menores
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    
+spec:
+  tls:
+  - hosts:
+    - api.helpme.com
+    secretName: helpme-tls-secret
+  
+  rules:
+  - host: api.helpme.com
+    http:
+      paths:
+      - path: /api/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: helpme-api-service
+            port:
+              number: 3000

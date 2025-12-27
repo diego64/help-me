@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: helpme-api-metrics
+  namespace: helpme
+  labels:
+    app: helpme-api
+spec:
+  selector:
+    matchLabels:
+      app: helpme-api
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics

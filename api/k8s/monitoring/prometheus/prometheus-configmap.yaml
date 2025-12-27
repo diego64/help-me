@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: helpme
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'helpme-cluster'
+        environment: 'production'
+
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: []
+
+    # Rules files
+    rule_files:
+      - '/etc/prometheus/rules/*.yml'
+
+    # Scrape configurations
+    scrape_configs:
+      # Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Help-Me API
+      - job_name: 'helpme-api'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - helpme
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: helpme-api
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+      # PostgreSQL
+      - job_name: 'postgres'
+        static_configs:
+          - targets: ['postgres-exporter-service:9187']
+
+      # MongoDB
+      - job_name: 'mongodb'
+        static_configs:
+          - targets: ['mongodb-exporter-service:9216']
+
+      # Redis
+      - job_name: 'redis'
+        static_configs:
+          - targets: ['redis-exporter-service:9121']
+
+      # Kafka
+      - job_name: 'kafka'
+        static_configs:
+          - targets: ['kafka-exporter-service:9308']
+
+      # Node Exporter (métricas do sistema)
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            replacement: '${1}:9100'
+            target_label: __address__
+
+      # Kubernetes API Server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Kubernetes Nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+      # Kubernetes Pods
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+  alerts.yml: |
+    groups:
+      - name: helpme_alerts
+        interval: 30s
+        rules:
+          # API Health
+          - alert: APIDown
+            expr: up{job="helpme-api"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Help-Me API is down"
+              description: "API has been down for more than 1 minute"
+
+          # High Response Time
+          - alert: HighResponseTime
+            expr: http_request_duration_seconds{quantile="0.99"} > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High API response time"
+              description: "99th percentile response time is above 2 seconds"
+
+          # High Error Rate
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High error rate detected"
+              description: "Error rate is above 5% for 5 minutes"
+
+          # Database Connection Issues
+          - alert: DatabaseConnectionIssues
+            expr: up{job="postgres"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "PostgreSQL is down"
+              description: "PostgreSQL has been unreachable for 2 minutes"
+
+          # High Memory Usage
+          - alert: HighMemoryUsage
+            expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage detected"
+              description: "Container memory usage is above 90%"
+
+          # High CPU Usage
+          - alert: HighCPUUsage
+            expr: (rate(container_cpu_usage_seconds_total[5m]) / container_spec_cpu_quota) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage detected"
+              description: "Container CPU usage is above 90%"
+
+          # Disk Space
+          - alert: LowDiskSpace
+            expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Low disk space"
+              description: "Available disk space is below 10%"
+
+          # Kafka Lag
+          - alert: KafkaHighConsumerLag
+            expr: kafka_consumergroup_lag > 1000
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High Kafka consumer lag"
+              description: "Consumer lag is above 1000 messages"

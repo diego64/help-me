@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+  namespace: helpme
+  labels:
+    app: influxdb
+    tier: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  template:
+    metadata:
+      labels:
+        app: influxdb
+        tier: monitoring
+    spec:
+      containers:
+      - name: influxdb
+        image: influxdb:1.8-alpine
+        ports:
+        - containerPort: 8086
+          name: influxdb
+        env:
+        - name: INFLUXDB_DB
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_DB
+        - name: INFLUXDB_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_ADMIN_USER
+        - name: INFLUXDB_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_ADMIN_PASSWORD
+        - name: INFLUXDB_USER
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_USER
+        - name: INFLUXDB_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_USER_PASSWORD
+        - name: INFLUXDB_HTTP_AUTH_ENABLED
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-secret
+              key: INFLUXDB_HTTP_AUTH_ENABLED
+        volumeMounts:
+        - name: influxdb-storage
+          mountPath: /var/lib/influxdb
+        - name: influxdb-config
+          mountPath: /etc/influxdb/influxdb.conf
+          subPath: influxdb.conf
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8086
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8086
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: influxdb-storage
+        persistentVolumeClaim:
+          claimName: influxdb-pvc
+      - name: influxdb-config
+        configMap:
+          name: influxdb-config

@@ -5,7 +5,7 @@ import {
 } from 'express';
 import { producer } from '../services/kafka';
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

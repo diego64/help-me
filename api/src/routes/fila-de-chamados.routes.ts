@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { ChamadoStatus } from '@prisma/client';
 import { authMiddleware, authorizeRoles } from '../middleware/auth';
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

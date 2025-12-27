@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topics-init
+  namespace: helpme
+  labels:
+    app: kafka-init
+spec:
+  template:
+    metadata:
+      labels:
+        app: kafka-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: kafka-topics
+        image: confluentinc/cp-kafka:7.5.0
+        command:
+        - sh
+        - -c
+        - |
+          # Aguardar Kafka estar pronto
+          echo "Waiting for Kafka to be ready..."
+          cub kafka-ready -b kafka-service:9092 1 60
+          
+          # Criar tópicos
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic ticket-created --partitions 3 --replication-factor 1
+          
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic ticket-updated --partitions 3 --replication-factor 1
+          
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic ticket-assigned --partitions 3 --replication-factor 1
+          
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic ticket-closed --partitions 3 --replication-factor 1
+          
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic audit-logs --partitions 3 --replication-factor 1
+          
+          kafka-topics --bootstrap-server kafka-service:9092 --create --if-not-exists \
+            --topic notifications --partitions 3 --replication-factor 1
+          
+          echo "Topics created successfully!"
+          
+          # Listar tópicos
+          kafka-topics --bootstrap-server kafka-service:9092 --list

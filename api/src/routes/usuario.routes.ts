@@ -10,7 +10,7 @@ import {
 } from '../middleware/auth';
 import { cacheSet, cacheGet } from '../services/redisClient';
 
-const router = Router();
+export const router: Router = Router();
 
 /**
  * @swagger

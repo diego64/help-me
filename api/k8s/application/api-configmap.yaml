@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helpme-api-config
+  namespace: helpme
+  labels:
+    app: helpme-api
+data:
+  # Application
+  NODE_ENV: production
+  PORT: "3000"
+  API_VERSION: v1
+  APP_NAME: Help-Me API
+  
+  # Database
+  POSTGRES_HOST: postgres-service
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: helpme_db
+  POSTGRES_USER: helpme_user
+  
+  # MongoDB
+  MONGODB_HOST: mongodb-service
+  MONGODB_PORT: "27017"
+  MONGODB_DATABASE: helpme_audit
+  
+  # Redis
+  REDIS_HOST: redis-service
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_TTL: "3600"
+  
+  # Kafka
+  KAFKA_GROUP_ID: helpme-consumer-group
+  
+  # CORS
+  CORS_ORIGIN: "*"
+  CORS_CREDENTIALS: "true"
+  
+  # Rate Limiting
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  
+  # Logging
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+  
+  # Metrics
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  
+  # Features
+  ENABLE_SWAGGER: "true"
+  ENABLE_METRICS: "true"
+  ENABLE_HEALTH_CHECK: "true"
+  
+  # Timeouts
+  REQUEST_TIMEOUT: "30000"
+  DATABASE_TIMEOUT: "10000"
+  
+  # Upload
+  MAX_FILE_SIZE: "10485760"
+  UPLOAD_PATH: /tmp/uploads
