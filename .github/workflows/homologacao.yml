@@ -272,10 +272,12 @@ jobs:
       
       - name: Gerar Prisma Client
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
-        working-directory: ./api 
+        working-directory: ./api
         run: |
           docker compose -f docker-compose.test.yml up -d
           echo "Aguardando serviços ficarem prontos..."
@@ -296,10 +298,14 @@ jobs:
       
       - name: Executar migrations
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run migrate
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run seed
       
       - name: Executar testes E2E
