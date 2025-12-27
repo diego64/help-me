@@ -1,15 +1,19 @@
 import { PrismaClient } from '@prisma/client'
 import { Pool } from 'pg'
 
-// Criar instância do Prisma
 export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 })
 
-// Criar pool do PostgreSQL para conexões diretas (se necessário)
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: parseInt(process.env.DB_MAX_CONNECTIONS || '20', 10)
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 })
+
+// Instância do PrismaPg (se você usa @prisma/adapter-pg)
+export const prismaPg = pool // ou configure conforme necessário
 
 // Apenas executar cleanup em ambientes que NÃO são de teste
 if (process.env.NODE_ENV !== 'test') {
@@ -18,7 +22,7 @@ if (process.env.NODE_ENV !== 'test') {
     await pool.end();
   });
 
-  // Também adicionar para SIGINT e SIGTERM (opcional, mas recomendado)
+  // Também adicionar para SIGINT e SIGTERM
   process.on('SIGINT', async () => {
     await prisma.$disconnect();
     await pool.end();
