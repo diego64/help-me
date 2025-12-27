@@ -270,11 +270,17 @@ jobs:
           API_BASE_URL=http://localhost:3000
           EOF
       
-      - name: Gerar Prisma Client
+      - name: Gerar Prisma Client (primeira vez)
         working-directory: ./api
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run generate
+      
+      - name: Regenerar Prisma Client com .env.test
+        working-directory: ./api
+        run: |
+          echo "Regenerando Prisma Client com DATABASE_URL do .env.test..."
+          pnpm exec dotenv -e .env.test -- pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
         working-directory: ./api
@@ -308,7 +314,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run seed
       
-      - name: DEBUG - Verificar variáveis de ambiente
+      - name: 🔍 DEBUG - Verificar variáveis de ambiente
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO VARIÁVEIS DE AMBIENTE ==="
