@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   ambiente-para-homologacao:
-    name: Verificação de Ambientes
+    name: Verificação dos Ambientes
     strategy:
       matrix:
         versao: [20, 22]
@@ -311,7 +311,6 @@ jobs:
       - name: Executar testes E2E
         working-directory: ./api
         run: |
-          pnpm test:setup
           pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
       
       - name: Upload de coverage E2E (se disponível)
