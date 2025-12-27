@@ -42,6 +42,7 @@ jobs:
     name: Build da Aplicação
     needs: [ambientes-para-homologacao]
     runs-on: ubuntu-latest
+    environment: homologacao
     
     steps:
       - name: Checkout do código
@@ -60,6 +61,17 @@ jobs:
       - name: Instalar dependências
         working-directory: ./api
         run: pnpm install
+      
+      - name: Gerar .env temporário para build
+        working-directory: ./api
+        run: |
+          cat > .env << EOF
+          DATABASE_URL=${{ secrets.DATABASE_URL_TEST }}
+          MONGO_INITDB_URI=${{ secrets.MONGO_INITDB_URI_TEST }}
+          JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          NODE_ENV=production
+          EOF
       
       - name: Gerar Prisma Client
         working-directory: ./api
@@ -100,6 +112,28 @@ jobs:
         working-directory: ./api
         run: pnpm install
       
+      - name: Gerar .env de teste
+        working-directory: ./api
+        run: |
+          cat > .env.test << EOF
+          NODE_ENV=test
+          DATABASE_URL=${{ secrets.DATABASE_URL_TEST }}
+          MONGO_INITDB_URI=${{ secrets.MONGO_INITDB_URI_TEST }}
+          JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD_TEST }}
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          SMTP_HOST=sandbox.smtp.mailtrap.io
+          SMTP_PORT=2525
+          SMTP_USER=${{ secrets.SMTP_USER_TEST }}
+          SMTP_PASS=${{ secrets.SMTP_PASS_TEST }}
+          API_BASE_URL=http://localhost:3000
+          EOF
+          
+          # Copiar também para .env (Prisma pode precisar)
+          cp .env.test .env
+      
       - name: Gerar Prisma Client
         working-directory: ./api
         run: pnpm run generate
@@ -130,10 +164,6 @@ jobs:
         working-directory: ./api
         run: pnpm install
       
-      - name: Gerar Prisma Client
-        working-directory: ./api
-        run: pnpm run generate
-      
       - name: Gerar .env de teste E2E
         working-directory: ./api
         run: |
@@ -155,6 +185,13 @@ jobs:
           SMTP_PASS=${{ secrets.SMTP_PASS_TEST }}
           API_BASE_URL=http://localhost:3000
           EOF
+          
+          # Copiar também para .env (Prisma pode precisar)
+          cp .env.test .env
+      
+      - name: Gerar Prisma Client
+        working-directory: ./api
+        run: pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
         run: |
