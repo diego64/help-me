@@ -2,10 +2,15 @@ import { createClient, RedisClientType } from 'redis';
 
 const redisHost = process.env.REDIS_HOST || 'localhost';
 const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
-const redisPassword = process.env.REDIS_PASSWORD || 'redis_helpme_password';
+const redisPassword = process.env.REDIS_PASSWORD;
+
+// Monta a URL do Redis com ou sem senha
+const redisUrl = redisPassword 
+  ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
+  : `redis://${redisHost}:${redisPort}`;
 
 export const redisClient: RedisClientType = createClient({
-  url: `redis://:${redisPassword}@${redisHost}:${redisPort}`,
+  url: redisUrl,
   socket: {
     reconnectStrategy: (retries) => {
       if (retries > 3) {

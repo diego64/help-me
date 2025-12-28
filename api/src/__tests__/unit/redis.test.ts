@@ -51,7 +51,7 @@ describe('Redis Client', () => {
   });
 
   describe('Dado que o módulo Redis é importado, Quando inicializar, Então deve criar e conectar o cliente', () => {
-    it('deve criar cliente Redis com URL correta usando variáveis de ambiente padrão', async () => {
+    it('deve criar cliente Redis com URL correta SEM senha quando REDIS_PASSWORD está vazio/undefined', async () => {
       delete process.env.REDIS_HOST;
       delete process.env.REDIS_PORT;
       delete process.env.REDIS_PASSWORD;
@@ -59,7 +59,7 @@ describe('Redis Client', () => {
       await import('../../services/redisClient');
 
       expect(createClient).toHaveBeenCalledWith({
-        url: 'redis://:redis_helpme_password@localhost:6379',
+        url: 'redis://localhost:6379',
         socket: {
           reconnectStrategy: expect.any(Function)
         }
@@ -67,7 +67,7 @@ describe('Redis Client', () => {
       expect(mockRedisClient.connect).toHaveBeenCalled();
     });
 
-    it('deve criar cliente Redis com URL customizada quando variáveis de ambiente estiverem definidas', async () => {
+    it('deve criar cliente Redis com URL customizada COM senha quando variáveis de ambiente estiverem definidas', async () => {
       process.env.REDIS_HOST = 'redis-server';
       process.env.REDIS_PORT = '6380';
       process.env.REDIS_PASSWORD = 'custom_password';
@@ -79,6 +79,24 @@ describe('Redis Client', () => {
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://:custom_password@redis-server:6380',
+        socket: {
+          reconnectStrategy: expect.any(Function)
+        }
+      });
+    });
+
+    it('deve criar cliente Redis SEM senha quando REDIS_PASSWORD está vazio (string vazia)', async () => {
+      process.env.REDIS_HOST = 'localhost';
+      process.env.REDIS_PORT = '6379';
+      process.env.REDIS_PASSWORD = '';
+
+      vi.resetModules();
+      (createClient as any).mockReturnValue(mockRedisClient);
+
+      await import('../../services/redisClient');
+
+      expect(createClient).toHaveBeenCalledWith({
+        url: 'redis://localhost:6379',
         socket: {
           reconnectStrategy: expect.any(Function)
         }

@@ -298,13 +298,24 @@ services:
     hostname: redis_helpme
     environment:
       TZ: America/Sao_Paulo
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD:-redis_helpme_password}
-      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
-      --appendonly yes
-      --appendfsync everysec
+      sh -c '
+      if [ -z "$REDIS_PASSWORD" ]; then
+        redis-server
+        --maxmemory ${REDIS_MAX_MEMORY:-512mb}
+        --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+        --appendonly yes
+        --appendfsync everysec
+      else
+        redis-server
+        --requirepass "$REDIS_PASSWORD"
+        --maxmemory ${REDIS_MAX_MEMORY:-512mb}
+        --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+        --appendonly yes
+        --appendfsync everysec
+      fi
+      '
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -321,7 +332,14 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "redis-cli", "--pass", "${REDIS_PASSWORD:-redis_helpme_password}", "ping"]
+      test: >
+        sh -c '
+        if [ -z "$REDIS_PASSWORD" ]; then
+          redis-cli ping
+        else
+          redis-cli --pass "$REDIS_PASSWORD" ping
+        fi
+        '
       interval: 10s
       timeout: 5s
       retries: 5
