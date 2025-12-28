@@ -11,13 +11,17 @@ describe('Redis Client E2E', () => {
   let redisClient: RedisClientType;
   const redisHost = process.env.REDIS_HOST || 'localhost';
   const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
-  
-  const redisPassword = process.env.REDIS_PASSWORD || 'UwopC15GvVlz7By6';
+  const redisPassword = process.env.REDIS_PASSWORD;
+
+  // Monta a URL do Redis com ou sem senha
+  const redisUrl = redisPassword 
+    ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
+    : `redis://${redisHost}:${redisPort}`;
 
   beforeAll(async () => {
     try {
       redisClient = createClient({
-        url: `redis://:${redisPassword}@${redisHost}:${redisPort}`,
+        url: redisUrl,
         socket: {
           connectTimeout: 5000,
           reconnectStrategy: (retries) => {
@@ -224,14 +228,13 @@ describe('Redis Client E2E', () => {
             await clienteComErro.quit();
           }
         } catch (e) {
-          // Ignora erro ao fechar conexão inválida
         }
       }
     });
 
     it('deve emitir evento de ready quando conexão estiver pronta', async () => {
       const clienteNovo = createClient({
-        url: `redis://:${redisPassword}@${redisHost}:${redisPort}`,
+        url: redisUrl,
         socket: {
           connectTimeout: 5000
         }
@@ -263,7 +266,6 @@ describe('Redis Client E2E', () => {
       expect(resultado).toBe(valor);
 
       // Aguarda TTL + margem de segurança de 2 segundos
-      // Isso garante que o Redis teve tempo suficiente para processar a expiração
       await new Promise(resolve => setTimeout(resolve, (ttl + 2) * 1000));
 
       resultado = await redisClient.get(chave);
