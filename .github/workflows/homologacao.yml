@@ -285,9 +285,19 @@ jobs:
       - name: Subir infraestrutura completa com Docker Compose
         working-directory: ./api
         run: |
+          echo "Parando containers existentes..."
+          docker compose -f docker-compose.test.yml down -v || true
+          
+          echo "Limpando containers órfãos..."
+          docker ps -a --filter "name=helpme-" -q | xargs -r docker rm -f || true
+          
+          echo "Subindo nova infraestrutura..."
           docker compose -f docker-compose.test.yml up -d
+          
           echo "Aguardando serviços ficarem prontos..."
           sleep 60
+          
+          echo "Containers em execução:"
           docker compose -f docker-compose.test.yml ps
       
       - name: Verificar saúde dos serviços
@@ -296,8 +306,13 @@ jobs:
           echo "Verificando PostgreSQL..."
           timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; do echo "Aguardando PostgreSQL..."; sleep 2; done' || echo "⚠️ PostgreSQL timeout"
           
-          echo "Verificando Redis..."
+          echo "Verificando Redis (sem senha)..."
           timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; do echo "Aguardando Redis..."; sleep 2; done' || echo "⚠️ Redis timeout"
+          
+          echo "Testando Redis sem autenticação..."
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli set test-key "test-value"
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli get test-key
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli del test-key
           
           echo "Status final dos containers:"
           docker compose -f docker-compose.test.yml ps
@@ -431,7 +446,7 @@ jobs:
       - name: Análise do Dockerfile com Hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: Dockerfile
+          dockerfile: ./api/Dockerfile
         continue-on-error: true
       
       - name: Login no Docker Hub
@@ -447,8 +462,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          context: .
-          file: Dockerfile
+          context: ./api
+          file: ./api/Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:buildcache
