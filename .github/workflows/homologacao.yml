@@ -490,7 +490,7 @@ jobs:
         with:
           push: true
           context: ./api
-          file: Dockerfile
+          file: ./api/Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:buildcache
