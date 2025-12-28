@@ -329,7 +329,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run seed
       
-      - name: Verificar variáveis de ambiente
+      - name: 🔍 DEBUG - Verificar variáveis de ambiente
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO VARIÁVEIS DE AMBIENTE ==="
@@ -457,6 +457,33 @@ jobs:
       
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: DEBUG - Verificar Dockerfile
+        run: |
+          echo "=== VERIFICANDO DOCKERFILE ==="
+          pwd
+          ls -la
+          echo ""
+          echo "Conteúdo da pasta api:"
+          ls -la api/
+          echo ""
+          echo "Dockerfile na raiz?"
+          if [ -f "Dockerfile" ]; then
+            echo "SIM! Dockerfile encontrado na raiz"
+            echo "Tamanho: $(wc -c < Dockerfile) bytes"
+            echo "Primeiras 10 linhas:"
+            head -n 10 Dockerfile
+          else
+            echo "NÃO! Dockerfile NÃO encontrado na raiz"
+          fi
+          echo ""
+          echo "Dockerfile em api/?"
+          if [ -f "api/Dockerfile" ]; then
+            echo "SIM! api/Dockerfile encontrado"
+            echo "Tamanho: $(wc -c < api/Dockerfile) bytes"
+          else
+            echo "NÃO! api/Dockerfile NÃO encontrado"
+          fi
       
       - name: Build e Push da imagem
         uses: docker/build-push-action@v6
