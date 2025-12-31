@@ -1,19 +1,124 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ChamadoStatus } from '@prisma/client';
-import { authMiddleware, authorizeRoles } from '../middleware/auth';
+import {
+  authMiddleware,
+  authorizeRoles,
+  AuthRequest
+} from '../middleware/auth';
 
 export const router: Router = Router();
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 100;
+
+interface PaginationParams {
+  page: number;
+  limit: number;
+  skip: number;
+}
+
+interface ListagemResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+function getPaginationParams(query: any): PaginationParams {
+  const page = Math.max(1, parseInt(query.page) || DEFAULT_PAGE);
+  const limit = Math.min(
+    MAX_LIMIT,
+    Math.max(1, parseInt(query.limit) || DEFAULT_LIMIT)
+  );
+  const skip = (page - 1) * limit;
+
+  return { page, limit, skip };
+}
+
+
+function createPaginatedResponse<T>(
+  data: T[],
+  total: number,
+  page: number,
+  limit: number
+): ListagemResponse<T> {
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    },
+  };
+}
+
+function validarStatus(status: string): status is ChamadoStatus {
+  return Object.values(ChamadoStatus).includes(status as ChamadoStatus);
+}
+
+const CHAMADO_SELECT = {
+  id: true,
+  OS: true,
+  descricao: true,
+  descricaoEncerramento: true,
+  status: true,
+  geradoEm: true,
+  atualizadoEm: true,
+  encerradoEm: true,
+  deletadoEm: true,
+  usuario: {
+    select: {
+      id: true,
+      nome: true,
+      sobrenome: true,
+      email: true,
+      setor: true,
+    },
+  },
+  tecnico: {
+    select: {
+      id: true,
+      nome: true,
+      sobrenome: true,
+      email: true,
+    },
+  },
+  servicos: {
+    select: {
+      id: true,
+      servicoId: true,
+      servico: {
+        select: {
+          id: true,
+          nome: true,
+          descricao: true,
+        },
+      },
+    },
+  },
+} as const;
 
 /**
  * @swagger
  * tags:
- *   name: Fila de chamados
+ *   name: Fila de Chamados
  *   description: Endpoints para listagem e consulta de chamados
  */
 
 // ========================================
-// LISTAGEM DOS CHAMADOS DO USUARIO LOGADO
+// MEUS CHAMADOS (USUARIO)
 // ========================================
 
 /**
@@ -21,368 +126,556 @@ export const router: Router = Router();
  * /api/listagens/meus-chamados:
  *   get:
  *     summary: Lista os chamados criados pelo usuário autenticado
- *     description: Retorna todos os chamados que foram abertos pelo usuário logado, incluindo informações do técnico responsável e serviços relacionados. Ordenados por data de criação (mais recentes primeiro). Requer autenticação e perfil USUARIO.
- *     tags: [Fila de chamados]
+ *     description: Retorna todos os chamados que foram abertos pelo usuário logado, com paginação. Requer autenticação e perfil USUARIO.
+ *     tags: [Listagens]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Número da página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Itens por página
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [ABERTO, EM_ATENDIMENTO, ENCERRADO, CANCELADO, REABERTO]
+ *         description: Filtrar por status (opcional)
+ *       - in: query
+ *         name: incluirInativos
+ *         schema:
+ *           type: boolean
+ *         description: Incluir chamados deletados
  *     responses:
  *       200:
  *         description: Lista de chamados retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                     format: uuid
- *                   OS:
- *                     type: string
- *                   descricao:
- *                     type: string
- *                   descricaoEncerramento:
- *                     type: string
- *                     nullable: true
- *                   status:
- *                     type: string
- *                     enum: [ABERTO, EM_ATENDIMENTO, ENCERRADO, CANCELADO, REABERTO]
- *                   geradoEm:
- *                     type: string
- *                     format: date-time
- *                   atualizadoEm:
- *                     type: string
- *                     format: date-time
- *                   encerradoEm:
- *                     type: string
- *                     format: date-time
- *                     nullable: true
- *                   usuario:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   tecnico:
- *                     type: object
- *                     nullable: true
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   servicos:
- *                     type: array
- *                     items:
- *                       type: object
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil USUARIO)
+ *         description: Sem permissão
  *       500:
- *         description: Erro ao listar chamados do usuário
+ *         description: Erro ao listar chamados
  */
-router.get('/meus-chamados',
+router.get(
+  '/meus-chamados',
   authMiddleware,
   authorizeRoles('USUARIO'),
-  async (req: any, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const chamados = await prisma.chamado.findMany({
-        where: { usuarioId: req.usuario.id },
-        include: {
-          usuario: { select: { id: true, email: true } },
-          tecnico: { select: { id: true, email: true } },
-          servicos: { include: { servico: { select: { nome: true } } } },
-        },
-        orderBy: { geradoEm: 'desc' },
-      });
+      const { page, limit, skip } = getPaginationParams(req.query);
+      const { status, incluirInativos } = req.query;
 
-      return res.json(chamados);
-    } catch (err) {
-      console.error('Erro ao listar chamados do usuário:', err);
-      return res.status(500).json({ error: 'Erro ao listar chamados do usuário.' });
+      // Construir filtros
+      const where: any = {
+        usuarioId: req.usuario!.id,
+      };
+
+      if (status && validarStatus(status as string)) {
+        where.status = status as ChamadoStatus;
+      }
+
+      if (incluirInativos !== 'true') {
+        where.deletadoEm = null;
+      }
+
+      // Buscar total e chamados em paralelo
+      const [total, chamados] = await Promise.all([
+        prisma.chamado.count({ where }),
+        prisma.chamado.findMany({
+          where,
+          select: CHAMADO_SELECT,
+          orderBy: { geradoEm: 'desc' },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      const response = createPaginatedResponse(chamados, total, page, limit);
+
+      res.json(response);
+    } catch (err: any) {
+      console.error('[LISTAGEM MEUS CHAMADOS ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao listar chamados do usuário',
+      });
     }
   }
 );
 
-// ==========================================================
-// LISTAGEM DOS CHAMADOS ATRIBUIDO AO TECNICO LOGADO
-// ==========================================================
+// ========================================
+// CHAMADOS ATRIBUÍDOS (TECNICO)
+// ========================================
 
 /**
  * @swagger
  * /api/listagens/chamados-atribuidos:
  *   get:
  *     summary: Lista os chamados atribuídos ao técnico autenticado
- *     description: Retorna todos os chamados que estão atualmente atribuídos ao técnico logado e que estão com status EM_ATENDIMENTO ou REABERTO. Inclui informações do usuário solicitante e serviços relacionados. Ordenados por data de criação (mais recentes primeiro). Requer autenticação e perfil TECNICO.
- *     tags: [Fila de chamados]
+ *     description: Retorna todos os chamados que estão atualmente atribuídos ao técnico logado e que estão com status EM_ATENDIMENTO ou REABERTO. Requer autenticação e perfil TECNICO.
+ *     tags: [Listagens]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *       - in: query
+ *         name: prioridade
+ *         schema:
+ *           type: string
+ *           enum: [recentes, antigos, reabertos]
+ *         description: Ordenação customizada
  *     responses:
  *       200:
  *         description: Lista de chamados atribuídos retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                     format: uuid
- *                   OS:
- *                     type: string
- *                   descricao:
- *                     type: string
- *                   descricaoEncerramento:
- *                     type: string
- *                     nullable: true
- *                   status:
- *                     type: string
- *                     enum: [EM_ATENDIMENTO, REABERTO]
- *                   geradoEm:
- *                     type: string
- *                     format: date-time
- *                   atualizadoEm:
- *                     type: string
- *                     format: date-time
- *                   encerradoEm:
- *                     type: string
- *                     format: date-time
- *                     nullable: true
- *                   usuario:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   tecnico:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   TipoDeServico:
- *                     type: array
- *                     items:
- *                       type: object
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil TECNICO)
+ *         description: Sem permissão
  *       500:
- *         description: Erro ao listar chamados do técnico
+ *         description: Erro ao listar chamados
  */
-router.get('/chamados-atribuidos',
+router.get(
+  '/chamados-atribuidos',
   authMiddleware,
   authorizeRoles('TECNICO'),
-  async (req: any, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const chamados = await prisma.chamado.findMany({
-        where: {
-          tecnicoId: req.usuario.id,
-          status: { in: ['EM_ATENDIMENTO', 'REABERTO'] },
-        },
-        include: {
-          usuario: { select: { id: true, email: true } },
-          tecnico: { select: { id: true, email: true } },
-          servicos: {
-            select: {
-              servicoId: true,
-              servico: { select: { nome: true } }
-            }
-          }
-        },
-        orderBy: { geradoEm: 'desc' },
+      const { page, limit, skip } = getPaginationParams(req.query);
+      const { prioridade } = req.query;
+
+      const where = {
+        tecnicoId: req.usuario!.id,
+        status: { in: [ChamadoStatus.EM_ATENDIMENTO, ChamadoStatus.REABERTO] },
+        deletadoEm: null,
+      };
+
+      // Definir ordenação
+      let orderBy: any = { geradoEm: 'desc' };
+
+      if (prioridade === 'antigos') {
+        orderBy = { geradoEm: 'asc' };
+      } else if (prioridade === 'reabertos') {
+        orderBy = [{ status: 'desc' }, { geradoEm: 'desc' }];
+      }
+
+      // Buscar em paralelo
+      const [total, chamados] = await Promise.all([
+        prisma.chamado.count({ where }),
+        prisma.chamado.findMany({
+          where,
+          select: CHAMADO_SELECT,
+          orderBy,
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      const response = createPaginatedResponse(chamados, total, page, limit);
+
+      res.json(response);
+    } catch (err: any) {
+      console.error('[LISTAGEM ATRIBUIDOS ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao listar chamados do técnico',
       });
-
-      const response = chamados.map(chamado => ({
-        id: chamado.id,
-        OS: chamado.OS,
-        descricao: chamado.descricao,
-        descricaoEncerramento: chamado.descricaoEncerramento,
-        status: chamado.status,
-        geradoEm: chamado.geradoEm,
-        atualizadoEm: chamado.atualizadoEm,
-        encerradoEm: chamado.encerradoEm,
-        usuario: chamado.usuario,
-        tecnico: chamado.tecnico,
-        TipoDeServico: chamado.servicos
-      }));
-
-      return res.json(response);
-    } catch (err) {
-      console.error('Erro ao listar chamados do técnico:', err);
-      return res.status(500).json({ error: 'Erro ao listar chamados do técnico.' });
     }
   }
 );
 
-// ==========================================================
-// LISTAGEM DE TODOS OS CHAMADOS APLICANDO FILTROS NO STATUS
-// ==========================================================
+// ========================================
+// TODOS OS CHAMADOS (ADMIN)
+// ========================================
 
 /**
  * @swagger
  * /api/listagens/todos-chamados:
  *   get:
- *     summary: Lista todos os chamados filtrados por status
- *     description: Retorna todos os chamados do sistema filtrados por um status específico. Requer autenticação e perfil ADMIN.
- *     tags: [Fila de chamados]
+ *     summary: Lista todos os chamados do sistema
+ *     description: Retorna todos os chamados do sistema com filtros avançados e paginação. Requer autenticação e perfil ADMIN.
+ *     tags: [Listagens]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *       - in: query
  *         name: status
- *         required: true
  *         schema:
  *           type: string
  *           enum: [ABERTO, EM_ATENDIMENTO, ENCERRADO, CANCELADO, REABERTO]
- *         description: Status do chamado para filtrar
+ *         description: Filtrar por status
+ *       - in: query
+ *         name: tecnicoId
+ *         schema:
+ *           type: string
+ *         description: Filtrar por técnico
+ *       - in: query
+ *         name: usuarioId
+ *         schema:
+ *           type: string
+ *         description: Filtrar por usuário
+ *       - in: query
+ *         name: setor
+ *         schema:
+ *           type: string
+ *         description: Filtrar por setor do usuário
+ *       - in: query
+ *         name: dataInicio
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Data inicial (YYYY-MM-DD)
+ *       - in: query
+ *         name: dataFim
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Data final (YYYY-MM-DD)
+ *       - in: query
+ *         name: incluirInativos
+ *         schema:
+ *           type: boolean
+ *         description: Incluir chamados deletados
+ *       - in: query
+ *         name: busca
+ *         schema:
+ *           type: string
+ *         description: Buscar em OS ou descrição
  *     responses:
  *       200:
  *         description: Lista de chamados retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
  *       400:
- *         description: Parâmetro status ausente ou inválido
+ *         description: Parâmetros inválidos
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN)
+ *         description: Sem permissão
  *       500:
- *         description: Erro ao listar chamados por status
+ *         description: Erro ao listar chamados
  */
-router.get('/todos-chamados',
+router.get(
+  '/todos-chamados',
   authMiddleware,
   authorizeRoles('ADMIN'),
-  async (req, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { status } = req.query as { status?: string };
+      const { page, limit, skip } = getPaginationParams(req.query);
+      const {
+        status,
+        tecnicoId,
+        usuarioId,
+        setor,
+        dataInicio,
+        dataFim,
+        incluirInativos,
+        busca,
+      } = req.query;
 
-      const statusValidos = ['ABERTO', 'EM_ATENDIMENTO', 'ENCERRADO', 'CANCELADO', 'REABERTO'];
+      // Construir filtros
+      const where: any = {};
 
-      if (!status) {
-        return res.status(400).json({ error: 'O parâmetro "status" é obrigatório.' });
+      // Filtro de status
+      if (status) {
+        if (!validarStatus(status as string)) {
+          return res.status(400).json({
+            error: 'Status inválido',
+            statusValidos: Object.values(ChamadoStatus),
+          });
+        }
+        where.status = status as ChamadoStatus;
       }
 
-      if (!statusValidos.includes(status)) {
-        return res.status(400).json({
-          error: `Status inválido. Use um dos seguintes: ${statusValidos.join(', ')}`,
-        });
+      // Filtro de técnico
+      if (tecnicoId) {
+        where.tecnicoId = tecnicoId as string;
       }
 
-      // Assegurar que o valor de status corresponde a uma das opções válidas definidas
-      const ChamadoStatus = status as unknown as ChamadoStatus;
+      // Filtro de usuário
+      if (usuarioId) {
+        where.usuarioId = usuarioId as string;
+      }
 
-      const chamados = await prisma.chamado.findMany({
-        where: { status: ChamadoStatus },
-        include: {
-          usuario: { select: { id: true, email: true } },
-          tecnico: { select: { id: true, email: true } },
-          servicos: { include: { servico: { select: { nome: true } } } },
-        },
-        orderBy: { geradoEm: 'desc' },
+      // Filtro de setor (via usuário)
+      if (setor) {
+        where.usuario = {
+          setor: setor as string,
+        };
+      }
+
+      // Filtro de data
+      if (dataInicio || dataFim) {
+        where.geradoEm = {};
+
+        if (dataInicio) {
+          where.geradoEm.gte = new Date(dataInicio as string);
+        }
+
+        if (dataFim) {
+          const fimDate = new Date(dataFim as string);
+          fimDate.setHours(23, 59, 59, 999);
+          where.geradoEm.lte = fimDate;
+        }
+      }
+
+      // Filtro de busca (OS ou descrição)
+      if (busca) {
+        where.OR = [
+          { OS: { contains: busca as string, mode: 'insensitive' } },
+          { descricao: { contains: busca as string, mode: 'insensitive' } },
+        ];
+      }
+
+      // Filtro de soft delete
+      if (incluirInativos !== 'true') {
+        where.deletadoEm = null;
+      }
+
+      // Buscar em paralelo
+      const [total, chamados] = await Promise.all([
+        prisma.chamado.count({ where }),
+        prisma.chamado.findMany({
+          where,
+          select: CHAMADO_SELECT,
+          orderBy: { geradoEm: 'desc' },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      const response = createPaginatedResponse(chamados, total, page, limit);
+
+      res.json(response);
+    } catch (err: any) {
+      console.error('[LISTAGEM TODOS CHAMADOS ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao listar chamados',
       });
-
-      return res.status(200).json(chamados);
-    } catch (err) {
-      console.error('Erro ao listar chamados por status:', err);
-      return res.status(500).json({ error: 'Erro ao listar chamados por status.' });
     }
   }
 );
 
-// ================================================
-// LISTAGEM DE TODOS OS CHAMADOS COM STATUS ABERTO
-// ================================================
+// ========================================
+// CHAMADOS ABERTOS (FILA)
+// ========================================
 
 /**
  * @swagger
  * /api/listagens/abertos:
  *   get:
- *     summary: Lista todos os chamados abertos ou reabertos
- *     description: Retorna todos os chamados que estão com status ABERTO ou REABERTO, disponíveis para atribuição a técnicos. Inclui informações do usuário solicitante e serviços relacionados. Ordenados por data de criação (mais recentes primeiro). Requer autenticação e perfil ADMIN ou TECNICO.
- *     tags: [Fila de chamados]
+ *     summary: Lista todos os chamados abertos ou reabertos (fila)
+ *     description: Retorna todos os chamados que estão com status ABERTO ou REABERTO, disponíveis para atribuição a técnicos. Requer autenticação e perfil ADMIN ou TECNICO.
+ *     tags: [Listagens]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *       - in: query
+ *         name: setor
+ *         schema:
+ *           type: string
+ *         description: Filtrar por setor do usuário
+ *       - in: query
+ *         name: ordenacao
+ *         schema:
+ *           type: string
+ *           enum: [recentes, antigos, prioridade]
+ *         description: Ordenação (prioridade = reabertos primeiro)
+ *     responses:
+ *       200:
+ *         description: Lista de chamados abertos retornada com sucesso
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       500:
+ *         description: Erro ao listar chamados abertos
+ */
+router.get(
+  '/abertos',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'TECNICO'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { page, limit, skip } = getPaginationParams(req.query);
+      const { setor, ordenacao } = req.query;
+
+      // Construir filtros
+      const where: any = {
+        status: { in: [ChamadoStatus.ABERTO, ChamadoStatus.REABERTO] },
+        deletadoEm: null,
+      };
+
+      // Filtro de setor
+      if (setor) {
+        where.usuario = {
+          setor: setor as string,
+        };
+      }
+
+      // Definir ordenação
+      let orderBy: any = { geradoEm: 'desc' };
+
+      if (ordenacao === 'antigos') {
+        orderBy = { geradoEm: 'asc' };
+      } else if (ordenacao === 'prioridade') {
+        // Reabertos primeiro, depois por data
+        orderBy = [{ status: 'desc' }, { geradoEm: 'desc' }];
+      }
+
+      // Buscar em paralelo
+      const [total, chamados] = await Promise.all([
+        prisma.chamado.count({ where }),
+        prisma.chamado.findMany({
+          where,
+          select: CHAMADO_SELECT,
+          orderBy,
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      const response = createPaginatedResponse(chamados, total, page, limit);
+
+      res.json(response);
+    } catch (err: any) {
+      console.error('[LISTAGEM ABERTOS ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao listar chamados abertos',
+      });
+    }
+  }
+);
+
+// ========================================
+// ESTATÍSTICAS DE CHAMADOS (DASHBOARD)
+// ========================================
+
+/**
+ * @swagger
+ * /api/listagens/estatisticas:
+ *   get:
+ *     summary: Retorna estatísticas gerais de chamados
+ *     description: Retorna contadores de chamados por status, técnicos e outras métricas. Requer autenticação e perfil ADMIN.
+ *     tags: [Listagens]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Lista de chamados abertos retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                     format: uuid
- *                   OS:
- *                     type: string
- *                   descricao:
- *                     type: string
- *                   status:
- *                     type: string
- *                     enum: [ABERTO, REABERTO]
- *                   geradoEm:
- *                     type: string
- *                     format: date-time
- *                   usuario:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   tecnico:
- *                     type: object
- *                     nullable: true
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                   servicos:
- *                     type: array
- *                     items:
- *                       type: object
+ *         description: Estatísticas retornadas com sucesso
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN ou TECNICO)
+ *         description: Sem permissão
  *       500:
- *         description: Erro ao listar chamados abertos
+ *         description: Erro ao buscar estatísticas
  */
-router.get('/abertos',
+router.get(
+  '/estatisticas',
   authMiddleware,
-  authorizeRoles('ADMIN', 'TECNICO'),
-  async (_req, res) => {
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
     try {
-      const chamados = await prisma.chamado.findMany({
-        where: { status: { in: ['ABERTO', 'REABERTO'] } },
-        include: {
-          usuario: { select: { id: true, email: true } },
-          tecnico: { select: { id: true, email: true } },
-          servicos: { include: { servico: { select: { nome: true } } } },
-        },
-        orderBy: { geradoEm: 'desc' },
-      });
+      const [
+        totalChamados,
+        abertos,
+        emAtendimento,
+        encerrados,
+        cancelados,
+        reabertos,
+        semTecnico,
+        porSetor,
+      ] = await Promise.all([
+        prisma.chamado.count({ where: { deletadoEm: null } }),
+        prisma.chamado.count({
+          where: { status: ChamadoStatus.ABERTO, deletadoEm: null },
+        }),
+        prisma.chamado.count({
+          where: { status: ChamadoStatus.EM_ATENDIMENTO, deletadoEm: null },
+        }),
+        prisma.chamado.count({
+          where: { status: ChamadoStatus.ENCERRADO, deletadoEm: null },
+        }),
+        prisma.chamado.count({
+          where: { status: ChamadoStatus.CANCELADO, deletadoEm: null },
+        }),
+        prisma.chamado.count({
+          where: { status: ChamadoStatus.REABERTO, deletadoEm: null },
+        }),
+        prisma.chamado.count({
+          where: { tecnicoId: null, deletadoEm: null },
+        }),
+        prisma.chamado.groupBy({
+          by: ['usuarioId'],
+          where: { deletadoEm: null },
+          _count: true,
+        }),
+      ]);
 
-      return res.json(chamados);
-    } catch (err) {
-      console.error('Erro ao listar chamados abertos:', err);
-      return res.status(500).json({ error: 'Erro ao listar chamados abertos.' });
+      const estatisticas = {
+        total: totalChamados,
+        porStatus: {
+          abertos,
+          emAtendimento,
+          encerrados,
+          cancelados,
+          reabertos,
+        },
+        pendentes: abertos + reabertos,
+        semTecnico,
+        timestamp: new Date().toISOString(),
+      };
+
+      res.json(estatisticas);
+    } catch (err: any) {
+      console.error('[ESTATISTICAS ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao buscar estatísticas',
+      });
     }
   }
 );
