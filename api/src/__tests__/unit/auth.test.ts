@@ -10,7 +10,7 @@ import { Response, NextFunction } from 'express';
 import { Regra } from '@prisma/client';
 
 // ========================================
-// MOCKS - DEVEM VIR ANTES DOS IMPORTS
+// MOCKS - deveM VIR ANTES DOS IMPORTS
 // ========================================
 
 vi.mock('../../auth/jwt', () => ({
@@ -72,7 +72,7 @@ afterEach(() => {
 // ========================================
 
 describe('authMiddleware', () => {
-  it('Deve retornar 401 quando token não for fornecido', async () => {
+  it('deve retornar 401 quando token não for fornecido', async () => {
     // Arrange
     extractTokenFromHeaderMock.mockReturnValue(null);
     const req = createMockRequest() as AuthRequest;
@@ -88,7 +88,7 @@ describe('authMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve retornar 401 quando extractTokenFromHeader retornar null', async () => {
+  it('deve retornar 401 quando extractTokenFromHeader retornar null', async () => {
     // Arrange
     extractTokenFromHeaderMock.mockReturnValue(null);
     const req = createMockRequest('Bearer invalid') as AuthRequest;
@@ -104,7 +104,7 @@ describe('authMiddleware', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
   });
 
-  it('Deve retornar 401 quando token estiver na blacklist', async () => {
+  it('deve retornar 401 quando token estiver na blacklist', async () => {
     // Arrange
     const mockToken = 'valid-token';
     const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
@@ -126,7 +126,7 @@ describe('authMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve chamar next quando token for válido e não estiver na blacklist', async () => {
+  it('deve chamar next quando token for válido e não estiver na blacklist', async () => {
     // Arrange
     const mockToken = 'valid-token';
     const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
@@ -147,7 +147,7 @@ describe('authMiddleware', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('Deve chamar next quando token não tiver jti', async () => {
+  it('deve chamar next quando token não tiver jti', async () => {
     // Arrange
     const mockToken = 'valid-token';
     const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
@@ -167,7 +167,7 @@ describe('authMiddleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Deve retornar 401 com mensagem de token expirado quando erro contiver "expir"', async () => {
+  it('deve retornar 401 com mensagem de token expirado quando erro contiver "expir"', async () => {
     // Arrange
     const mockToken = 'expired-token';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -188,7 +188,7 @@ describe('authMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve retornar 401 com mensagem de token expirado quando erro contiver "expire" (case insensitive)', async () => {
+  it('deve retornar 401 com mensagem de token expirado quando erro contiver "expire" (case insensitive)', async () => {
     // Arrange
     const mockToken = 'expired-token';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -208,7 +208,7 @@ describe('authMiddleware', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
   });
 
-  it('Deve retornar 401 com mensagem genérica quando token for inválido', async () => {
+  it('deve retornar 401 com mensagem genérica quando token for inválido', async () => {
     // Arrange
     const mockToken = 'invalid-token';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -229,7 +229,7 @@ describe('authMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve retornar 401 quando erro não for instância de Error (linha 35)', async () => {
+  it('deve retornar 401 quando erro não for instância de Error (linha 35)', async () => {
     // Arrange
     const mockToken = 'token-com-erro-estranho';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -250,7 +250,7 @@ describe('authMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve retornar 401 quando erro for null', async () => {
+  it('deve retornar 401 quando erro for null', async () => {
     // Arrange
     const mockToken = 'token-com-erro-null';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -270,7 +270,7 @@ describe('authMiddleware', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
   });
 
-  it('Deve retornar 401 quando erro for objeto sem message', async () => {
+  it('deve retornar 401 quando erro for objeto sem message', async () => {
     // Arrange
     const mockToken = 'token-com-erro-objeto';
     extractTokenFromHeaderMock.mockReturnValue(mockToken);
@@ -290,7 +290,7 @@ describe('authMiddleware', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
   });
 
-  it('Deve pular verificação de blacklist quando decoded não tiver jti', async () => {
+  it('deve pular verificação de blacklist quando decoded não tiver jti', async () => {
     // Arrange
     const mockToken = 'valid-token-sem-jti';
     const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
@@ -309,7 +309,7 @@ describe('authMiddleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Deve logar erro no console quando ocorrer exceção', async () => {
+  it('deve logar erro no console quando ocorrer exceção', async () => {
     // Arrange
     const consoleErrorSpy = vi.spyOn(console, 'error');
     const mockToken = 'token-com-erro';
@@ -336,7 +336,7 @@ describe('authMiddleware', () => {
 // ========================================
 
 describe('authorizeRoles', () => {
-  it('Deve retornar 401 quando req.usuario não estiver definido', () => {
+  it('deve retornar 401 quando req.usuario não estiver definido', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
     const req = {} as AuthRequest;
@@ -352,7 +352,7 @@ describe('authorizeRoles', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve retornar 403 quando usuário não tiver permissão', () => {
+  it('deve retornar 403 quando usuário não tiver permissão', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
     const req = {
@@ -370,7 +370,7 @@ describe('authorizeRoles', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('Deve chamar next quando usuário tiver permissão adequada', () => {
+  it('deve chamar next quando usuário tiver permissão adequada', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
     const req = {
@@ -387,7 +387,7 @@ describe('authorizeRoles', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('Deve aceitar múltiplas regras e permitir acesso se usuário tiver uma delas', () => {
+  it('deve aceitar múltiplas regras e permitir acesso se usuário tiver uma delas', () => {
     // Arrange
     const middleware = authorizeRoles('ADMIN', 'USUARIO');
     const req = {
@@ -404,7 +404,7 @@ describe('authorizeRoles', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('Deve aceitar regras como strings', () => {
+  it('deve aceitar regras como strings', () => {
     // Arrange
     const middleware = authorizeRoles('ADMIN', 'USUARIO');
     const req = {
@@ -420,7 +420,7 @@ describe('authorizeRoles', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Deve negar acesso quando usuário não tiver nenhuma das regras permitidas', () => {
+  it('deve negar acesso quando usuário não tiver nenhuma das regras permitidas', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
     const req = {
@@ -437,7 +437,7 @@ describe('authorizeRoles', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
   });
 
-  it('Deve converter todas as regras para string antes de comparar', () => {
+  it('deve converter todas as regras para string antes de comparar', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN);
     const req = {
@@ -453,7 +453,7 @@ describe('authorizeRoles', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Deve funcionar com uma única regra', () => {
+  it('deve funcionar com uma única regra', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.USUARIO);
     const req = {
@@ -469,7 +469,7 @@ describe('authorizeRoles', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Deve funcionar com duas ou mais regras', () => {
+  it('deve funcionar com duas ou mais regras', () => {
     // Arrange
     const middleware = authorizeRoles(Regra.ADMIN, Regra.USUARIO);
     const req = {

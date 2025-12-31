@@ -38,7 +38,6 @@ describe('Kafka Service', () => {
     try {
       await desconectarKafkaProducer();
     } catch (error) {
-      // Ignora erros de desconexão no cleanup
     }
     vi.resetModules();
   });
@@ -186,7 +185,6 @@ describe('Kafka Service', () => {
       try {
         await desconectarKafkaProducer();
       } catch (error) {
-        // Ignora erros
       }
       delete process.env.KAFKA_BROKER_URL;
     });
@@ -263,7 +261,6 @@ describe('Kafka Service', () => {
       delete process.env.KAFKA_BROKER_URL;
       const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
-      // Agora não deve lançar erro, apenas logar warning
       await conectarKafkaProducer();
       
       expect(isKafkaConnected()).toBe(false);
@@ -277,7 +274,6 @@ describe('Kafka Service', () => {
     it('chama producer.disconnect() uma vez', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
-      // Acessa o producer para inicializá-lo
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
       
@@ -334,7 +330,6 @@ describe('Kafka Service', () => {
     it('deve enviar mensagem quando Kafka está conectado', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
-      // Acessa o producer para inicializá-lo
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
       
@@ -379,14 +374,12 @@ describe('Kafka Service', () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       
-      // Acessa o producer para inicializá-lo
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
       
       const producerReal = getProducerInstanceForTest();
       expect(producerReal).not.toBeNull();
-      
-      // Conecta primeiro
+
       vi.spyOn(producerReal!, 'connect').mockResolvedValue();
       await conectarKafkaProducer();
       
@@ -405,13 +398,12 @@ describe('Kafka Service', () => {
     });
   });
 
-  describe('getKafkaConfig - catch branch', () => {
+  describe('Retornar configuração vazia quando ocorrer erro ao ler variáveis de ambiente do Kafka', () => {
     it('deve retornar null quando getKafkaInstance lança erro inesperado', async () => {
       vi.restoreAllMocks();
       try {
         await desconectarKafkaProducer();
       } catch (error) {
-        // Ignora erros
       }
 
       process.env.KAFKA_BROKER_URL = 'localhost:9093';

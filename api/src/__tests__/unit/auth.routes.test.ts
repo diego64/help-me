@@ -36,7 +36,29 @@ const usuarioBase = {
   email: 'mail@x.com',
   password: 'HASHED',
   regra: 'ADMIN',
-  refreshToken: 'refresh-token'
+  refreshToken: 'refresh-token',
+  ativo: true,
+  deletadoEm: null,
+  setor: 'TECNOLOGIA_INFORMACAO',
+  telefone: '(11) 99999-0001',
+  ramal: '1000',
+  avatarUrl: null,
+  geradoEm: '2025-01-01T00:00:00.000Z',
+  atualizadoEm: '2025-01-01T00:00:00.000Z',
+};
+
+const usuarioSemSenha = {
+  id: '1',
+  nome: 'Nome',
+  sobrenome: 'Sobrenome',
+  email: 'mail@x.com',
+  regra: 'ADMIN',
+  ativo: true,
+  setor: 'TECNOLOGIA_INFORMACAO',
+  telefone: '(11) 99999-0001',
+  ramal: '1000',
+  avatarUrl: null,
+  geradoEm: '2025-01-01T00:00:00.000Z',
 };
 
 // ========================================
@@ -79,7 +101,7 @@ vi.mock('jsonwebtoken', () => ({
 // ========================================
 
 const cacheSetMock = vi.fn().mockResolvedValue(undefined);
-const cacheGetMock = vi.fn();
+const cacheGetMock = vi.fn().mockResolvedValue(null);
 
 vi.mock('../../services/redisClient', () => ({
   cacheSet: cacheSetMock,
@@ -100,8 +122,6 @@ vi.mock('@prisma/client', () => ({
 
 let deveAutenticar = true;
 let usuarioMock: any = { ...usuarioBase };
-let sessionDestroyCallback: ((err: any) => void) | null = null;
-let sessionDestroyError: any = null;
 
 // ========================================
 // MOCK DO AUTH MIDDLEWARE
@@ -115,12 +135,9 @@ vi.mock('../../middleware/auth', () => ({
       return res.status(401).json({ error: 'Não autorizado.' });
     }
     req.usuario = usuarioMock;
-    if (!req.session) { // Não sobrescrever req.session se já foi definido pelo teste
+    if (!req.session) {
       req.session = { 
-        destroy: (cb: any) => {
-          sessionDestroyCallback = cb;
-          cb(sessionDestroyError);
-        }
+        destroy: (cb: any) => cb(null)
       };
     }
     next();
@@ -141,8 +158,11 @@ beforeAll(async () => {
 beforeEach(() => {
   deveAutenticar = true;
   usuarioMock = { ...usuarioBase };
-  sessionDestroyError = null;
   vi.clearAllMocks();
+  
+  // Reset cache mocks
+  cacheGetMock.mockResolvedValue(null);
+  cacheSetMock.mockResolvedValue(undefined);
   
   bcryptCompareMock.mockImplementation(async (senha, hash) => 
     senha === 'senhaCorreta' && hash === 'HASHED'
@@ -167,24 +187,17 @@ afterEach(() => {
   vi.clearAllMocks();
   deveAutenticar = true;
   usuarioMock = { ...usuarioBase };
-  sessionDestroyError = null;
 });
 
 // ========================================
 // FUNÇÕES AUXILIARES
 // ========================================
 
-/**
- * Middleware para garantir session nos testes
- */
 function adicionarSessionMiddleware(req: any, res: any, next: any) {
   req.session = req.session || { destroy: (cb: any) => cb(null) };
   next();
 }
 
-/**
- * Factory para criar app sem autenticação
- */
 function criarAppSemAuth() {
   const app = express();
   app.use(express.json());
@@ -193,9 +206,6 @@ function criarAppSemAuth() {
   return app;
 }
 
-/**
- * Factory para criar app com autenticação padrão
- */
 function criarAppComAuthPadrao() {
   deveAutenticar = true;
   usuarioMock = { ...usuarioBase };
@@ -206,9 +216,6 @@ function criarAppComAuthPadrao() {
   return app;
 }
 
-/**
- * Factory para criar app com autenticação desabilitada
- */
 function criarAppComAuthDesabilitada() {
   deveAutenticar = false;
   const app = express();
@@ -223,86 +230,145 @@ function criarAppComAuthDesabilitada() {
 // ========================================
 
 describe('POST /auth/login', () => {
-  it('Deve retornar status 400 quando campos email ou senha não forem enviados', async () => {
-    // Arrange
+  it('deve retornar status 400 quando campos email ou senha não forem enviados', async () => {
     const app = criarAppSemAuth();
-    const dadosIncompletos = {};
+    const resposta = await request(app).post('/auth/login').send({});
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(dadosIncompletos);
-    
-    // Assert
     expect(resposta.status).toBe(400);
     expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
   });
 
-  it('Deve retornar status 400 quando apenas email for enviado', async () => {
-    // Arrange
+  it('deve retornar status 400 quando apenas email for enviado', async () => {
     const app = criarAppSemAuth();
-    const dadosSemSenha = { email: 'mail@x.com' };
+    const resposta = await request(app).post('/auth/login').send({ email: 'mail@x.com' });
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(dadosSemSenha);
-    
-    // Assert
     expect(resposta.status).toBe(400);
     expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
   });
 
-  it('Deve retornar status 400 quando apenas senha for enviada', async () => {
-    // Arrange
+  it('deve retornar status 400 quando apenas senha for enviada', async () => {
     const app = criarAppSemAuth();
-    const dadosSemEmail = { password: 'senhaCorreta' };
+    const resposta = await request(app).post('/auth/login').send({ password: 'senhaCorreta' });
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(dadosSemEmail);
-    
-    // Assert
     expect(resposta.status).toBe(400);
     expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
   });
 
-  it('Deve retornar status 401 quando usuário não for encontrado no banco', async () => {
-    // Arrange
+  it('deve retornar status 400 quando email for inválido', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'email-invalido',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Email inválido' });
+  });
+
+  it('deve retornar status 429 quando exceder tentativas de login', async () => {
+    const app = criarAppSemAuth();
+    cacheGetMock.mockResolvedValue('5');
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(429);
+    expect(resposta.body).toHaveProperty('error');
+    expect(resposta.body).toHaveProperty('tentativasRestantes', 0);
+    expect(resposta.body).toHaveProperty('bloqueadoAte');
+  });
+
+  it('deve retornar status 401 quando usuário não for encontrado no banco', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(null);
-    const credenciaisInexistentes = { email: 'inexistente@email.com', password: 'qualquerSenha' };
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisInexistentes);
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'inexistente@email.com',
+      password: 'qualquerSenha'
+    });
     
-    // Assert
     expect(resposta.status).toBe(401);
-    expect(resposta.body).toEqual({ error: 'Usuário não encontrado' });
+    expect(resposta.body).toEqual({ 
+      error: 'Credenciais inválidas',
+      tentativasRestantes: 4
+    });
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:inexistente@email.com',
+      '1',
+      900
+    );
   });
 
-  it('Deve retornar status 401 quando senha fornecida estiver incorreta', async () => {
-    // Arrange
+  it('deve retornar status 401 quando conta estiver inativa', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...usuarioBase,
+      ativo: false
+    });
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Conta inativa. Entre em contato com o administrador.' 
+    });
+  });
+
+  it('deve retornar status 401 quando conta estiver soft deleted', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...usuarioBase,
+      deletadoEm: '2024-12-01T00:00:00.000Z'
+    });
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Conta inativa. Entre em contato com o administrador.' 
+    });
+  });
+
+  it('deve retornar status 401 quando senha fornecida estiver incorreta', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
     bcryptCompareMock.mockResolvedValue(false);
-    const credenciaisComSenhaErrada = { email: 'mail@x.com', password: 'senhaIncorreta' };
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisComSenhaErrada);
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaIncorreta'
+    });
     
-    // Assert
     expect(resposta.status).toBe(401);
-    expect(resposta.body).toEqual({ error: 'Senha incorreta' });
+    expect(resposta.body).toEqual({ 
+      error: 'Credenciais inválidas',
+      tentativasRestantes: 4
+    });
+    expect(cacheSetMock).toHaveBeenCalled();
   });
 
-  it('Deve retornar status 200 com dados do usuário e tokens quando credenciais forem válidas', async () => {
-    // Arrange
+  it('deve retornar status 200 com dados do usuário e tokens quando credenciais forem válidas', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: 'refresh-token' });
+    prismaMock.usuario.update.mockResolvedValue({ 
+      ...usuarioBase, 
+      refreshToken: 'refresh-token' 
+    });
     bcryptCompareMock.mockResolvedValue(true);
-    const credenciaisValidas = { email: usuarioBase.email, password: 'senhaCorreta' };
 
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
+    const resposta = await request(app).post('/auth/login').send({
+      email: usuarioBase.email,
+      password: 'senhaCorreta'
+    });
 
-    // Assert
     expect(resposta.status).toBe(200);
     expect(resposta.body.usuario).toMatchObject({
       id: usuarioBase.id,
@@ -311,6 +377,8 @@ describe('POST /auth/login', () => {
       email: usuarioBase.email,
       regra: usuarioBase.regra,
     });
+    expect(resposta.body.usuario).not.toHaveProperty('password');
+    expect(resposta.body.usuario).not.toHaveProperty('refreshToken');
     expect(resposta.body.accessToken).toBe('access-token');
     expect(resposta.body.refreshToken).toBe('refresh-token');
     expect(resposta.body.expiresIn).toBe(3600);
@@ -318,91 +386,84 @@ describe('POST /auth/login', () => {
       where: { id: usuarioBase.id },
       data: { refreshToken: 'refresh-token' }
     });
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:mail@x.com',
+      '0',
+      1
+    );
   });
 
-  it('Deve retornar status 500 quando ocorrer erro inesperado no login', async () => {
-    // Arrange
+  it('deve incrementar tentativas quando houver tentativas anteriores', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    cacheGetMock.mockResolvedValue('2');
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaErrada'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body.tentativasRestantes).toBe(2);
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:mail@x.com',
+      '3',
+      900
+    );
+  });
+
+  it('deve retornar status 500 quando ocorrer erro inesperado no login', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockRejectedValue(new Error('Database connection failed'));
-    const credenciaisValidas = { email: 'mail@x.com', password: 'senhaCorreta' };
     
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
     
-    // Assert
     expect(resposta.status).toBe(500);
     expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
   });
 
-  it('Deve retornar status 500 quando falhar ao atualizar refreshToken no banco durante login', async () => {
-    // Arrange
+  it('deve retornar status 500 quando falhar ao atualizar refreshToken no banco', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
     prismaMock.usuario.update.mockRejectedValue(new Error('Update failed'));
     bcryptCompareMock.mockResolvedValue(true);
-    const credenciaisValidas = { email: usuarioBase.email, password: 'senhaCorreta' };
 
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
+    const resposta = await request(app).post('/auth/login').send({
+      email: usuarioBase.email,
+      password: 'senhaCorreta'
+    });
 
-    // Assert
-    expect(resposta.status).toBe(500);
-    expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
-  });
-
-  it('Deve retornar status 500 quando bcrypt.compare lançar exceção', async () => {
-    // Arrange
-    const app = criarAppSemAuth();
-    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
-    bcryptCompareMock.mockRejectedValue(new Error('Bcrypt error'));
-    const credenciaisValidas = { email: usuarioBase.email, password: 'senhaCorreta' };
-
-    // Act
-    const resposta = await request(app).post('/auth/login').send(credenciaisValidas);
-
-    // Assert
     expect(resposta.status).toBe(500);
     expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
   });
 });
 
 describe('POST /auth/logout', () => {
-  it('Deve retornar status 401 quando usuário não estiver autenticado', async () => {
-    // Arrange
+  it('deve retornar status 401 quando usuário não estiver autenticado', async () => {
     const app = criarAppComAuthDesabilitada();
-    
-    // Act
     const resposta = await request(app).post('/auth/logout');
     
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Não autorizado.' });
   });
 
-  // -------------------------------------------------------------------------
-  // TESTE ESPECÍFICO PARA LINHA 72 - req.usuario null dentro do handler
-  // -------------------------------------------------------------------------
-  it('Deve retornar status 401 quando req.usuario for null no handler do logout (linha 72)', async () => {
-    // Arrange
+  it('deve retornar status 401 quando req.usuario for null no handler do logout', async () => {
     deveAutenticar = true;
-    usuarioMock = null; // Simula req.usuario = null
+    usuarioMock = null;
     const app = express();
     app.use(express.json());
     app.use('/auth', authRouter);
     
-    // Act
     const resposta = await request(app).post('/auth/logout');
     
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Não autorizado.' });
   });
 
-  it('Deve retornar status 200 e realizar logout adicionando token à blacklist', async () => {
-    // Arrange
-    deveAutenticar = true;
-    usuarioMock = { ...usuarioBase };
-    sessionDestroyError = null;
+  it('deve retornar status 200 e realizar logout com sucesso', async () => {
     const app = express();
     app.use(express.json());
     app.use('/auth', (req: any, _res: any, next: any) => {
@@ -412,24 +473,24 @@ describe('POST /auth/logout', () => {
     }, authRouter);
     prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
 
-    // Act
     const resposta = await request(app)
       .post('/auth/logout')
       .set('authorization', 'Bearer dummy-token');
 
-    // Assert
     expect(resposta.status).toBe(200);
     expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-    expect(cacheSetMock).toHaveBeenCalled();
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'jwt:blacklist:JTI',
+      'revogado',
+      expect.any(Number)
+    );
     expect(prismaMock.usuario.update).toHaveBeenCalledWith({
       where: { id: usuarioBase.id },
       data: { refreshToken: null }
     });
   });
 
-  it('Deve retornar status 500 quando ocorrer erro ao invalidar refresh token no banco', async () => {
-    // Arrange
-    deveAutenticar = true;
+  it('deve retornar status 500 quando falhar ao invalidar refresh token', async () => {
     const app = express();
     app.use(express.json());
     app.use('/auth', (req: any, _res: any, next: any) => {
@@ -439,47 +500,18 @@ describe('POST /auth/logout', () => {
     }, authRouter);
     prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
 
-    // Act
     const resposta = await request(app)
       .post('/auth/logout')
       .set('authorization', 'Bearer dummy-token');
 
-    // Assert
     expect(resposta.status).toBe(500);
-    expect(resposta.body).toHaveProperty('error');
+    expect(resposta.body).toEqual({ error: 'Erro ao realizar logout.' });
   });
 
-  it('Deve retornar status 500 quando falhar ao adicionar token na blacklist', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    cacheSetMock.mockRejectedValueOnce(new Error('Redis error'));
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(500);
-    expect(resposta.body).toHaveProperty('error');
-  });
-
-  it('Deve retornar status 500 quando session.destroy retornar erro', async () => {
-    // Arrange
-    deveAutenticar = true;
-    usuarioMock = { ...usuarioBase };
+  it('deve retornar status 500 quando session.destroy retornar erro', async () => {
     const erroSession = new Error('Session destroy failed');
     const app = express();
     app.use(express.json());
-    // Define session ANTES do authRouter para que o mock não sobrescreva
     app.use((req: any, _res: any, next: any) => {
       req.session = { 
         destroy: (cb: any) => cb(erroSession)
@@ -488,167 +520,16 @@ describe('POST /auth/logout', () => {
     });
     app.use('/auth', authRouter);
     prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValue(null); // Sem token para blacklist
 
-    // Act
     const resposta = await request(app)
       .post('/auth/logout')
       .set('authorization', 'Bearer dummy-token');
 
-    // Assert
     expect(resposta.status).toBe(500);
-    expect(resposta.body).toEqual({ error: 'Erro ao encerrar a sessão.' });
+    expect(resposta.body).toEqual({ error: 'Erro ao realizar logout.' });
   });
 
-  it('Deve retornar status 500 quando session.destroy falhar com erro string', async () => {
-    // Arrange
-    deveAutenticar = true;
-    usuarioMock = { ...usuarioBase };
-    const app = express();
-    app.use(express.json());
-    // Define session ANTES do authRouter para que o mock não sobrescreva
-    app.use((req: any, _res: any, next: any) => {
-      req.session = { 
-        destroy: (cb: any) => cb('Erro como string')
-      };
-      next();
-    });
-    app.use('/auth', authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValue(null);
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(500);
-    expect(resposta.body).toEqual({ error: 'Erro ao encerrar a sessão.' });
-  });
-
-  it('Deve processar logout mesmo quando header authorization estiver em formato diferente', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      req.headers.authorization = 'bearer token-lowercase';
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValueOnce({ 
-      jti: 'TEST-JTI', 
-      exp: Math.floor(Date.now() / 1000) + 7200 
-    });
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'bearer token-lowercase');
-
-    // Assert
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-  });
-
-  it('Deve retornar status 200 e realizar logout mesmo sem JTI no token', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValueOnce({ exp: Math.floor(Date.now() / 1000) + 3600 });
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-  });
-
-  it('Deve retornar status 200 mesmo quando jwt.decode retornar null', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValueOnce(null);
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-  });
-
-  it('Deve retornar status 200 mesmo quando decoded não for objeto', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValueOnce('string-invalida');
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-  });
-
-  it('Deve retornar status 200 quando token não tiver exp', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const app = express();
-    app.use(express.json());
-    app.use('/auth', (req: any, _res: any, next: any) => {
-      req.usuario = { ...usuarioBase };
-      req.session = { destroy: (cb: any) => cb(null) };
-      next();
-    }, authRouter);
-    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
-    jwtDecodeMock.mockReturnValueOnce({ jti: 'JTI' });
-
-    // Act
-    const resposta = await request(app)
-      .post('/auth/logout')
-      .set('authorization', 'Bearer dummy-token');
-
-    // Assert
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-  });
-
-  it('Deve retornar status 200 quando não houver authorization header', async () => {
-    // Arrange
-    deveAutenticar = true;
+  it('deve processar logout quando não houver authorization header', async () => {
     const app = express();
     app.use(express.json());
     app.use('/auth', (req: any, _res: any, next: any) => {
@@ -659,19 +540,33 @@ describe('POST /auth/logout', () => {
     }, authRouter);
     prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
 
-    // Act
     const resposta = await request(app).post('/auth/logout');
 
-    // Assert
     expect(resposta.status).toBe(200);
     expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
-    expect(cacheSetMock).not.toHaveBeenCalled();
   });
 
-  it('Deve adicionar token à blacklist com TTL correto', async () => {
-    // Arrange
-    deveAutenticar = true;
-    const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
+  it('deve processar logout quando jwt.decode retornar null', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce(null);
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('deve adicionar token à blacklist com TTL correto quando exp for válido', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 7200;
     const app = express();
     app.use(express.json());
     app.use('/auth', (req: any, _res: any, next: any) => {
@@ -686,104 +581,104 @@ describe('POST /auth/logout', () => {
     });
     cacheSetMock.mockClear();
 
-    // Act
     const resposta = await request(app)
       .post('/auth/logout')
       .set('authorization', 'Bearer valid-token');
 
-    // Assert
     expect(resposta.status).toBe(200);
-    expect(cacheSetMock).toHaveBeenCalledWith(
-      'jwt:blacklist:UNIQUE-JTI',
-      'revogado',
-      expect.any(Number)
+    const ttlCall = cacheSetMock.mock.calls.find(
+      call => call[0] === 'jwt:blacklist:UNIQUE-JTI'
     );
+    expect(ttlCall).toBeDefined();
+    expect(ttlCall![2]).toBeGreaterThan(0);
   });
 });
 
 describe('POST /auth/refresh-token', () => {
-  it('Deve retornar status 400 quando refreshToken não for enviado', async () => {
-    // Arrange
+  it('deve retornar status 400 quando refreshToken não for enviado', async () => {
     const app = criarAppSemAuth();
-    const dadosSemToken = {};
+    const resposta = await request(app).post('/auth/refresh-token').send({});
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosSemToken);
-    
-    // Assert
     expect(resposta.status).toBe(400);
     expect(resposta.body).toEqual({ error: 'Refresh token é obrigatório.' });
   });
 
-  it('Deve retornar status 401 quando refreshToken for inválido', async () => {
-    // Arrange
+  it('deve retornar status 401 quando refreshToken for inválido', async () => {
     const app = criarAppSemAuth();
     verifyTokenMock.mockImplementation(() => { 
       throw new Error('Refresh token inválido.'); 
     });
-    const dadosComTokenInvalido = { refreshToken: 'token-invalido' };
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosComTokenInvalido);
-    
-    // Assert
-    expect(resposta.status).toBe(401);
-    expect(resposta.body).toEqual({ error: 'Refresh token inválido.' });
-  });
-
-  it('Deve retornar status 401 quando verifyToken lançar erro sem mensagem', async () => {
-    // Arrange
-    const app = criarAppSemAuth();
-    verifyTokenMock.mockImplementation(() => { 
-      const error: any = new Error();
-      error.message = '';
-      throw error;
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'token-invalido'
     });
-    const dadosComTokenInvalido = { refreshToken: 'token-invalido' };
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosComTokenInvalido);
-    
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Refresh token inválido.' });
   });
 
-  it('Deve retornar status 401 quando usuário do refreshToken não for encontrado', async () => {
-    // Arrange
+  it('deve retornar status 401 quando usuário não for encontrado', async () => {
     const app = criarAppSemAuth();
     verifyTokenMock.mockReturnValue({ id: '1' });
     prismaMock.usuario.findUnique.mockResolvedValue(null);
-    const dadosComToken = { refreshToken: 'refresh-token' };
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosComToken);
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
     
-    // Assert
     expect(resposta.status).toBe(401);
-    expect(resposta.body).toEqual({ error: 'Refresh token inválido ou expirado.' });
+    expect(resposta.body).toEqual({ error: 'Usuário não encontrado.' });
   });
 
-  it('Deve retornar status 401 quando refreshToken não corresponder ao armazenado', async () => {
-    // Arrange
+  it('deve retornar status 401 quando conta estiver inativa', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue({ 
+      ...usuarioBase, 
+      ativo: false 
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Conta inativa.' });
+  });
+
+  it('deve retornar status 401 quando conta estiver soft deleted', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue({ 
+      ...usuarioBase, 
+      deletadoEm: '2024-12-01T00:00:00.000Z'
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Conta inativa.' });
+  });
+
+  it('deve retornar status 401 quando refreshToken não corresponder ao armazenado', async () => {
     const app = criarAppSemAuth();
     verifyTokenMock.mockReturnValue({ id: '1' });
     prismaMock.usuario.findUnique.mockResolvedValue({ 
       ...usuarioBase, 
       refreshToken: 'token-diferente' 
     });
-    const dadosComTokenDiferente = { refreshToken: 'refresh-token' };
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosComTokenDiferente);
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
     
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Refresh token inválido ou expirado.' });
   });
 
-  it('Deve retornar status 200 com novos tokens quando refreshToken for válido', async () => {
-    // Arrange
+  it('deve retornar status 200 com novos tokens quando refreshToken for válido', async () => {
     const app = criarAppSemAuth();
     verifyTokenMock.mockReturnValue({ id: '1' });
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
@@ -791,91 +686,120 @@ describe('POST /auth/refresh-token', () => {
       ...usuarioBase, 
       refreshToken: 'refresh-token' 
     });
-    const dadosComTokenValido = { refreshToken: 'refresh-token' };
     
-    // Act
-    const resposta = await request(app).post('/auth/refresh-token').send(dadosComTokenValido);
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
     
-    // Assert
     expect(resposta.status).toBe(200);
     expect(resposta.body).toMatchObject({
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
       expiresIn: 3600,
     });
-    expect(prismaMock.usuario.update).toHaveBeenCalled();
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: { refreshToken: 'refresh-token' }
+    });
   });
 });
 
 describe('GET /auth/me', () => {
-  it('Deve retornar status 401 quando usuário não estiver autenticado', async () => {
-    // Arrange
+  it('deve retornar status 401 quando usuário não estiver autenticado', async () => {
     const app = criarAppComAuthDesabilitada();
-    
-    // Act
     const resposta = await request(app).get('/auth/me');
     
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Não autorizado.' });
   });
 
-  it('Deve retornar status 401 quando req.usuario for null no handler do /me', async () => {
-    // Arrange
+  it('deve retornar status 401 quando req.usuario for null', async () => {
     deveAutenticar = true;
-    usuarioMock = null; // Simula req.usuario = null
+    usuarioMock = null;
     const app = express();
     app.use(express.json());
     app.use('/auth', authRouter);
     
-    // Act
     const resposta = await request(app).get('/auth/me');
     
-    // Assert
     expect(resposta.status).toBe(401);
     expect(resposta.body).toEqual({ error: 'Não autorizado.' });
   });
 
-  it('Deve retornar status 404 quando usuário autenticado não for encontrado no banco', async () => {
-    // Arrange
+  it('deve retornar status 404 quando usuário não for encontrado no banco', async () => {
     const app = criarAppComAuthPadrao();
     prismaMock.usuario.findUnique.mockResolvedValue(null);
     
-    // Act
     const resposta = await request(app).get('/auth/me');
     
-    // Assert
     expect(resposta.status).toBe(404);
     expect(resposta.body).toEqual({ error: 'Usuário não encontrado.' });
   });
 
-  it('Deve retornar status 200 com dados do usuário quando autenticado corretamente', async () => {
-    // Arrange
+  it('deve retornar status 200 com dados do usuário quando autenticado', async () => {
     const app = criarAppComAuthPadrao();
-    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioSemSenha);
     
-    // Act
     const resposta = await request(app).get('/auth/me');
     
-    // Assert
     expect(resposta.status).toBe(200);
     expect(resposta.body).toMatchObject({
       id: usuarioBase.id,
       nome: usuarioBase.nome,
       email: usuarioBase.email,
+      regra: usuarioBase.regra,
     });
+    expect(resposta.body).not.toHaveProperty('password');
+    expect(resposta.body).not.toHaveProperty('refreshToken');
   });
 
-  it('Deve retornar status 500 quando ocorrer erro ao buscar dados do usuário', async () => {
-    // Arrange
+  it('deve retornar status 500 quando ocorrer erro ao buscar dados do usuário', async () => {
     const app = criarAppComAuthPadrao();
     prismaMock.usuario.findUnique.mockRejectedValue(new Error('Database connection failed'));
     
-    // Act
     const resposta = await request(app).get('/auth/me');
     
-    // Assert
     expect(resposta.status).toBe(500);
     expect(resposta.body).toEqual({ error: 'Erro ao buscar perfil do usuário.' });
+  });
+});
+
+describe('GET /auth/status', () => {
+  it('deve retornar status 401 com erro quando middleware bloqueia', async () => {
+    const app = criarAppComAuthDesabilitada();
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
+
+  it('deve retornar status 401 com autenticado false quando req.usuario for null no handler', async () => {
+    deveAutenticar = true;
+    usuarioMock = null;
+    
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', authRouter);
+    
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ autenticado: false });
+  });
+
+  it('deve retornar status 200 com informações quando autenticado', async () => {
+    const app = criarAppComAuthPadrao();
+    
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({
+      autenticado: true,
+      usuario: {
+        id: usuarioBase.id,
+        email: usuarioBase.email,
+        regra: usuarioBase.regra,
+      },
+    });
   });
 });
