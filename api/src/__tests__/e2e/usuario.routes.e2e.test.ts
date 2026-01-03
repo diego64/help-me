@@ -1,36 +1,44 @@
+process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
+  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
+
+console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
+
 import {
   describe,
   it,
   expect,
   beforeAll,
   afterAll,
-  afterEach,
   vi
 } from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
-import { redisClient } from '../../services/redisClient';
-import * as redisCache from '../../services/redisClient';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 
 vi.setConfig({ testTimeout: 20000 });
 
-// ========================
-// FUNÇÕES AUXILIARES
-// ========================
+const BASE_URL = '/usuario';
 
-function gerarTokenAcesso(usuarioId: string, regra: string): string {
+let emailCounter = 0;
+const gerarEmailUnico = () => {
+  emailCounter++;
+  return `usuario.teste${String(emailCounter).padStart(4, '0')}@test.com`;
+};
+
+function gerarTokenAcesso(usuarioId: string, regra: string, email: string): string {
   const secret = process.env.JWT_SECRET || 'testsecret';
   
   const payload = {
     id: usuarioId,
     regra: regra,
+    nome: 'Usuario',
+    email: email,
     type: 'access',
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 8 * 60 * 60,
   };
   
   return jwt.sign(
@@ -39,134 +47,109 @@ function gerarTokenAcesso(usuarioId: string, regra: string): string {
     { 
       algorithm: 'HS256',
       audience: 'helpme-client', 
-      issuer: 'helpme-api'
+      issuer: 'helpme-api',
+      expiresIn: '8h' as const
     }
   );
 }
 
-async function limparBancoDados() {
+async function limparBancoDeDados() {
   try {
+    await prisma.ordemDeServico.deleteMany({});
     await prisma.chamado.deleteMany({});
     await prisma.expediente.deleteMany({});
-    await prisma.servico.deleteMany({});
     await prisma.usuario.deleteMany({});
-    console.log('[CLEANUP] Banco de dados limpo');
+    
+    console.log('[INFO] Banco de dados limpo com sucesso');
   } catch (error) {
     console.error('[ERROR] Erro ao limpar banco de dados:', error);
     throw error;
   }
 }
 
-// ========================
-// SUITE DE TESTES
-// ========================
-
-describe('E2E - Rotas de Usuário', () => {
+describe('Testes E2E nas Rotas de Usuários', () => {
   let tokenAdmin: string;
   let tokenUsuario: string;
+  let tokenOutroUsuario: string;
   let idAdmin: string;
   let idUsuario: string;
+  let idOutroUsuario: string;
 
   beforeAll(async () => {
     try {
-      console.log('\n[SETUP] ========================================');
-      console.log('[SETUP] Iniciando setup dos testes E2E de Usuário...');
-      
-      if (!process.env.JWT_SECRET) {
-        process.env.JWT_SECRET = 'testsecret';
-        console.log('[SETUP] JWT_SECRET definido para testes');
+      // Criar diretório de uploads
+      const uploadDir = path.join(process.cwd(), 'uploads', 'avatars');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log('[INFO] Diretório de uploads criado:', uploadDir);
       }
+
+      const uriMongo = process.env.MONGO_URI_TEST || 
+        'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
       
-      const uriMongo = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
+      console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', uriMongo);
       await mongoose.connect(uriMongo);
-      console.log('[SETUP] MongoDB conectado');
 
-      if (!redisClient.isOpen) {
-        try {
-          await redisClient.connect();
-          console.log('[SETUP] Redis conectado');
-        } catch (error: any) {
-          console.error('[SETUP] Redis não disponível:', error.message);
-        }
-      } else {
-        console.log('[SETUP] Redis já estava conectado');
-      }
+      await limparBancoDeDados();
 
-      console.log('[SETUP] Configurando mocks do Redis...');
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-      vi.spyOn(redisCache, 'cacheGet').mockResolvedValue(null); // ← Cache vazio
-      vi.spyOn(redisCache, 'cacheSet').mockResolvedValue(undefined); // ← Cache set sem erro
-      console.log('[SETUP] Mocks do Redis configurados');
+      const senhaHash = await bcrypt.hash('Senha123!', 10);
 
-      await limparBancoDados();
-
-      const senhaHasheada = await bcrypt.hash('SenhaSegura123', 10);
-
-      const usuarioAdmin = await prisma.usuario.create({
+      const admin = await prisma.usuario.create({
         data: {
           nome: 'Admin',
-          sobrenome: 'Sistema',
-          email: 'admin@teste.com',
-          password: senhaHasheada,
+          sobrenome: 'Teste',
+          email: 'admin.usuario@test.com',
+          password: senhaHash,
           regra: 'ADMIN',
+          ativo: true,
         },
       });
-      idAdmin = usuarioAdmin.id;
-      console.log('[SETUP] Admin criado:', idAdmin);
+      idAdmin = admin.id;
 
-      const usuarioComum = await prisma.usuario.create({
+      const usuario = await prisma.usuario.create({
         data: {
           nome: 'Usuario',
-          sobrenome: 'Comum',
-          email: 'usuario@teste.com',
-          password: senhaHasheada,
+          sobrenome: 'Principal',
+          email: 'usuario.principal@test.com',
+          password: senhaHash,
           regra: 'USUARIO',
           setor: 'TECNOLOGIA_INFORMACAO',
+          ativo: true,
         },
       });
-      idUsuario = usuarioComum.id;
-      console.log('[SETUP] Usuário criado:', idUsuario);
+      idUsuario = usuario.id;
 
-      tokenAdmin = gerarTokenAcesso(idAdmin, 'ADMIN');
-      tokenUsuario = gerarTokenAcesso(idUsuario, 'USUARIO');
-      console.log('[SETUP] Tokens gerados');
+      const outroUsuario = await prisma.usuario.create({
+        data: {
+          nome: 'Outro',
+          sobrenome: 'Usuario',
+          email: 'outro.usuario@test.com',
+          password: senhaHash,
+          regra: 'USUARIO',
+          setor: 'ADMINISTRACAO',
+          ativo: true,
+        },
+      });
+      idOutroUsuario = outroUsuario.id;
 
-      console.log('[SETUP] Setup completo!');
-      console.log('[SETUP] ========================================\n');
+      tokenAdmin = gerarTokenAcesso(idAdmin, 'ADMIN', admin.email);
+      tokenUsuario = gerarTokenAcesso(idUsuario, 'USUARIO', usuario.email);
+      tokenOutroUsuario = gerarTokenAcesso(idOutroUsuario, 'USUARIO', outroUsuario.email);
+      
+      console.log('[INFO] Setup completo - Tokens e usuários criados');
     } catch (error) {
-      console.error('[ERROR] Erro fatal no beforeAll:', error);
+      console.error('[ERROR] Erro no beforeAll:', error);
       throw error;
     }
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-    // CORRIGIDO: Recriar todos os mocks
-    vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-    vi.spyOn(redisCache, 'cacheGet').mockResolvedValue(null);
-    vi.spyOn(redisCache, 'cacheSet').mockResolvedValue(undefined);
-  });
-
   afterAll(async () => {
     try {
-      console.log('\n[CLEANUP] ========================================');
-      console.log('[CLEANUP] Iniciando limpeza...');
-      
-      vi.restoreAllMocks();
-      await limparBancoDados();
+      await limparBancoDeDados();
       await mongoose.disconnect();
-      console.log('[CLEANUP] MongoDB desconectado');
-      
       await prisma.$disconnect();
-      console.log('[CLEANUP] Prisma desconectado');
       
-      if (redisClient.isOpen) {
-        await redisClient.quit();
-        console.log('[CLEANUP] Redis desconectado');
-      }
-      
-      console.log('[CLEANUP] Cleanup completo');
-      console.log('[CLEANUP] ========================================\n');
+      console.log('[INFO] Cleanup completo');
     } catch (error) {
       console.error('[ERROR] Erro no afterAll:', error);
       await mongoose.disconnect().catch(() => {});
@@ -174,286 +157,658 @@ describe('E2E - Rotas de Usuário', () => {
     }
   });
 
-  // ========================
-  // TESTES
-  // ========================
+  describe('POST /', () => {
+    it('deve criar usuário com dados válidos', async () => {
+      const dados = {
+        nome: 'Novo',
+        sobrenome: 'Usuario',
+        email: gerarEmailUnico(),
+        password: 'Senha123!',
+        telefone: '11999999999',
+        ramal: '220',
+        setor: 'FINANCEIRO',
+      };
 
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar POST /usuario com dados válidos', () => {
-      it('Então deve criar um novo usuário com sucesso', async () => {
-        const dadosNovoUsuario = {
-          nome: 'Novo',
-          sobrenome: 'Usuario',
-          email: 'novousuario@teste.com',
-          password: 'senha123',
-          telefone: '11987654321',
-          ramal: '100',
-          setor: 'TECNOLOGIA_INFORMACAO',
-        };
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
 
-        const resposta = await request(app)
-          .post('/usuario')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosNovoUsuario);
+      if (resposta.status !== 201) {
+        console.error('[DEBUG] Erro na criação:', resposta.body);
+      }
 
-        if (resposta.status !== 201) {
-          console.error('[ERROR] Erro ao criar usuário:', resposta.body);
-        }
-
-        expect(resposta.status).toBe(201);
-        expect(resposta.body).toHaveProperty('id');
-        expect(resposta.body.nome).toBe(dadosNovoUsuario.nome);
-        expect(resposta.body.sobrenome).toBe(dadosNovoUsuario.sobrenome);
-        expect(resposta.body.email).toBe(dadosNovoUsuario.email);
-        expect(resposta.body.regra).toBe('USUARIO');
-      });
+      expect(resposta.status).toBe(201);
+      expect(resposta.body).toHaveProperty('id');
+      expect(resposta.body.nome).toBe(dados.nome);
+      expect(resposta.body.regra).toBe('USUARIO');
+      expect(resposta.body.setor).toBe(dados.setor);
+      expect(resposta.body).not.toHaveProperty('password');
     });
 
-    describe('Quando enviar POST /usuario sem o campo senha', () => {
-      it('Então deve rejeitar a criação com erro 400', async () => {
-        const dadosSemSenha = {
-          nome: 'SemSenha',
-          sobrenome: 'Usuario',
-          email: 'semsenhaa@teste.com',
-          setor: 'TECNOLOGIA_INFORMACAO',
-        };
+    it('deve rejeitar criação sem nome', async () => {
+      const dados = {
+        sobrenome: 'Teste',
+        email: gerarEmailUnico(),
+        password: 'Senha123!',
+        setor: 'FINANCEIRO',
+      };
 
-        const resposta = await request(app)
-          .post('/usuario')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosSemSenha);
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
 
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('Senha obrigatória');
-      });
-    });
-  });
-
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar GET /usuario', () => {
-      it('Então deve listar todos os usuários com regra USUARIO', async () => {
-        console.log('\n[TEST] Iniciando teste de listagem de usuários');
-
-        const resposta = await request(app)
-          .get('/usuario')
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        if (resposta.status !== 200) {
-          console.error('[ERROR] ========================================');
-          console.error('[ERROR] Status:', resposta.status);
-          console.error('[ERROR] Body:', JSON.stringify(resposta.body, null, 2));
-          console.error('[ERROR] ========================================');
-        } else {
-          console.log('[SUCCESS] Listagem retornou:', resposta.body.length, 'usuários');
-        }
-
-        expect(resposta.status).toBe(200);
-        expect(Array.isArray(resposta.body)).toBe(true);
-        expect(resposta.body.length).toBeGreaterThan(0);
-
-        resposta.body.forEach((usuario: any) => {
-          expect(usuario).toHaveProperty('id');
-          expect(usuario).toHaveProperty('nome');
-          expect(usuario).toHaveProperty('email');
-          expect(usuario).toHaveProperty('setor');
-          expect(usuario).not.toHaveProperty('password');
-        });
-      });
-    });
-  });
-
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar POST /usuario/email com e-mail válido', () => {
-      it('Então deve retornar o usuário correspondente', async () => {
-        const emailBusca = 'usuario@teste.com';
-
-        const resposta = await request(app)
-          .post('/usuario/email')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send({ email: emailBusca });
-
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.email).toBe(emailBusca);
-        expect(resposta.body).toHaveProperty('id');
-        expect(resposta.body).toHaveProperty('nome');
-        expect(resposta.body).toHaveProperty('regra');
-      });
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Nome é obrigatório');
     });
 
-    describe('Quando enviar POST /usuario/email com e-mail inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        const emailInexistente = 'naoexiste@teste.com';
+    it('deve rejeitar criação sem sobrenome', async () => {
+      const dados = {
+        nome: 'Teste',
+        email: gerarEmailUnico(),
+        password: 'Senha123!',
+        setor: 'FINANCEIRO',
+      };
 
-        const resposta = await request(app)
-          .post('/usuario/email')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send({ email: emailInexistente });
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
 
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Usuário não encontrado');
-      });
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Sobrenome é obrigatório');
     });
 
-    describe('Quando enviar POST /usuario/email com e-mail inválido', () => {
-      it('Então deve retornar erro 400', async () => {
-        const resposta = await request(app)
-          .post('/usuario/email')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send({ email: '' });
+    it('deve rejeitar criação sem senha', async () => {
+      const dados = {
+        nome: 'Teste',
+        sobrenome: 'Sem Senha',
+        email: gerarEmailUnico(),
+        setor: 'FINANCEIRO',
+      };
 
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('E-mail é obrigatório');
-      });
-    });
-  });
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
 
-  describe('Dado um usuário autenticado', () => {
-    describe('Quando enviar PUT /usuario/:id com dados válidos', () => {
-      it('Então deve atualizar os dados do usuário com sucesso', async () => {
-        const dadosAtualizacao = {
-          nome: 'UsuarioAtualizado',
-          telefone: '11999999999',
-          ramal: '200',
-        };
-
-        const resposta = await request(app)
-          .put(`/usuario/${idUsuario}`)
-          .set('Authorization', `Bearer ${tokenUsuario}`)
-          .send(dadosAtualizacao);
-
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.nome).toBe(dadosAtualizacao.nome);
-        expect(resposta.body.telefone).toBe(dadosAtualizacao.telefone);
-        expect(resposta.body.ramal).toBe(dadosAtualizacao.ramal);
-        expect(resposta.body.id).toBe(idUsuario);
-      });
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Senha é obrigatória');
     });
 
-    describe('Quando enviar PUT /usuario/:id com ID inexistente', () => {
-      it('Então deve retornar erro 400', async () => {
-        const idInexistente = 'id-invalido';
+    it('deve rejeitar senha muito curta', async () => {
+      const dados = {
+        nome: 'Teste',
+        sobrenome: 'Senha Curta',
+        email: gerarEmailUnico(),
+        password: '123',
+        setor: 'FINANCEIRO',
+      };
 
-        const resposta = await request(app)
-          .put(`/usuario/${idInexistente}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send({ nome: 'Teste' });
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
 
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toBeDefined();
-        expect(resposta.body.error).not.toBe('');
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
+    });
+
+    it('deve rejeitar criação sem setor', async () => {
+      const dados = {
+        nome: 'Teste',
+        sobrenome: 'Sem Setor',
+        email: gerarEmailUnico(),
+        password: 'Senha123!',
+      };
+
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Setor inválido');
+    });
+
+    it('deve rejeitar email duplicado', async () => {
+      const email = gerarEmailUnico();
+      
+      await prisma.usuario.create({
+        data: {
+          nome: 'Existe',
+          sobrenome: 'Ja',
+          email: email,
+          password: await bcrypt.hash('Senha123!', 10),
+          regra: 'USUARIO',
+          setor: 'FINANCEIRO',
+          ativo: true,
+        },
       });
+
+      const dados = {
+        nome: 'Duplicado',
+        sobrenome: 'Email',
+        email: email,
+        password: 'Senha123!',
+        setor: 'FINANCEIRO',
+      };
+
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(409);
+      expect(resposta.body.error).toContain('Email já cadastrado');
+    });
+
+    it('deve rejeitar não-admin tentando criar', async () => {
+      const dados = {
+        nome: 'Nao',
+        sobrenome: 'Permitido',
+        email: gerarEmailUnico(),
+        password: 'Senha123!',
+        setor: 'FINANCEIRO',
+      };
+
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(403);
     });
   });
 
-  describe('Dado um usuário autenticado', () => {
-    describe('Quando enviar PUT /usuario/:id/senha com nova senha', () => {
-      it('Então deve alterar a senha com sucesso', async () => {
-        const novaSenha = 'NovaSenha123';
+  describe('GET /', () => {
+    it('deve retornar usuários com estrutura de paginação', async () => {
+      const resposta = await request(app)
+        .get(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        const resposta = await request(app)
-          .put(`/usuario/${idUsuario}/senha`)
-          .set('Authorization', `Bearer ${tokenUsuario}`)
-          .send({ password: novaSenha });
-
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('Senha alterada com sucesso');
-
-        const usuarioAtualizado = await prisma.usuario.findUnique({ 
-          where: { id: idUsuario } 
-        });
-        expect(usuarioAtualizado).not.toBeNull();
-        
-        const senhaCorresponde = await bcrypt.compare(
-          novaSenha, 
-          usuarioAtualizado?.password ?? ''
-        );
-        expect(senhaCorresponde).toBe(true);
+      expect(resposta.status).toBe(200);
+      expect(resposta.body).toHaveProperty('data');
+      expect(resposta.body).toHaveProperty('pagination');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
+      
+      resposta.body.data.forEach((usuario: any) => {
+        expect(usuario.regra).toBe('USUARIO');
       });
     });
 
-    describe('Quando enviar PUT /usuario/:id/senha sem senha', () => {
-      it('Então deve retornar erro 400', async () => {
-        const resposta = await request(app)
-          .put(`/usuario/${idUsuario}/senha`)
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send({});
+    it('deve listar apenas usuários ativos por padrão', async () => {
+      const resposta = await request(app)
+        .get(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('nova senha é obrigatória');
+      expect(resposta.status).toBe(200);
+      
+      resposta.body.data.forEach((usuario: any) => {
+        expect(usuario.ativo).toBe(true);
       });
     });
-  });
 
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar DELETE /usuario/:id para usuário existente', () => {
-      it('Então deve excluir o usuário e chamados associados', async () => {
-        const usuarioParaRemover = await prisma.usuario.create({
-          data: {
-            nome: 'ParaRemover',
-            sobrenome: 'Usuario',
-            email: 'remover@teste.com',
-            password: await bcrypt.hash('senha123', 10),
-            regra: 'USUARIO',
-            setor: 'TECNOLOGIA_INFORMACAO',
-          },
-        });
-        const idParaRemover = usuarioParaRemover.id;
+    it('deve suportar busca por nome', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}?busca=Principal`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        await prisma.chamado.create({
-          data: {
-            OS: 'OS-TESTE-001',
-            descricao: 'Descrição do chamado de teste',
-            usuarioId: idParaRemover,
-          },
-        });
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
+    });
 
-        const resposta = await request(app)
-          .delete(`/usuario/${idParaRemover}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+    it('deve respeitar parâmetros de paginação', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}?page=1&limit=5`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('excluídos com sucesso');
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.pagination.page).toBe(1);
+      expect(resposta.body.pagination.limit).toBe(5);
+      expect(resposta.body.data.length).toBeLessThanOrEqual(5);
+    });
 
-        const usuarioExcluido = await prisma.usuario.findUnique({ 
-          where: { id: idParaRemover } 
-        });
-        expect(usuarioExcluido).toBeNull();
+    it('deve filtrar por setor quando fornecido', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}?setor=TECNOLOGIA_INFORMACAO`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        const chamadosExcluidos = await prisma.chamado.findMany({ 
-          where: { usuarioId: idParaRemover } 
-        });
-        expect(chamadosExcluidos.length).toBe(0);
+      expect(resposta.status).toBe(200);
+      
+      resposta.body.data.forEach((usuario: any) => {
+        expect(usuario.setor).toBe('TECNOLOGIA_INFORMACAO');
       });
+    });
+
+    it('deve rejeitar usuário tentando listar', async () => {
+      const resposta = await request(app)
+        .get(BASE_URL)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
+
+      expect(resposta.status).toBe(403);
     });
   });
 
-  describe('Dado um usuário autenticado', () => {
-    describe('Quando enviar POST /usuario/:id/avatar com arquivo de imagem', () => {
-      it('Então deve fazer upload e atualizar o avatar', async () => {
-        const avatarFalso = Buffer.from('imagemfake123');
+  describe('GET /:id', () => {
+    it('deve retornar usuário específico por ID', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        const resposta = await request(app)
-          .post(`/usuario/${idUsuario}/avatar`)
-          .set('Authorization', `Bearer ${tokenUsuario}`)
-          .attach('avatar', avatarFalso, 'avatar.png');
-
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('Imagem de perfil atualizada');
-        expect(resposta.body.usuario).toBeDefined();
-        expect(resposta.body.usuario.avatarUrl).toBeDefined();
-        expect(resposta.body.usuario.avatarUrl).toContain('uploads/');
-      });
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.id).toBe(idUsuario);
+      expect(resposta.body).toHaveProperty('_count');
     });
 
-    describe('Quando enviar POST /usuario/:id/avatar sem arquivo', () => {
-      it('Então deve retornar erro 400', async () => {
-        const resposta = await request(app)
-          .post(`/usuario/${idUsuario}/avatar`)
-          .set('Authorization', `Bearer ${tokenUsuario}`);
+    it('deve permitir usuário buscar próprio perfil', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
 
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('Arquivo não enviado');
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.id).toBe(idUsuario);
+    });
+
+    it('deve retornar 403 quando usuário tentar ver outro perfil', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idOutroUsuario}`)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('só pode visualizar seu próprio perfil');
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-123';
+
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Usuário não encontrado');
+    });
+  });
+
+  describe('POST /email', () => {
+    it('deve retornar usuário quando email for encontrado', async () => {
+      const resposta = await request(app)
+        .post(`${BASE_URL}/email`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ email: 'usuario.principal@test.com' });
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.email).toBe('usuario.principal@test.com');
+    });
+
+    it('deve retornar 400 quando email não for enviado', async () => {
+      const resposta = await request(app)
+        .post(`${BASE_URL}/email`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({});
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Email é obrigatório');
+    });
+
+    it('deve retornar 404 quando usuário não existir', async () => {
+      const resposta = await request(app)
+        .post(`${BASE_URL}/email`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ email: 'naoexiste@test.com' });
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Usuário não encontrado');
+    });
+
+    it('deve rejeitar não-admin', async () => {
+      const resposta = await request(app)
+        .post(`${BASE_URL}/email`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send({ email: 'teste@test.com' });
+
+      expect(resposta.status).toBe(403);
+    });
+  });
+
+  describe('PUT /:id', () => {
+    it('deve atualizar dados do usuário', async () => {
+      const dados = {
+        nome: 'Usuario Atualizado',
+        telefone: '11988888888',
+      };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.nome).toBe(dados.nome);
+      expect(resposta.body.telefone).toBe(dados.telefone);
+    });
+
+    it('deve permitir admin atualizar qualquer usuário', async () => {
+      const dados = {
+        nome: 'Admin Atualizou',
+      };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.nome).toBe(dados.nome);
+    });
+
+    it('deve rejeitar usuário editando outro usuário', async () => {
+      const dados = {
+        nome: 'Nao Pode',
+      };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idOutroUsuario}`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('só pode editar seu próprio perfil');
+    });
+
+    it('deve rejeitar email duplicado', async () => {
+      const emailExistente = 'outro.usuario@test.com';
+
+      const dados = {
+        email: emailExistente,
+      };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(409);
+      expect(resposta.body.error).toContain('Email já está em uso');
+    });
+
+    it('deve permitir admin atualizar setor', async () => {
+      const dados = {
+        setor: 'FINANCEIRO',
+      };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.setor).toBe('FINANCEIRO');
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-456';
+      const dados = { nome: 'Teste' };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Usuário não encontrado');
+    });
+  });
+  
+  describe('PUT /:id/senha', () => {
+    it('deve alterar senha do próprio usuário', async () => {
+      const novaSenha = 'NovaSenha123!';
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}/senha`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send({ password: novaSenha });
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('Senha alterada com sucesso');
+
+      const usuarioDb = await prisma.usuario.findUnique({
+        where: { id: idUsuario },
       });
+      const senhaCorreta = await bcrypt.compare(novaSenha, usuarioDb?.password ?? '');
+      expect(senhaCorreta).toBe(true);
+    });
+
+    it('deve permitir admin alterar senha de qualquer usuário', async () => {
+      const novaSenha = 'AdminMudou123!';
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idOutroUsuario}/senha`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ password: novaSenha });
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('Senha alterada com sucesso');
+    });
+
+    it('deve rejeitar usuário alterando senha de outro', async () => {
+      const novaSenha = 'NaoPode123!';
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idOutroUsuario}/senha`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send({ password: novaSenha });
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('só pode alterar sua própria senha');
+    });
+
+    it('deve rejeitar senha muito curta', async () => {
+      const senhaCurta = '123';
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}/senha`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send({ password: senhaCurta });
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
+    });
+
+    it('deve rejeitar requisição sem senha', async () => {
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idUsuario}/senha`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send({});
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Senha é obrigatória');
+    });
+  });
+  
+  describe('POST /:id/avatar', () => {
+    it('deve fazer upload de avatar com sucesso', async () => {
+      const fakeImageBuffer = Buffer.from('fake-image-content');
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/${idUsuario}/avatar`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .attach('avatar', fakeImageBuffer, 'avatar.png');
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('Avatar enviado com sucesso');
+      expect(resposta.body.avatarUrl).toContain('uploads/avatars/');
+    });
+
+    it('deve rejeitar usuário fazendo upload para outro usuário', async () => {
+      const fakeImageBuffer = Buffer.from('fake-image-content');
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/${idOutroUsuario}/avatar`)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .attach('avatar', fakeImageBuffer, 'avatar.png');
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('só pode fazer upload do seu próprio avatar');
+    });
+
+    it('deve rejeitar requisição sem arquivo', async () => {
+      const resposta = await request(app)
+        .post(`${BASE_URL}/${idUsuario}/avatar`)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Arquivo não enviado');
+    });
+  });
+
+  describe('DELETE /:id', () => {
+    it('deve fazer soft delete por padrão', async () => {
+      const usuarioParaDeletar = await prisma.usuario.create({
+        data: {
+          nome: 'Para',
+          sobrenome: 'Deletar',
+          email: gerarEmailUnico(),
+          password: await bcrypt.hash('Senha123!', 10),
+          regra: 'USUARIO',
+          setor: 'FINANCEIRO',
+          ativo: true,
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${usuarioParaDeletar.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('deletado com sucesso');
+
+      const verificacao = await prisma.usuario.findUnique({
+        where: { id: usuarioParaDeletar.id },
+      });
+      expect(verificacao).not.toBeNull();
+      expect(verificacao?.deletadoEm).not.toBeNull();
+      expect(verificacao?.ativo).toBe(false);
+    });
+
+    it('deve fazer hard delete quando solicitado', async () => {
+      const usuarioParaDeletar = await prisma.usuario.create({
+        data: {
+          nome: 'Para',
+          sobrenome: 'Deletar Hard',
+          email: gerarEmailUnico(),
+          password: await bcrypt.hash('Senha123!', 10),
+          regra: 'USUARIO',
+          setor: 'FINANCEIRO',
+          ativo: true,
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${usuarioParaDeletar.id}?permanente=true`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('removido permanentemente');
+
+      const verificacao = await prisma.usuario.findUnique({
+        where: { id: usuarioParaDeletar.id },
+      });
+      expect(verificacao).toBeNull();
+    });
+
+    it('deve rejeitar usuário tentando deletar', async () => {
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${idOutroUsuario}`)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
+
+      expect(resposta.status).toBe(403);
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-abc';
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Usuário não encontrado');
+    });
+  });
+  
+  describe('PATCH /:id/restaurar', () => {
+    it('deve restaurar usuário deletado', async () => {
+      const usuarioDeletado = await prisma.usuario.create({
+        data: {
+          nome: 'Deletado',
+          sobrenome: 'Para Restaurar',
+          email: gerarEmailUnico(),
+          password: await bcrypt.hash('Senha123!', 10),
+          regra: 'USUARIO',
+          setor: 'FINANCEIRO',
+          ativo: false,
+          deletadoEm: new Date(),
+        },
+      });
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${usuarioDeletado.id}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('restaurado com sucesso');
+      expect(resposta.body.usuario.ativo).toBe(true);
+
+      const verificacao = await prisma.usuario.findUnique({
+        where: { id: usuarioDeletado.id },
+      });
+      expect(verificacao?.deletadoEm).toBeNull();
+      expect(verificacao?.ativo).toBe(true);
+    });
+
+    it('deve rejeitar restauração de usuário não deletado', async () => {
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idUsuario}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('não está deletado');
+    });
+
+    it('deve rejeitar não-admin tentando restaurar', async () => {
+      const usuarioDeletado = await prisma.usuario.create({
+        data: {
+          nome: 'Del',
+          sobrenome: 'Teste',
+          email: gerarEmailUnico(),
+          password: await bcrypt.hash('Senha123!', 10),
+          regra: 'USUARIO',
+          setor: 'FINANCEIRO',
+          ativo: false,
+          deletadoEm: new Date(),
+        },
+      });
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${usuarioDeletado.id}/restaurar`)
+        .set('Authorization', `Bearer ${tokenUsuario}`);
+
+      expect(resposta.status).toBe(403);
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-def';
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idInexistente}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Usuário não encontrado');
     });
   });
 });

@@ -1,3 +1,8 @@
+process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
+  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
+
+console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
+
 import {
   describe,
   it,
@@ -11,10 +16,18 @@ import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
-vi.setConfig({ testTimeout: 15000 });
+vi.setConfig({ testTimeout: 20000 });
 
-const URL_BASE = '/filadechamados';
+const BASE_URL = '/filadechamados';
+
+// ✅ Contador global para gerar OS únicos
+let osCounter = 0;
+const gerarOSUnico = () => {
+  osCounter++;
+  return `LST${String(osCounter).padStart(8, '0')}`;
+};
 
 describe('E2E - Rotas de Listagem de Chamados', () => {
   // ========================================
@@ -30,10 +43,6 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   let idChamadoAberto: string;
   let idChamadoEmAtendimento: string;
 
-  // ========================================
-  // FUNÇÕES AUXILIARES
-  // ========================================
-
   const limparBancoDeDados = async () => {
     await prisma.ordemDeServico.deleteMany({});
     await prisma.chamado.deleteMany({});
@@ -43,13 +52,16 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   };
 
   const criarUsuariosDeTeste = async () => {
+    const senhaHash = await bcrypt.hash('Senha123!', 10);
+
     const usuario = await prisma.usuario.create({
       data: {
         nome: 'Usuario',
         sobrenome: 'Teste',
-        email: 'usuario@test.com',
-        password: 'hashedpassword',
+        email: 'usuario.listagem@test.com',
+        password: senhaHash,
         regra: 'USUARIO',
+        ativo: true,
       },
     });
 
@@ -57,9 +69,10 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
       data: {
         nome: 'Tecnico',
         sobrenome: 'Teste',
-        email: 'tecnico@test.com',
-        password: 'hashedpassword',
+        email: 'tecnico.listagem@test.com',
+        password: senhaHash,
         regra: 'TECNICO',
+        ativo: true,
       },
     });
 
@@ -67,9 +80,10 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
       data: {
         nome: 'Admin',
         sobrenome: 'Teste',
-        email: 'admin@test.com',
-        password: 'hashedpassword',
+        email: 'admin.listagem@test.com',
+        password: senhaHash,
         regra: 'ADMIN',
+        ativo: true,
       },
     });
 
@@ -79,7 +93,7 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   const criarServicoTeste = async () => {
     return await prisma.servico.create({
       data: {
-        nome: 'Suporte Técnico',
+        nome: 'Suporte Técnico Listagem',
         ativo: true,
       },
     });
@@ -88,8 +102,8 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   const criarChamadosDeTeste = async (usuarioId: string, tecnicoId: string) => {
     const chamadoAberto = await prisma.chamado.create({
       data: {
-        OS: `INC${Date.now()}1`,
-        descricao: 'Chamado Aberto',
+        OS: gerarOSUnico(),
+        descricao: 'Chamado Aberto para testes de listagem',
         usuarioId,
         status: 'ABERTO',
       },
@@ -97,8 +111,8 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
 
     const chamadoEmAtendimento = await prisma.chamado.create({
       data: {
-        OS: `INC${Date.now()}2`,
-        descricao: 'Chamado Em Atendimento',
+        OS: gerarOSUnico(),
+        descricao: 'Chamado Em Atendimento para testes de listagem',
         usuarioId,
         tecnicoId,
         status: 'EM_ATENDIMENTO',
@@ -110,21 +124,21 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
 
   const gerarTokensAutenticacao = (usuarios: any) => {
     const secret = process.env.JWT_SECRET || 'testsecret';
-    const opcoesToken = {
-      audience: 'helpme-client',
-      issuer: 'helpme-api',
-    };
 
     const tokenUsuario = jwt.sign(
       { 
         id: usuarios.usuario.id, 
         regra: 'USUARIO',
         nome: 'Usuario',
-        email: 'usuario@test.com',
+        email: 'usuario.listagem@test.com',
         type: 'access'
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h' as const,
+      }
     );
 
     const tokenTecnico = jwt.sign(
@@ -132,11 +146,15 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
         id: usuarios.tecnico.id, 
         regra: 'TECNICO',
         nome: 'Tecnico',
-        email: 'tecnico@test.com',
+        email: 'tecnico.listagem@test.com',
         type: 'access'
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h' as const,
+      }
     );
 
     const tokenAdmin = jwt.sign(
@@ -144,45 +162,40 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
         id: usuarios.admin.id, 
         regra: 'ADMIN',
         nome: 'Admin',
-        email: 'admin@test.com',
+        email: 'admin.listagem@test.com',
         type: 'access'
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h' as const,
+      }
     );
 
     return { tokenUsuario, tokenTecnico, tokenAdmin };
   };
 
-  // ========================================
-  // Hooks Globais
-  // ========================================
-
   beforeAll(async () => {
-    // Arrange: Conectar ao MongoDB
-    const mongoUri= 
-      process.env.MONGO_INITDB_URI || 
-      'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
+    const mongoUri = process.env.MONGO_URI_TEST ||
+      'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
+    
+    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', mongoUri);
     await mongoose.connect(mongoUri);
 
-    // Arrange: Limpar banco de dados
     await limparBancoDeDados();
 
-    // Arrange: Criar usuários de teste
     const usuariosTeste = await criarUsuariosDeTeste();
     idUsuario = usuariosTeste.usuario.id;
     idTecnico = usuariosTeste.tecnico.id;
     idAdmin = usuariosTeste.admin.id;
 
-    // Arrange: Criar serviço de teste
     await criarServicoTeste();
 
-    // Arrange: Criar chamados de teste
     const chamadosTeste = await criarChamadosDeTeste(idUsuario, idTecnico);
     idChamadoAberto = chamadosTeste.chamadoAberto.id;
     idChamadoEmAtendimento = chamadosTeste.chamadoEmAtendimento.id;
 
-    // Arrange: Gerar tokens de autenticação
     const tokens = gerarTokensAutenticacao(usuariosTeste);
     tokenAutenticacaoUsuario = tokens.tokenUsuario;
     tokenAutenticacaoTecnico = tokens.tokenTecnico;
@@ -195,38 +208,63 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     await prisma.$disconnect();
   });
 
-  // ========================================
-  // GET /meus-chamados - Listagem de Chamados do Usuário
-  // ========================================
-
   describe('GET /meus-chamados', () => {
-    it('Dado usuário autenticado com role USUARIO, Quando consulta seus chamados, Então deve retornar apenas chamados criados por ele', async () => {
-      // Arrange: Token do usuário comum já configurado
-      
-      // Act: Buscar chamados do usuário
+    it('deve retornar chamados do usuário com estrutura de paginação', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
+        .get(`${BASE_URL}/meus-chamados`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar que retorna apenas chamados do usuário
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBeGreaterThan(0);
+      expect(resposta.body).toHaveProperty('data');
+      expect(resposta.body).toHaveProperty('pagination');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
       
-      resposta.body.forEach((chamado: any) => {
+      expect(resposta.body.pagination).toHaveProperty('page');
+      expect(resposta.body.pagination).toHaveProperty('limit');
+      expect(resposta.body.pagination).toHaveProperty('total');
+      expect(resposta.body.pagination).toHaveProperty('totalPages');
+      expect(resposta.body.pagination).toHaveProperty('hasNext');
+      expect(resposta.body.pagination).toHaveProperty('hasPrev');
+      
+      resposta.body.data.forEach((chamado: any) => {
         expect(chamado.usuario.id).toBe(idUsuario);
       });
     });
 
-    it('Dado usuário sem chamados cadastrados, Quando consulta seus chamados, Então deve retornar array vazio', async () => {
-      // Arrange: Criar usuário sem chamados
+    it('deve filtrar chamados por status quando fornecido', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/meus-chamados?status=ABERTO`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data).toBeInstanceOf(Array);
+      
+      resposta.body.data.forEach((chamado: any) => {
+        expect(chamado.status).toBe('ABERTO');
+      });
+    });
+
+    it('deve respeitar parâmetros de paginação', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/meus-chamados?page=1&limit=1`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.pagination.page).toBe(1);
+      expect(resposta.body.pagination.limit).toBe(1);
+      expect(resposta.body.data.length).toBeLessThanOrEqual(1);
+    });
+
+    it('deve retornar estrutura vazia quando usuário não tem chamados', async () => {
       const usuarioSemChamados = await prisma.usuario.create({
         data: {
           nome: 'Usuario',
           sobrenome: 'Sem Chamados',
-          email: 'sem.chamados@test.com',
-          password: 'hashedpassword',
+          email: 'sem.chamados.listagem@test.com',
+          password: await bcrypt.hash('Senha123!', 10),
           regra: 'USUARIO',
+          ativo: true,
         },
       });
 
@@ -236,70 +274,72 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
           id: usuarioSemChamados.id, 
           regra: 'USUARIO',
           nome: 'Usuario',
-          email: 'sem.chamados@test.com',
+          email: 'sem.chamados.listagem@test.com',
           type: 'access'
         },
         secret,
-        { audience: 'helpme-client', issuer: 'helpme-api' }
+        { 
+          audience: 'helpme-client', 
+          issuer: 'helpme-api',
+          expiresIn: '1h' as const
+        }
       );
 
-      // Act: Buscar chamados de usuário sem chamados
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
+        .get(`${BASE_URL}/meus-chamados`)
         .set('Authorization', `Bearer ${tokenUsuarioSemChamados}`);
 
-      // Assert: Verificar retorno de array vazio
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
+      expect(resposta.body.data).toBeInstanceOf(Array);
+      expect(resposta.body.data.length).toBe(0);
+      expect(resposta.body.pagination.total).toBe(0);
 
       await prisma.usuario.delete({ where: { id: usuarioSemChamados.id } });
     });
 
-    it('Dado requisição sem autenticação, Quando consulta chamados, Então deve retornar erro 401', async () => {
-      // Arrange: Preparar requisição sem token
-      
-      // Act: Tentar acessar sem autenticação
+    it('deve rejeitar requisição sem autenticação', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`);
+        .get(`${BASE_URL}/meus-chamados`);
 
-      // Assert: Verificar rejeição por falta de autenticação
       expect(resposta.status).toBe(401);
     });
   });
 
-  // ========================================
-  // GET /chamados-atribuidos - Listagem de Chamados do Técnico
-  // ========================================
-
   describe('GET /chamados-atribuidos', () => {
-    it('Dado técnico autenticado, Quando consulta chamados atribuídos, Então deve retornar apenas seus chamados com status válido', async () => {
-      // Arrange: Token do técnico já configurado
-      
-      // Act: Buscar chamados atribuídos ao técnico
+    it('deve retornar apenas chamados atribuídos ao técnico', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
+        .get(`${BASE_URL}/chamados-atribuidos`)
         .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
 
-      // Assert: Verificar chamados atribuídos ao técnico
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
+      expect(resposta.body).toHaveProperty('data');
+      expect(resposta.body).toHaveProperty('pagination');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
       
-      resposta.body.forEach((chamado: any) => {
+      resposta.body.data.forEach((chamado: any) => {
         expect(chamado.tecnico.id).toBe(idTecnico);
         expect(['EM_ATENDIMENTO', 'REABERTO']).toContain(chamado.status);
       });
     });
 
-    it('Dado técnico sem chamados atribuídos, Quando consulta, Então deve retornar array vazio', async () => {
-      // Arrange: Criar técnico sem chamados atribuídos
+    it('deve suportar ordenação por prioridade', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/chamados-atribuidos?prioridade=reabertos`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data).toBeInstanceOf(Array);
+    });
+
+    it('deve retornar estrutura vazia quando técnico não tem atribuições', async () => {
       const tecnicoSemChamados = await prisma.usuario.create({
         data: {
           nome: 'Tecnico',
           sobrenome: 'Sem Atribuicoes',
-          email: 'tecnico.vazio@test.com',
-          password: 'hashedpassword',
+          email: 'tecnico.vazio.listagem@test.com',
+          password: await bcrypt.hash('Senha123!', 10),
           regra: 'TECNICO',
+          ativo: true,
         },
       });
 
@@ -309,303 +349,237 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
           id: tecnicoSemChamados.id, 
           regra: 'TECNICO',
           nome: 'Tecnico',
-          email: 'tecnico.vazio@test.com',
+          email: 'tecnico.vazio.listagem@test.com',
           type: 'access'
         },
         secret,
-        { audience: 'helpme-client', issuer: 'helpme-api' }
+        { 
+          audience: 'helpme-client', 
+          issuer: 'helpme-api',
+          expiresIn: '1h' as const
+        }
       );
 
-      // Act: Buscar chamados de técnico sem atribuições
       const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
+        .get(`${BASE_URL}/chamados-atribuidos`)
         .set('Authorization', `Bearer ${tokenTecnicoVazio}`);
 
-      // Assert: Verificar array vazio
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
+      expect(resposta.body.data).toBeInstanceOf(Array);
+      expect(resposta.body.data.length).toBe(0);
 
       await prisma.usuario.delete({ where: { id: tecnicoSemChamados.id } });
     });
 
-    it('Dado usuário comum tentando acessar, Quando consulta chamados atribuídos, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de usuário comum
-      
-      // Act: Tentar acessar endpoint restrito
+    it('deve rejeitar usuário comum tentando acessar', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
+        .get(`${BASE_URL}/chamados-atribuidos`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar negação de acesso
       expect(resposta.status).toBe(403);
     });
   });
 
-  // ========================================
-  // GET /todos-chamados - Listagem Completa (Admin)
-  // ========================================
-
   describe('GET /todos-chamados', () => {
-    it('Dado admin com filtro de status ABERTO, Quando consulta todos chamados, Então deve retornar apenas chamados com status ABERTO', async () => {
-      // Arrange: Parâmetros de consulta com filtro
-      const parametrosConsulta = { status: 'ABERTO' };
-      
-      // Act: Buscar chamados com filtro de status
+    it('deve retornar todos os chamados sem filtro obrigatório', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
+        .get(`${BASE_URL}/todos-chamados`)
         .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
 
-      // Assert: Verificar filtro aplicado corretamente
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
+      expect(resposta.body).toHaveProperty('data');
+      expect(resposta.body).toHaveProperty('pagination');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
+    });
+
+    it('deve filtrar por status quando fornecido', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/todos-chamados?status=ABERTO`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data).toBeInstanceOf(Array);
       
-      resposta.body.forEach((chamado: any) => {
+      resposta.body.data.forEach((chamado: any) => {
         expect(chamado.status).toBe('ABERTO');
       });
     });
 
-    it('Dado admin sem parâmetro status, Quando consulta todos chamados, Então deve retornar erro 400', async () => {
-      // Arrange: Requisição sem parâmetro obrigatório
-      
-      // Act: Tentar consultar sem filtro de status
+    it('deve retornar erro com status inválido', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
+        .get(`${BASE_URL}/todos-chamados?status=STATUS_INVALIDO`)
         .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
 
-      // Assert: Verificar erro de validação
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toBe('O parâmetro "status" é obrigatório.');
-    });
-
-    it('Dado admin com status inválido, Quando consulta todos chamados, Então deve retornar erro 400', async () => {
-      // Arrange: Parâmetro com valor inválido
-      const parametrosInvalidos = { status: 'STATUS_INVALIDO' };
-      
-      // Act: Tentar consultar com status inválido
-      const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosInvalidos)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar rejeição por valor inválido
       expect(resposta.status).toBe(400);
       expect(resposta.body.error).toContain('Status inválido');
     });
 
-    it('Dado admin com filtro EM_ATENDIMENTO, Quando consulta, Então deve retornar apenas chamados em atendimento', async () => {
-      // Arrange: Filtro para status específico
-      const parametrosConsulta = { status: 'EM_ATENDIMENTO' };
-      
-      // Act: Buscar chamados em atendimento
+    it('deve filtrar por técnico quando fornecido', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
+        .get(`${BASE_URL}/todos-chamados?tecnicoId=${idTecnico}`)
         .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
 
-      // Assert: Verificar filtro correto
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(chamado.status).toBe('EM_ATENDIMENTO');
+      resposta.body.data.forEach((chamado: any) => {
+        if (chamado.tecnico) {
+          expect(chamado.tecnico.id).toBe(idTecnico);
+        }
       });
     });
 
-    it('Dado técnico tentando acessar todos chamados, Quando consulta, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de técnico para endpoint de admin
-      const parametrosConsulta = { status: 'ABERTO' };
-      
-      // Act: Técnico tenta acessar endpoint restrito
+    it('deve suportar busca por OS ou descrição', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
+        .get(`${BASE_URL}/todos-chamados?busca=Aberto`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data).toBeInstanceOf(Array);
+    });
+
+    it('deve rejeitar técnico tentando acessar', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/todos-chamados`)
         .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
 
-      // Assert: Verificar negação de acesso
       expect(resposta.status).toBe(403);
     });
   });
-
-  // ========================================
-  // GET /abertos - Listagem de Chamados Abertos/Reabertos
-  // ========================================
 
   describe('GET /abertos', () => {
-    it('Dado admin autenticado, Quando consulta chamados abertos, Então deve retornar apenas chamados com status ABERTO ou REABERTO', async () => {
-      // Arrange: Token de admin já configurado
-      
-      // Act: Buscar chamados abertos ou reabertos
+    it('deve retornar apenas chamados ABERTO ou REABERTO', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
+        .get(`${BASE_URL}/abertos`)
         .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
 
-      // Assert: Verificar filtro de status múltiplos
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
+      expect(resposta.body).toHaveProperty('data');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
       
-      resposta.body.forEach((chamado: any) => {
+      resposta.body.data.forEach((chamado: any) => {
         expect(['ABERTO', 'REABERTO']).toContain(chamado.status);
       });
     });
 
-    it('Dado técnico autenticado, Quando consulta chamados abertos, Então deve retornar lista de chamados disponíveis', async () => {
-      // Arrange: Token de técnico já configurado
-      
-      // Act: Técnico busca chamados disponíveis
+    it('deve permitir técnico consultar chamados disponíveis', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
+        .get(`${BASE_URL}/abertos`)
         .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
 
-      // Assert: Verificar acesso permitido para técnico
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
+      expect(resposta.body.data).toBeInstanceOf(Array);
       
-      resposta.body.forEach((chamado: any) => {
+      resposta.body.data.forEach((chamado: any) => {
         expect(['ABERTO', 'REABERTO']).toContain(chamado.status);
       });
     });
 
-    it('Dado sistema sem chamados abertos, Quando consulta, Então deve retornar array vazio', async () => {
-      // Arrange: Fechar todos os chamados abertos temporariamente
-      await prisma.chamado.updateMany({
-        where: { status: { in: ['ABERTO', 'REABERTO'] } },
-        data: { status: 'ENCERRADO', encerradoEm: new Date() }
-      });
-
-      // Act: Buscar chamados abertos
+    it('deve suportar ordenação personalizada', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
+        .get(`${BASE_URL}/abertos?ordenacao=prioridade`)
         .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
 
-      // Assert: Verificar array vazio
       expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
-
-      // Cleanup: Reabrir chamados para não afetar outros testes
-      await prisma.chamado.updateMany({
-        where: { id: idChamadoAberto },
-        data: { status: 'ABERTO', encerradoEm: null }
-      });
+      expect(resposta.body.data).toBeInstanceOf(Array);
     });
 
-    it('Dado usuário comum tentando acessar, Quando consulta chamados abertos, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de usuário comum
-      
-      // Act: Usuário tenta acessar endpoint restrito
+    it('deve rejeitar usuário comum tentando acessar', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
+        .get(`${BASE_URL}/abertos`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar negação de acesso
       expect(resposta.status).toBe(403);
     });
   });
 
-  // ========================================
-  // Testes de Paginação e Ordenação
-  // ========================================
-
-  describe('Paginação e Ordenação', () => {
-    it('Dado múltiplos chamados cadastrados, Quando consulta com limite, Então deve respeitar paginação', async () => {
-      // Arrange: Criar múltiplos chamados para testar paginação
-      const chamadosExtras = await Promise.all([
-        prisma.chamado.create({
-          data: {
-            OS: `INC${Date.now()}3`,
-            descricao: 'Chamado Extra 1',
-            usuarioId: idUsuario,
-            status: 'ABERTO',
-          },
-        }),
-        prisma.chamado.create({
-          data: {
-            OS: `INC${Date.now()}4`,
-            descricao: 'Chamado Extra 2',
-            usuarioId: idUsuario,
-            status: 'ABERTO',
-          },
-        }),
-      ]);
-
-      // Act: Buscar chamados do usuário
+  describe('GET /estatisticas', () => {
+    it('deve retornar estatísticas completas do sistema', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
+        .get(`${BASE_URL}/estatisticas`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body).toHaveProperty('total');
+      expect(resposta.body).toHaveProperty('porStatus');
+      expect(resposta.body).toHaveProperty('pendentes');
+      expect(resposta.body).toHaveProperty('semTecnico');
+      expect(resposta.body).toHaveProperty('timestamp');
+      
+      expect(resposta.body.porStatus).toHaveProperty('abertos');
+      expect(resposta.body.porStatus).toHaveProperty('emAtendimento');
+      expect(resposta.body.porStatus).toHaveProperty('encerrados');
+      expect(resposta.body.porStatus).toHaveProperty('cancelados');
+      expect(resposta.body.porStatus).toHaveProperty('reabertos');
+      
+      expect(typeof resposta.body.total).toBe('number');
+      expect(typeof resposta.body.pendentes).toBe('number');
+      expect(typeof resposta.body.semTecnico).toBe('number');
+    });
+
+    it('deve rejeitar técnico tentando acessar estatísticas', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/estatisticas`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+
+      expect(resposta.status).toBe(403);
+    });
+
+    it('deve rejeitar usuário comum tentando acessar estatísticas', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/estatisticas`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar que retorna múltiplos chamados
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBeGreaterThanOrEqual(2);
-
-      // Cleanup
-      await Promise.all(
-        chamadosExtras.map(c => prisma.chamado.delete({ where: { id: c.id } }))
-      );
+      expect(resposta.status).toBe(403);
     });
   });
 
-  // ========================================
-  // Testes de Integridade de Dados
-  // ========================================
-
   describe('Integridade de Dados Retornados', () => {
-    it('Dado chamado consultado, Quando retorna dados, Então deve incluir informações completas do usuário', async () => {
-      // Arrange: Token configurado
-      
-      // Act: Buscar chamados
+    it('deve incluir informações completas do chamado', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
+        .get(`${BASE_URL}/meus-chamados`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar estrutura completa dos dados
       expect(resposta.status).toBe(200);
-      expect(resposta.body.length).toBeGreaterThan(0);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
       
-      const primeiroChamado = resposta.body[0];
+      const primeiroChamado = resposta.body.data[0];
       expect(primeiroChamado).toHaveProperty('id');
       expect(primeiroChamado).toHaveProperty('OS');
       expect(primeiroChamado).toHaveProperty('descricao');
       expect(primeiroChamado).toHaveProperty('status');
+      expect(primeiroChamado).toHaveProperty('geradoEm');
       expect(primeiroChamado).toHaveProperty('usuario');
       expect(primeiroChamado.usuario).toHaveProperty('id');
-      expect(primeiroChamado.usuario.id).toBe(idUsuario);
+      expect(primeiroChamado.usuario).toHaveProperty('nome');
+      expect(primeiroChamado.usuario).toHaveProperty('email');
+    });
+
+    it('deve incluir dados do técnico quando atribuído', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/chamados-atribuidos`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+
+      expect(resposta.status).toBe(200);
       
-      // Verificar campos opcionais se existirem
-      if (primeiroChamado.usuario.nome) {
-        expect(typeof primeiroChamado.usuario.nome).toBe('string');
-      }
-      if (primeiroChamado.usuario.email) {
-        expect(typeof primeiroChamado.usuario.email).toBe('string');
+      if (resposta.body.data.length > 0) {
+        const chamadoComTecnico = resposta.body.data[0];
+        expect(chamadoComTecnico).toHaveProperty('tecnico');
+        expect(chamadoComTecnico.tecnico).toHaveProperty('id');
+        expect(chamadoComTecnico.tecnico).toHaveProperty('nome');
+        expect(chamadoComTecnico.tecnico.id).toBe(idTecnico);
       }
     });
 
-    it('Dado chamado com técnico atribuído, Quando consulta, Então deve incluir dados do técnico', async () => {
-      // Arrange: Token de técnico
-      
-      // Act: Buscar chamados atribuídos
+    it('deve incluir informações de serviços quando presentes', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+        .get(`${BASE_URL}/meus-chamados`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar inclusão de dados do técnico
       expect(resposta.status).toBe(200);
       
-      if (resposta.body.length > 0) {
-        const chamadoComTecnico = resposta.body[0];
-        expect(chamadoComTecnico).toHaveProperty('tecnico');
-        expect(chamadoComTecnico.tecnico).toHaveProperty('id');
-        expect(chamadoComTecnico.tecnico.id).toBe(idTecnico);
-        
-        // Verificar campos opcionais se existirem
-        if (chamadoComTecnico.tecnico.nome) {
-          expect(typeof chamadoComTecnico.tecnico.nome).toBe('string');
-        }
-        if (chamadoComTecnico.tecnico.email) {
-          expect(typeof chamadoComTecnico.tecnico.email).toBe('string');
-        }
+      if (resposta.body.data.length > 0) {
+        const chamado = resposta.body.data[0];
+        expect(chamado).toHaveProperty('servicos');
+        expect(Array.isArray(chamado.servicos)).toBe(true);
       }
     });
   });

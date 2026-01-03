@@ -27,14 +27,15 @@ const tecnicoBase = {
   geradoEm: '2025-01-01T00:00:00.000Z',
   atualizadoEm: '2025-01-01T00:00:00.000Z',
   deletadoEm: null,
-  tecnicoDisponibilidade: [
+  expediente: [
     {
       id: 'exp1',
-      entrada: '08:00',
-      saida: '17:00',
+      entrada: new Date('2025-01-01T08:00:00.000Z'),
+      saida: new Date('2025-01-01T17:00:00.000Z'),
       ativo: true,
       geradoEm: '2025-01-01T00:00:00.000Z',
       atualizadoEm: '2025-01-01T00:00:00.000Z',
+      deletadoEm: null,
     },
   ],
   _count: {
@@ -123,6 +124,13 @@ vi.mock('multer', () => {
   };
 });
 
+vi.mock('fs', () => ({
+  default: {
+    existsSync: vi.fn().mockReturnValue(true),
+    mkdirSync: vi.fn(),
+  },
+}));
+
 // ========================================
 // SETUP E TEARDOWN
 // ========================================
@@ -175,17 +183,20 @@ function criarApp(mockFile?: any) {
 
 describe('POST /tecnicos (criação de técnico)', () => {
   it('deve retornar status 201 e criar técnico com expediente padrão', async () => {
-    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(tecnicoBase);
+    
     prismaMock.$transaction.mockImplementation(async (callback) => {
       const tx = {
         usuario: {
-          create: vi.fn().mockResolvedValue(tecnicoBase),
+          create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
         },
         expediente: {
           create: vi.fn().mockResolvedValue({
             id: 'exp1',
-            entrada: '08:00',
-            saida: '17:00',
+            entrada: new Date('2025-01-01T08:00:00.000Z'),
+            saida: new Date('2025-01-01T17:00:00.000Z'),
           }),
         },
       };
@@ -360,18 +371,20 @@ describe('POST /tecnicos (criação de técnico)', () => {
   });
 
   it('deve usar horários padrão quando não fornecidos', async () => {
-    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(tecnicoBase);
     
     const expedienteCreateMock = vi.fn().mockResolvedValue({
       id: 'exp1',
-      entrada: '08:00',
-      saida: '17:00',
+      entrada: new Date('2025-01-01T08:00:00.000Z'),
+      saida: new Date('2025-01-01T17:00:00.000Z'),
     });
 
     prismaMock.$transaction.mockImplementation(async (callback) => {
       const tx = {
         usuario: {
-          create: vi.fn().mockResolvedValue(tecnicoBase),
+          create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
         },
         expediente: {
           create: expedienteCreateMock,
@@ -392,8 +405,8 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(expedienteCreateMock).toHaveBeenCalledWith({
       data: {
         usuarioId: tecnicoBase.id,
-        entrada: '08:00',
-        saida: '17:00',
+        entrada: expect.any(Date),
+        saida: expect.any(Date),
       },
     });
   });
@@ -882,8 +895,8 @@ describe('PUT /tecnicos/:id/horarios (atualização de horários)', () => {
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           create: vi.fn().mockResolvedValue({
             id: 'exp2',
-            entrada: '09:00',
-            saida: '18:00',
+            entrada: new Date('2025-01-01T09:00:00.000Z'),
+            saida: new Date('2025-01-01T18:00:00.000Z'),
             ativo: true,
             geradoEm: new Date(),
           }),

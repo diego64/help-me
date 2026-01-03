@@ -75,8 +75,8 @@ model Expediente {
   id           String   @id @default(cuid())
   usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   usuarioId    String
-  entrada      DateTime @db.Time(0)
-  saida        DateTime @db.Time(0)
+  entrada      DateTime @db.Timestamptz(3)
+  saida        DateTime @db.Timestamptz(3)
 
   geradoEm     DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(3)
   atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)

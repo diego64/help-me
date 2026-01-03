@@ -24,7 +24,7 @@ import { redisClient } from '../../services/redisClient';
 
 describe('Middleware de Autenticação', () => {
   // ================================
-  // DAOS PARA TESTES
+  // dadoS PARA TESTES
   // ================================
 
   const createApp = () => {
@@ -59,6 +59,7 @@ describe('Middleware de Autenticação', () => {
     avatarUrl: null,
     geradoEm: new Date(),
     atualizadoEm: new Date(),
+    deletadoEm: null,
     ativo: true,
     refreshToken: null,
   });
@@ -88,7 +89,7 @@ describe('Middleware de Autenticação', () => {
   // ================================
 
   describe('authMiddleware', () => {
-    it('Dado token JWT válido, Quando chamar rota protegida, Então retorna 200 e payload do usuário', async () => {
+    it('dado token JWT válido, quando chamar rota protegida, então retorna 200 e payload do usuário', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();
@@ -111,7 +112,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.usuario.id).toBe(defaultUser.id);
     });
 
-    it('Dado request sem token, Quando chamar rota protegida, Então retorna 401 com mensagem de erro', async () => {
+    it('dado request sem token, quando chamar rota protegida, então retorna 401 com mensagem de erro', async () => {
       // Arrange (Preparação)
       const app = createApp();
 
@@ -126,7 +127,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.error).toMatch(/Token não fornecido/i);
     });
 
-    it('Dado token expirado, Quando chamar rota protegida, Então retorna 401 com mensagem de expiração', async () => {
+    it('dado token expirado, quando chamar rota protegida, então retorna 401 com mensagem de expiração', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();
@@ -152,7 +153,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.error).toMatch(/expirado/i);
     });
 
-    it('Dado token revogado na blacklist do Redis, Quando chamar rota protegida, Então retorna 401 com mensagem de revogação', async () => {
+    it('dado token revogado na blacklist do Redis, quando chamar rota protegida, então retorna 401 com mensagem de revogação', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();
@@ -204,7 +205,7 @@ describe('Middleware de Autenticação', () => {
       expect(matchesAny).toBe(true);
     });
 
-    it('Dado token inválido, Quando chamar rota protegida, Então retorna 401 com mensagem de token inválido', async () => {
+    it('dado token inválido, quando chamar rota protegida, então retorna 401 com mensagem de token inválido', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const invalidToken = 'token.invalido.xyz';
@@ -222,7 +223,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.error).toMatch(/inválido/i);
     });
 
-    it('Dado token com formato incorreto no header, Quando chamar rota protegida, Então retorna 401', async () => {
+    it('dado token com formato incorreto no header, quando chamar rota protegida, então retorna 401', async () => {
       // Arrange (Preparação)
       const app = createApp();
 
@@ -238,15 +239,15 @@ describe('Middleware de Autenticação', () => {
       expect(response.body).toHaveProperty('error');
     });
 
-    it('Dado token válido não revogado, Quando verificar blacklist, Então permite acesso', async () => {
+    it('dado token válido não revogado, quando verificar blacklist, então permite acesso', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();
       
-      // ✅ CORRIGIDO: Gerar token SEM jti customizado - usar token real
+      //Gerar token SEM jti customizado - usar token real
       const validToken = jwtUtil.generateToken(defaultUser, 'access');
 
-      // ✅ Mock Redis.get para indicar que token NÃO está na blacklist
+      //Mock Redis.get para indicar que token NÃO está na blacklist
       vi.spyOn(redisClient, 'get').mockResolvedValue(null);
 
       // Act (Ação)
@@ -266,7 +267,7 @@ describe('Middleware de Autenticação', () => {
   // ================================
 
   describe('authorizeRoles', () => {
-    it('Dado usuário com role permitida, Quando chamar rota de admin, Então retorna 200 e permite acesso', async () => {
+    it('dado usuário com role permitida, quando chamar rota de admin, então retorna 200 e permite acesso', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const adminUser = { ...createDefaultUser(), regra: Regra.ADMIN };
@@ -288,7 +289,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.ok).toBe(true);
     });
 
-    it('Dado usuário com role não permitida, Quando chamar rota de admin, Então retorna 403 com mensagem de acesso negado', async () => {
+    it('dado usuário com role não permitida, quando chamar rota de admin, então retorna 403 com mensagem de acesso negado', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();
@@ -310,7 +311,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.error).toMatch(/Acesso negado/i);
     });
 
-    it('Dado ausência de usuário autenticado, Quando chamar authorizeRoles, Então retorna 401 com mensagem de não autorizado', async () => {
+    it('dado ausência de usuário autenticado, quando chamar authorizeRoles, então retorna 401 com mensagem de não autorizado', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const expectedErrors = ['Não autorizado.', 'Token não fornecido.'];
@@ -326,7 +327,7 @@ describe('Middleware de Autenticação', () => {
       expect(expectedErrors).toContain(response.body.error);
     });
 
-    it('Dado múltiplas roles permitidas, Quando usuário tem uma delas, Então permite acesso', async () => {
+    it('dado múltiplas roles permitidas, quando usuário tem uma delas, então permite acesso', async () => {
       // Arrange (Preparação)
       const app = express();
       app.use(express.json());
@@ -354,7 +355,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.ok).toBe(true);
     });
 
-    it('Dado múltiplas roles permitidas, Quando usuário não tem nenhuma, Então nega acesso', async () => {
+    it('dado múltiplas roles permitidas, quando usuário não tem nenhuma, então nega acesso', async () => {
       // Arrange (Preparação)
       const app = express();
       app.use(express.json());
@@ -388,7 +389,7 @@ describe('Middleware de Autenticação', () => {
   // ================================
 
   describe('Segurança do Middleware', () => {
-    it('Dado token com payload manipulado, Quando verificar assinatura, Então rejeita token', async () => {
+    it('dado token com payload manipulado, quando verificar assinatura, então rejeita token', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const fakeToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEiLCJlbWFpbCI6ImFkbWluQGhhY2tlci5jb20iLCJyZWdyYSI6IkFETUlOIn0.fake_signature';
@@ -403,7 +404,7 @@ describe('Middleware de Autenticação', () => {
       expect(response.body.error).toMatch(/inválido/i);
     });
 
-    it('Dado token sem tipo especificado, Quando validar, Então aceita ou rejeita conforme implementação', async () => {
+    it('dado token sem tipo especificado, quando validar, então aceita ou rejeita conforme implementação', async () => {
       // Arrange (Preparação)
       const app = createApp();
       const defaultUser = createDefaultUser();

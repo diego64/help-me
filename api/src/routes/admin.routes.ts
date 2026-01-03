@@ -32,10 +32,6 @@ function removerCamposSensiveis(usuario: any) {
   return usuarioLimpo;
 }
 
-// ========================================
-// SWAGGER TAG
-// ========================================
-
 /**
  * @swagger
  * tags:

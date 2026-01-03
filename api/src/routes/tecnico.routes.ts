@@ -47,6 +47,13 @@ interface ListagemResponse<T> {
   };
 }
 
+function converterHorarioParaDateTime(horario: string): Date {
+  const [hora, minuto] = horario.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hora, minuto, 0, 0);
+  return date;
+}
+
 // ========================================
 // CONFIGURAÇÃO DE UPLOAD
 // ========================================
@@ -205,6 +212,9 @@ const TECNICO_SELECT = {
   deletadoEm: true,
   regra: true,
   tecnicoDisponibilidade: {
+    where: {
+      deletadoEm: null,
+    },
     select: {
       id: true,
       entrada: true,
@@ -212,15 +222,12 @@ const TECNICO_SELECT = {
       ativo: true,
       geradoEm: true,
       atualizadoEm: true,
+      deletadoEm: true,
     },
   },
   _count: {
     select: {
-      tecnicoChamados: {
-        where: {
-          deletadoEm: null,
-        },
-      },
+      tecnicoChamados: true,
     },
   },
 } as const;
@@ -376,7 +383,7 @@ router.post(
       const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
       // Criar técnico e expediente em transação
-      const tecnico = await prisma.$transaction(async (tx) => {
+      const tecnicoId = await prisma.$transaction(async (tx) => {
         const novoTecnico = await tx.usuario.create({
           data: {
             nome: nome.trim(),
@@ -388,24 +395,28 @@ router.post(
             regra: Regra.TECNICO,
             setor,
           },
-          select: TECNICO_SELECT,
+          select: { id: true },
         });
 
-        // Criar horário padrão
         await tx.expediente.create({
           data: {
             usuarioId: novoTecnico.id,
-            entrada,
-            saida,
+            entrada: converterHorarioParaDateTime(entrada),
+            saida: converterHorarioParaDateTime(saida),
           },
         });
 
-        return novoTecnico;
+        return novoTecnico.id;
+      });
+
+      const tecnico = await prisma.usuario.findUnique({
+        where: { id: tecnicoId },
+        select: TECNICO_SELECT,
       });
 
       console.log('[TECNICO CREATED]', {
-        id: tecnico.id,
-        email: tecnico.email,
+        id: tecnicoId,
+        email: email.toLowerCase(),
       });
 
       res.status(201).json(tecnico);
@@ -960,7 +971,7 @@ router.put(
         });
       }
 
-      // Atualizar horários em transação
+      // Atualizar horários em transação usando DateTime
       const horario = await prisma.$transaction(async (tx) => {
         // Soft delete dos horários antigos
         await tx.expediente.updateMany({
@@ -972,8 +983,8 @@ router.put(
         return await tx.expediente.create({
           data: {
             usuarioId: id,
-            entrada,
-            saida,
+            entrada: converterHorarioParaDateTime(entrada),
+            saida: converterHorarioParaDateTime(saida),
           },
           select: {
             id: true,
@@ -1154,7 +1165,6 @@ router.delete(
       const { id } = req.params;
       const permanente = req.query.permanente === 'true';
 
-      // Buscar técnico
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
         select: {
@@ -1190,7 +1200,10 @@ router.delete(
           await tx.usuario.delete({ where: { id } });
         });
 
-        console.log('[TECNICO DELETED PERMANENTLY]', { id, email: tecnico.email });
+        console.log('[TECNICO DELETED PERMANENTLY]', { 
+          id, 
+          email: tecnico.email 
+        });
 
         return res.json({
           message: 'Técnico removido permanentemente',
@@ -1207,7 +1220,10 @@ router.delete(
         },
       });
 
-      console.log('[TECNICO SOFT DELETED]', { id, email: tecnico.email });
+      console.log('[TECNICO SOFT DELETED]', { 
+        id, 
+        email: tecnico.email 
+      });
 
       res.json({
         message: 'Técnico deletado com sucesso',

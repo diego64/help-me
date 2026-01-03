@@ -54,9 +54,6 @@ let idChamadoCriado: string | undefined;
 // FUNÇÕES AUXILIARES
 // ==========================
 
-/**
- * Limpa o banco de dados antes dos testes
- */
 const limparBancoDeDados = async () => {
   try {
     await prisma.$transaction([
@@ -69,16 +66,12 @@ const limparBancoDeDados = async () => {
   }
 };
 
-/**
- * Cria usuários de teste no banco de dados com senhas hasheadas
- */
 const criarUsuariosDeTeste = async () => {
   try {
     const senhaHashUsuario = await bcrypt.hash(dadosUsuarioTeste.password, 10);
     const senhaHashAdmin = await bcrypt.hash(dadosAdminTeste.password, 10);
     const senhaHashTecnico = await bcrypt.hash(dadosTecnicoTeste.password, 10);
 
-    // Criar usuário comum
     await prisma.usuario.create({
       data: {
         email: dadosUsuarioTeste.email,
@@ -89,7 +82,6 @@ const criarUsuariosDeTeste = async () => {
       },
     });
 
-    // Criar admin
     await prisma.usuario.create({
       data: {
         email: dadosAdminTeste.email,
@@ -100,7 +92,6 @@ const criarUsuariosDeTeste = async () => {
       },
     });
 
-    // Criar técnico
     await prisma.usuario.create({
       data: {
         email: dadosTecnicoTeste.email,
@@ -117,9 +108,6 @@ const criarUsuariosDeTeste = async () => {
   }
 };
 
-/**
- * Autentica usuários e obtém tokens
- */
 const autenticarUsuarios = async () => {
   try {
     // Autenticar usuário comum
@@ -139,7 +127,6 @@ const autenticarUsuarios = async () => {
       console.warn('[WARN] Falha ao autenticar usuário comum:', resUsuario.status);
     }
 
-    // Autenticar admin
     const resAdmin = await request(app)
       .post('/auth/login')
       .send({
@@ -156,7 +143,6 @@ const autenticarUsuarios = async () => {
       console.warn('[WARN] Falha ao autenticar admin:', resAdmin.status);
     }
 
-    // Autenticar técnico
     const resTecnico = await request(app)
       .post('/auth/login')
       .send({
@@ -177,9 +163,6 @@ const autenticarUsuarios = async () => {
   }
 };
 
-/**
- * Limpa sessões do Redis
- */
 const limparSessoesRedis = async () => {
   try {
     const keys = await redisClient.keys('sess:*');
@@ -192,9 +175,6 @@ const limparSessoesRedis = async () => {
   }
 };
 
-/**
- * Verifica se o usuário está autenticado
- */
 const verificarAutenticacao = (tipo: 'usuario' | 'admin' | 'tecnico'): boolean => {
   const tokens = {
     usuario: tokenUsuario,
@@ -209,9 +189,6 @@ const verificarAutenticacao = (tipo: 'usuario' | 'admin' | 'tecnico'): boolean =
   return true;
 };
 
-/**
- * Helper para adicionar headers de autenticação em requisições
- */
 const adicionarAutenticacao = (
   requisicao: request.Test,
   tipo: 'usuario' | 'admin' | 'tecnico'
@@ -265,7 +242,6 @@ beforeAll(async () => {
     console.warn('[WARN] Redis não conectado:', erro);
   }
 
-  // Limpar banco e criar usuários
   await limparBancoDeDados();
   await criarUsuariosDeTeste();
   await autenticarUsuarios();
@@ -276,11 +252,9 @@ beforeAll(async () => {
 afterAll(async () => {
   console.log('\n🧹 Limpando ambiente de teste...\n');
 
-  // Limpar DADOS DE TESTES
   await limparBancoDeDados();
   await limparSessoesRedis();
   
-  // Desconectar do banco e Redis
   try {
     await prisma.$disconnect();
     console.log('[SUCESSO] Prisma desconectado');
@@ -302,9 +276,9 @@ afterAll(async () => {
 
 describe('Testes E2E da Aplicação', () => {
   
-  // ==========================
+  // ====================================
   // TESTES DE MIDDLEWARE E CONFIGURAÇÃO
-  // ==========================
+  // ====================================
 
   describe('Middleware da Aplicação', () => {
     it('deve aceitar requisições JSON - DADO que envio JSON QUANDO faço requisição ENTÃO deve processar corretamente', async () => {
@@ -371,9 +345,9 @@ describe('Testes E2E da Aplicação', () => {
     });
   });
 
-  // ==========================
+  // ================================
   // TESTES DE ROTAS DE AUTENTICAÇÃO
-  // ==========================
+  // ================================
 
   describe('Rotas de Autenticação (/auth)', () => {
     it('deve fazer login com credenciais válidas - DADO que usuário existe QUANDO faz login ENTÃO deve retornar token', async () => {
@@ -382,13 +356,11 @@ describe('Testes E2E da Aplicação', () => {
         where: { email: dadosUsuarioTeste.email },
       });
       
-      // Se usuário não existe, pula teste com aviso
       if (!usuarioExiste) {
         console.warn('[WARN] Usuário de teste não encontrado - pulando teste de login');
         return;
       }
 
-      // Credenciais válidas
       const credenciais = {
         email: dadosUsuarioTeste.email,
         password: dadosUsuarioTeste.password,
@@ -1050,9 +1022,9 @@ describe('Testes E2E da Aplicação', () => {
     });
   });
 
-  // ==========================
+  // ================================
   // TESTES DE SEGURANÇA E VALIDAÇÃO
-  // ==========================
+  // ================================
 
   describe('Segurança e Validação', () => {
     it('deve validar dados na criação de recursos - DADO que dados são inválidos QUANDO tento criar ENTÃO deve retornar erro de validação', async () => {
@@ -1186,9 +1158,9 @@ describe('Testes E2E da Aplicação', () => {
     });
   });
 
-  // ==========================
+  // ================================
   // TESTES DE PERFORMANCE E LIMITES
-  // ==========================
+  // ================================
 
   describe('Performance e Limites', () => {
     it('deve responder em tempo adequado - DADO que faço requisição QUANDO processo ENTÃO deve responder rápido', async () => {
@@ -1279,9 +1251,9 @@ describe('Testes E2E da Aplicação', () => {
     });
   });
 
-  // ==========================
+  // ============================
   // TESTE DE SAÚDE DA APLICAÇÃO
-  // ==========================
+  // ============================
 
   describe('Saúde da Aplicação', () => {
     it('deve estar rodando e respondendo - DADO que aplicação está ativa QUANDO faço requisição ENTÃO deve responder', async () => {

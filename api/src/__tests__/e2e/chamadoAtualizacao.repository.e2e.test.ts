@@ -13,7 +13,7 @@ import {
 
 describe('ChamadoAtualizacao Repository', () => {
   // ========================================
-  // DADOS DE TESTES
+  // dadoS DE TESTES
   // ========================================
   
   const createMockHistorico = () => ({
@@ -47,7 +47,7 @@ describe('ChamadoAtualizacao Repository', () => {
   // ========================================
 
   describe('salvarHistoricoChamado', () => {
-    it('Dado um conjunto válido de dados de histórico, quando salvarHistoricoChamado é chamado, então registra no banco e retorna o histórico salvo completo', async () => {
+    it('dado um conjunto válido de dados de histórico, quando salvarHistoricoChamado é chamado, então registra no banco e retorna o histórico salvo completo', async () => {
       // Arrange
       const mockHistorico = createMockHistorico();
       const expectedHistoricoData = {
@@ -92,7 +92,7 @@ describe('ChamadoAtualizacao Repository', () => {
   // ========================================
 
   describe('listarHistoricoChamado', () => {
-    it('Dado um ID de chamado válido, quando listarHistoricoChamado é chamado, então retorna a lista de históricos do chamado ordenada por data crescente e completa', async () => {
+    it('dado um ID de chamado válido, quando listarHistoricoChamado é chamado, então retorna a lista de históricos do chamado ordenada por data crescente e completa', async () => {
       // Arrange
       const chamadoId = 'chamado123';
       const olderDate = new Date('2023-01-01T10:00:00Z');

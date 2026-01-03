@@ -123,7 +123,7 @@ const CHAMADO_SELECT = {
 
 /**
  * @swagger
- * /api/listagens/meus-chamados:
+ * /api/filadechamados/meus-chamados:
  *   get:
  *     summary: Lista os chamados criados pelo usuário autenticado
  *     description: Retorna todos os chamados que foram abertos pelo usuário logado, com paginação. Requer autenticação e perfil USUARIO.
@@ -219,7 +219,7 @@ router.get(
 
 /**
  * @swagger
- * /api/listagens/chamados-atribuidos:
+ * /api/filadechamados/chamados-atribuidos:
  *   get:
  *     summary: Lista os chamados atribuídos ao técnico autenticado
  *     description: Retorna todos os chamados que estão atualmente atribuídos ao técnico logado e que estão com status EM_ATENDIMENTO ou REABERTO. Requer autenticação e perfil TECNICO.
@@ -310,7 +310,7 @@ router.get(
 
 /**
  * @swagger
- * /api/listagens/todos-chamados:
+ * /api/filadechamados/todos-chamados:
  *   get:
  *     summary: Lista todos os chamados do sistema
  *     description: Retorna todos os chamados do sistema com filtros avançados e paginação. Requer autenticação e perfil ADMIN.
@@ -493,7 +493,7 @@ router.get(
 
 /**
  * @swagger
- * /api/listagens/abertos:
+ * /api/filadechamados/abertos:
  *   get:
  *     summary: Lista todos os chamados abertos ou reabertos (fila)
  *     description: Retorna todos os chamados que estão com status ABERTO ou REABERTO, disponíveis para atribuição a técnicos. Requer autenticação e perfil ADMIN ou TECNICO.
@@ -597,7 +597,7 @@ router.get(
 
 /**
  * @swagger
- * /api/listagens/estatisticas:
+ * /api/filadechamados/estatisticas:
  *   get:
  *     summary: Retorna estatísticas gerais de chamados
  *     description: Retorna contadores de chamados por status, técnicos e outras métricas. Requer autenticação e perfil ADMIN.
