@@ -4,6 +4,12 @@
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Diego Ferreira L.G.Oliveira",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/diego64/help-me.git"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsup src/server.ts --format esm,cjs --dts",
@@ -32,8 +38,6 @@
     "diagnostico:api": "bash scripts/check-api.sh"
   },
   "keywords": [],
-  "author": "Diego Ferreira L.G.Oliveira",
-  "license": "ISC",
   "packageManager": "pnpm@10.23.0",
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
