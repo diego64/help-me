@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔍 Diagnóstico da API para Testes K6"
+echo "Diagnóstico da API para Testes K6"
 echo ""
 
 RED='\033[0;31m'
@@ -9,7 +9,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # 1. VERIFICAR SE A API ESTÁ RODANDO
-echo "1️⃣  Verificando se a API está rodando..."
+echo "Verificando se a API está rodando..."
 API_URL="http://localhost:3000"
 
 if curl -s -o /dev/null -w "%{http_code}" "$API_URL" > /dev/null 2>&1; then
@@ -28,7 +28,7 @@ fi
 echo ""
 
 # 2. TESTAR ROTA DE LOGIN
-echo "2️⃣  Testando rota de login..."
+echo "Testando rota de login..."
 
 LOGIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/login" \
   -H "Content-Type: application/json" \
@@ -54,7 +54,7 @@ fi
 echo ""
 
 # 3. VERIFICAR SE O BANCO TEM DADOS
-echo "3️⃣  VERIFICANDO DADOS DO SEED..."
+echo "VERIFICANDO DADOS DO SEED..."
 
 # TENTA FAZER LOGIN E CONTAR USUÁRIOS
 TOKEN=$(echo "$RESPONSE_BODY" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
@@ -80,7 +80,7 @@ fi
 echo ""
 
 # 4. VERIFICAR PORTAS EM USO
-echo "4️⃣  VERIFICANDO PORTAS EM USO..."
+echo "VERIFICANDO PORTAS EM USO..."
 
 if command -v lsof &> /dev/null; then
     PORT_3000=$(lsof -i :3000 -t 2>/dev/null)
@@ -96,7 +96,7 @@ fi
 echo ""
 
 # 5. VERIFICAR ARQUIVO DE ROTAS K6
-echo "5️⃣  Verificando arquivo k6-routes.json..."
+echo "Verificando arquivo k6-routes.json..."
 
 # Detectar o diretório do script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

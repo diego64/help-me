@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// PRISMA MOCK
-// ========================================
-
 const prismaMock = {
   usuario: {
     create: vi.fn(),
@@ -33,20 +29,12 @@ vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
-// ========================================
-// BCRYPT MOCK
-// ========================================
-
 const bcryptHashMock = vi.fn().mockResolvedValue('HASHED');
 
 vi.mock('bcrypt', () => ({
   default: { hash: bcryptHashMock },
   hash: bcryptHashMock,
 }));
-
-// ========================================
-// AUTH MOCK
-// ========================================
 
 vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
@@ -55,10 +43,6 @@ vi.mock('../../middleware/auth', () => ({
   },
   authorizeRoles: () => (req: any, res: any, next: any) => next(),
 }));
-
-// ========================================
-// ADMIN FIXTURES
-// ========================================
 
 const adminFixture = {
   id: '1',

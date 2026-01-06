@@ -18,24 +18,54 @@ import bcrypt from 'bcrypt';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
 
-vi.setConfig({ testTimeout: 20000 });
+// AUMENTA O TIMEOUT GLOBAL
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
 describe('E2E - Rotas de Admin', () => {
   let adminToken: string;
   let adminId: string;
   let segundoAdminId: string;
 
+  // ADICIONA TIMEOUT ESPECÍFICO NO beforeAll
   beforeAll(async () => {
     const mongoUri = process.env.MONGO_URI_TEST || 
       'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
     
-    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', mongoUri);
-    await mongoose.connect(mongoUri);
+    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTANDO EM:', mongoUri);
+    
+    try {
+      // Timeout de 10 segundos para MongoDB
+      await Promise.race([
+        mongoose.connect(mongoUri, {
+          serverSelectionTimeoutMS: 10000,
+          connectTimeoutMS: 10000,
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao conectar no MongoDB')), 10000)
+        )
+      ]);
+      console.log('[INFO] MongoDB conectado com sucesso');
+    } catch (error) {
+      console.error('[ERROR] Falha ao conectar no MongoDB:', error);
+      throw error;
+    }
+
+    try {
+      // Testa conexão com PostgreSQL
+      console.log('[INFO] Testando conexão com PostgreSQL...');
+      await prisma.$connect();
+      console.log('[INFO] PostgreSQL conectado com sucesso');
+    } catch (error) {
+      console.error('[ERROR] Falha ao conectar no PostgreSQL:', error);
+      throw error;
+    }
 
     // Limpar base de dados
+    console.log('[INFO] Limpando base de dados...');
     await prisma.usuario.deleteMany({});
 
     // Criar admin principal para testes
+    console.log('[INFO] Criando admin de teste...');
     const senhaHash = await bcrypt.hash('Admin123!', 10);
     const admin = await prisma.usuario.create({
       data: {
@@ -66,13 +96,16 @@ describe('E2E - Rotas de Admin', () => {
         audience: 'helpme-client'
       }
     );
-  });
+    
+    console.log('[INFO] Setup completo!');
+  }, 30000);
 
   afterAll(async () => {
+    console.log('[INFO] Limpando e desconectando...');
     await prisma.usuario.deleteMany({});
     await mongoose.disconnect();
     await prisma.$disconnect();
-  });
+  }, 15000);
 
   describe('POST /admin - Criar novo administrador', () => {
     it('deve criar um novo administrador com dados válidos', async () => {
