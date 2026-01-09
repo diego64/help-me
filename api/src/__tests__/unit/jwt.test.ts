@@ -23,6 +23,7 @@ type Usuario = {
   avatarUrl: string | null;
   geradoEm: Date;
   atualizadoEm: Date;
+  deletadoEm: Date | null;
   ativo: boolean;
   refreshToken: string | null;
 };
@@ -47,6 +48,7 @@ const mockUsuarioValido: Usuario = {
   avatarUrl: null,
   geradoEm: new Date(),
   atualizadoEm: new Date(),
+  deletadoEm: null,
   ativo: true,
   refreshToken: null
 };

@@ -16,7 +16,7 @@ import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../../utils/password';
 
 vi.setConfig({ testTimeout: 20000 });
 
@@ -29,7 +29,7 @@ const gerarNomeUnico = () => {
 };
 
 function gerarTokenAcesso(usuarioId: string, regra: string): string {
-  const secret = process.env.JWT_SECRET || 'testsecret';
+  const secret = process.env.JWT_SECRET || 'testsecret-must-be-at-least-32-chars-long!!';
   
   const payload = {
     id: usuarioId,
@@ -83,7 +83,7 @@ describe('E2E - Rotas de Serviços', () => {
 
       await limparBancoDados();
 
-      const senhaHash = await bcrypt.hash('Senha123!', 10);
+      const senhaHash = hashPassword('Senha123!');
 
       const usuarioAdmin = await prisma.usuario.create({
         data: {

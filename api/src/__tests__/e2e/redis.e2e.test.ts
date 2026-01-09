@@ -241,7 +241,6 @@ describe('Redis Client E2E', () => {
             await clienteComErro.quit();
           }
         } catch (e) {
-          // Ignora erros no cleanup
         }
       }
     });

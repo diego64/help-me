@@ -9,10 +9,6 @@ import {
 import { Response, NextFunction } from 'express';
 import { Regra } from '@prisma/client';
 
-// ========================================
-// MOCKS - deveM VIR ANTES DOS IMPORTS
-// ========================================
-
 vi.mock('../../auth/jwt', () => ({
   verifyToken: vi.fn(),
   extractTokenFromHeader: vi.fn(),
@@ -22,10 +18,6 @@ vi.mock('../../services/redisClient', () => ({
   cacheGet: vi.fn(),
 }));
 
-// ========================================
-// IMPORTS - DEPOIS DOS MOCKS
-// ========================================
-
 import { authMiddleware, authorizeRoles, AuthRequest } from '../../middleware/auth';
 import * as jwtModule from '../../auth/jwt';
 import * as redisModule from '../../services/redisClient';
@@ -33,10 +25,6 @@ import * as redisModule from '../../services/redisClient';
 const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
 const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);
 const cacheGetMock = vi.mocked(redisModule.cacheGet);
-
-// ========================================
-// SETUP E HELPERS
-// ========================================
 
 function createMockRequest(authorization?: string): Partial<AuthRequest> {
   return {
@@ -66,10 +54,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-// ========================================
-// TESTES DO authMiddleware
-// ========================================
 
 describe('authMiddleware', () => {
   it('deve retornar 401 quando token não for fornecido', async () => {
@@ -330,10 +314,6 @@ describe('authMiddleware', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith('authMiddleware error:', mockError);
   });
 });
-
-// ========================================
-// TESTES DO authorizeRoles
-// ========================================
 
 describe('authorizeRoles', () => {
   it('deve retornar 401 quando req.usuario não estiver definido', () => {

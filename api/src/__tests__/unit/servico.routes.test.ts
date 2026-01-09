@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// FIXTURES E MOCKS
-// ========================================
-
 const servicoBase = {
   id: 'serv1',
   nome: 'Suporte Técnico',
@@ -35,10 +31,6 @@ const prismaMock = {
 };
 
 let usuarioRegra = 'ADMIN';
-
-// ========================================
-// CONFIGURAÇÃO DE MOCKS
-// ========================================
 
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () {
@@ -63,10 +55,6 @@ vi.mock('../../middleware/auth', () => ({
         : res.status(403).json({ error: 'Forbidden' }),
 }));
 
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
-
 let router: any;
 
 beforeAll(async () => {
@@ -85,20 +73,12 @@ beforeEach(() => {
   prismaMock.servico.delete.mockReset();
 });
 
-// ========================================
-// FUNÇÃO AUXILIAR
-// ========================================
-
 function criarApp() {
   const app = express();
   app.use(express.json());
   app.use('/servicos', router);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('POST /servicos (criação de serviço)', () => {
   it('deve retornar status 201 e criar serviço com dados válidos', async () => {

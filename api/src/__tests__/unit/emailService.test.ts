@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach
+} from 'vitest';
 import nodemailer from 'nodemailer';
-
-// ========================================
-// MOCK DO NODEMAILER
-// ========================================
 
 const sendMailMock = vi.fn();
 const createTransportMock = vi.fn(() => ({
@@ -16,17 +19,12 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
-// ========================================
-// SETUP DE VARIÁVEIS DE AMBIENTE
-// ========================================
-
 const ENV_ORIGINAL = process.env;
 
 describe('Email Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // Configurar variáveis de ambiente para os testes
     process.env = {
       ...ENV_ORIGINAL,
       SMTP_HOST: 'smtp.test.com',
@@ -36,21 +34,14 @@ describe('Email Service', () => {
       SMTP_FROM: '"Test Sender" <sender@test.com>',
     };
 
-    // Configurar o mock do createTransport
     vi.mocked(nodemailer.createTransport).mockImplementation(createTransportMock as any);
   });
 
   afterEach(() => {
-    // Restaurar variáveis de ambiente
     process.env = ENV_ORIGINAL;
-    
-    // Limpar o cache de módulos para reimportar com novas envs
+
     vi.resetModules();
   });
-
-  // ==========================================================================
-  // TESTES: Criação do Transporter
-  // ==========================================================================
 
   describe('transporter', () => {
     it('deve criar transporter com configurações corretas do ambiente', async () => {
@@ -97,10 +88,6 @@ describe('Email Service', () => {
       );
     });
   });
-
-  // ==========================================================================
-  // TESTES: Função sendEmail
-  // ==========================================================================
 
   describe('sendEmail', () => {
     it('deve enviar email com sucesso usando SMTP_FROM do ambiente', async () => {

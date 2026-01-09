@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// FIXTURES E MOCKS
-// ========================================
-
 const tecnicoBase = {
   id: 'tec1',
   nome: 'João',
@@ -27,7 +23,7 @@ const tecnicoBase = {
   geradoEm: '2025-01-01T00:00:00.000Z',
   atualizadoEm: '2025-01-01T00:00:00.000Z',
   deletadoEm: null,
-  expediente: [
+  tecnicoDisponibilidade: [
     {
       id: 'exp1',
       entrada: new Date('2025-01-01T08:00:00.000Z'),
@@ -60,16 +56,10 @@ const prismaMock = {
   $transaction: vi.fn(),
 };
 
-const bcryptMock = {
-  hash: vi.fn().mockResolvedValue('hashed_password'),
-};
+const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
 
 let usuarioRegra = 'ADMIN';
 let usuarioAtualId = 'admin1';
-
-// ========================================
-// CONFIGURAÇÃO DE MOCKS
-// ========================================
 
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () {
@@ -90,8 +80,8 @@ vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('bcrypt', () => ({
-  default: bcryptMock,
+vi.mock('../../utils/password', () => ({
+  hashPassword: hashPasswordMock,
 }));
 
 vi.mock('../../middleware/auth', () => ({
@@ -131,10 +121,6 @@ vi.mock('fs', () => ({
   },
 }));
 
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
-
 let router: any;
 
 beforeAll(async () => {
@@ -157,12 +143,9 @@ beforeEach(() => {
   prismaMock.expediente.deleteMany.mockReset();
   prismaMock.$transaction.mockReset();
 
-  bcryptMock.hash.mockResolvedValue('hashed_password');
+  hashPasswordMock.mockClear();
+  hashPasswordMock.mockReturnValue('HASHED_PASSWORD_PBKDF2');
 });
-
-// ========================================
-// FUNÇÃO AUXILIAR
-// ========================================
 
 function criarApp(mockFile?: any) {
   const app = express();
@@ -176,10 +159,6 @@ function criarApp(mockFile?: any) {
   app.use('/tecnicos', router);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('POST /tecnicos (criação de técnico)', () => {
   it('deve retornar status 201 e criar técnico com expediente padrão', async () => {
@@ -215,7 +194,7 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(resposta.status).toBe(201);
     expect(resposta.body.nome).toBe('João');
     expect(resposta.body.regra).toBe('TECNICO');
-    expect(bcryptMock.hash).toHaveBeenCalledWith('senha123456', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('senha123456');
   });
 
   it('deve retornar status 400 quando nome não for enviado', async () => {
@@ -819,7 +798,7 @@ describe('PUT /tecnicos/:id/password (alteração de senha)', () => {
 
     expect(resposta.status).toBe(200);
     expect(resposta.body.message).toContain('Senha alterada com sucesso');
-    expect(bcryptMock.hash).toHaveBeenCalledWith('novasenha123', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('novasenha123');
   });
 
   it('deve retornar status 403 quando técnico tentar alterar senha de outro', async () => {

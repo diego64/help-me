@@ -40,10 +40,6 @@ app.use(session({
   }
 }));
 
-// ================
-// ROTAS
-// ================
-
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/tecnico', tecnicoRoutes);

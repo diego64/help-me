@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/password';
 import multer from 'multer';
 import path from 'path';
 import { Setor, Regra } from '@prisma/client';
@@ -12,7 +12,6 @@ import {
 
 export const router: Router = Router();
 
-const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
 const MIN_NOME_LENGTH = 2;
 const MAX_NOME_LENGTH = 100;
@@ -24,9 +23,8 @@ const MAX_LIMIT = 100;
 const DEFAULT_ENTRADA = '08:00';
 const DEFAULT_SAIDA = '17:00';
 
-// Configuração de upload
 const UPLOAD_DIR = 'uploads/avatars';
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 interface PaginationParams {
@@ -53,10 +51,6 @@ function converterHorarioParaDateTime(horario: string): Date {
   date.setHours(hora, minuto, 0, 0);
   return date;
 }
-
-// ========================================
-// CONFIGURAÇÃO DE UPLOAD
-// ========================================
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -239,10 +233,6 @@ const TECNICO_SELECT = {
  *   description: Gerenciamento de usuários técnicos e seus horários de atendimento
  */
 
-// ========================================
-// CRIAÇÃO DE TÉCNICO
-// ========================================
-
 /**
  * @swagger
  * /api/tecnicos:
@@ -327,7 +317,6 @@ router.post(
         saida = DEFAULT_SAIDA,
       } = req.body;
 
-      // Validações
       const validacaoNome = validarNome(nome, 'Nome');
       if (!validacaoNome.valido) {
         return res.status(400).json({ error: validacaoNome.erro });
@@ -363,7 +352,6 @@ router.post(
         return res.status(400).json({ error: validacaoIntervalo.erro });
       }
 
-      // Verificar se email já existe
       const emailExistente = await prisma.usuario.findUnique({
         where: { email: email.toLowerCase() },
         select: { id: true, deletadoEm: true },
@@ -380,9 +368,8 @@ router.post(
         });
       }
 
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = hashPassword(password);
 
-      // Criar técnico e expediente em transação
       const tecnicoId = await prisma.$transaction(async (tx) => {
         const novoTecnico = await tx.usuario.create({
           data: {
@@ -428,10 +415,6 @@ router.post(
     }
   }
 );
-
-// ========================================
-// LISTAGEM DE TÉCNICOS (COM PAGINAÇÃO)
-// ========================================
 
 /**
  * @swagger
@@ -515,7 +498,6 @@ router.get(
         ];
       }
 
-      // Buscar em paralelo
       const [total, tecnicos] = await Promise.all([
         prisma.usuario.count({ where }),
         prisma.usuario.findMany({
@@ -538,10 +520,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// BUSCAR TÉCNICO POR ID
-// ========================================
 
 /**
  * @swagger
@@ -598,10 +576,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// EDIÇÃO DE TÉCNICO
-// ========================================
 
 /**
  * @swagger
@@ -661,14 +635,12 @@ router.put(
       const { id } = req.params;
       const { nome, sobrenome, email, telefone, ramal, setor } = req.body;
 
-      // Verificar permissão (técnico só pode editar a si mesmo)
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode editar seu próprio perfil',
         });
       }
 
-      // Buscar técnico
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
         select: {
@@ -701,7 +673,6 @@ router.put(
         dataToUpdate.nome = nome.trim();
       }
 
-      // Validar e atualizar sobrenome
       if (sobrenome !== undefined) {
         const validacao = validarNome(sobrenome, 'Sobrenome');
         if (!validacao.valido) {
@@ -710,7 +681,6 @@ router.put(
         dataToUpdate.sobrenome = sobrenome.trim();
       }
 
-      // Validar e atualizar email
       if (email !== undefined) {
         const validacao = validarEmail(email);
         if (!validacao.valido) {
@@ -719,7 +689,6 @@ router.put(
 
         const emailLower = email.toLowerCase();
 
-        // Verificar se email já existe (em outro usuário)
         if (emailLower !== tecnico.email) {
           const emailExistente = await prisma.usuario.findUnique({
             where: { email: emailLower },
@@ -735,7 +704,6 @@ router.put(
         }
       }
 
-      // Atualizar telefone, ramal e setor
       if (telefone !== undefined) {
         dataToUpdate.telefone = telefone?.trim() || null;
       }
@@ -748,7 +716,6 @@ router.put(
         dataToUpdate.setor = setor as Setor;
       }
 
-      // Se nada para atualizar
       if (Object.keys(dataToUpdate).length === 0) {
         const current = await prisma.usuario.findUnique({
           where: { id },
@@ -757,7 +724,6 @@ router.put(
         return res.json(current);
       }
 
-      // Atualizar técnico
       const updated = await prisma.usuario.update({
         where: { id },
         data: dataToUpdate,
@@ -775,10 +741,6 @@ router.put(
     }
   }
 );
-
-// ========================================
-// ALTERAÇÃO DE SENHA
-// ========================================
 
 /**
  * @swagger
@@ -831,20 +793,17 @@ router.put(
       const { id } = req.params;
       const { password } = req.body;
 
-      // Verificar permissão
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode alterar sua própria senha',
         });
       }
 
-      // Validar senha
       const validacao = validarSenha(password);
       if (!validacao.valida) {
         return res.status(400).json({ error: validacao.erro });
       }
 
-      // Verificar se técnico existe
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
         select: { id: true, regra: true },
@@ -856,8 +815,7 @@ router.put(
         });
       }
 
-      // Hash e atualizar senha
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = hashPassword(password);
 
       await prisma.usuario.update({
         where: { id },
@@ -877,10 +835,6 @@ router.put(
     }
   }
 );
-
-// ========================================
-// ATUALIZAR HORÁRIOS
-// ========================================
 
 /**
  * @swagger
@@ -936,14 +890,12 @@ router.put(
       const { id } = req.params;
       const { entrada, saida } = req.body;
 
-      // Verificar permissão
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode alterar seus próprios horários',
         });
       }
 
-      // Validar horários
       const validacaoEntrada = validarHorario(entrada, 'Horário de entrada');
       if (!validacaoEntrada.valido) {
         return res.status(400).json({ error: validacaoEntrada.erro });
@@ -959,7 +911,6 @@ router.put(
         return res.status(400).json({ error: validacaoIntervalo.erro });
       }
 
-      // Verificar se técnico existe
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
         select: { id: true, regra: true },
@@ -971,15 +922,12 @@ router.put(
         });
       }
 
-      // Atualizar horários em transação usando DateTime
       const horario = await prisma.$transaction(async (tx) => {
-        // Soft delete dos horários antigos
         await tx.expediente.updateMany({
           where: { usuarioId: id },
           data: { deletadoEm: new Date(), ativo: false },
         });
 
-        // Criar novo horário
         return await tx.expediente.create({
           data: {
             usuarioId: id,
@@ -1010,10 +958,6 @@ router.put(
     }
   }
 );
-
-// ========================================
-// UPLOAD DE AVATAR
-// ========================================
 
 /**
  * @swagger
@@ -1066,7 +1010,6 @@ router.post(
       const { id } = req.params;
       const file = req.file;
 
-      // Verificar permissão
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode fazer upload do seu próprio avatar',
@@ -1079,7 +1022,6 @@ router.post(
         });
       }
 
-      // Verificar se técnico existe
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
         select: { id: true, regra: true },
@@ -1091,7 +1033,6 @@ router.post(
         });
       }
 
-      // Atualizar avatarUrl
       const updated = await prisma.usuario.update({
         where: { id },
         data: { avatarUrl: `/uploads/avatars/${file.filename}` },
@@ -1118,10 +1059,6 @@ router.post(
     }
   }
 );
-
-// ========================================
-// SOFT DELETE DE TÉCNICO
-// ========================================
 
 /**
  * @swagger
@@ -1211,7 +1148,6 @@ router.delete(
         });
       }
 
-      // SOFT DELETE
       await prisma.usuario.update({
         where: { id },
         data: {
@@ -1237,10 +1173,6 @@ router.delete(
     }
   }
 );
-
-// ========================================
-// RESTAURAR TÉCNICO
-// ========================================
 
 /**
  * @swagger

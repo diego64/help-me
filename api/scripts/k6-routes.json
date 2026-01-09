@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-12-05T22:06:18.136Z",
+  "generatedAt": "2026-01-06T22:07:07.604Z",
   "routes": {
     "filadechamados": {
       "basePrefix": "/filadechamados",
@@ -7,22 +7,27 @@
         "_meus-chamados": {
           "method": "GET",
           "path": "/meus-chamados",
-          "description": "============================================================================"
+          "description": "description: Erro ao listar chamados"
         },
         "_chamados-atribuidos": {
           "method": "GET",
           "path": "/chamados-atribuidos",
-          "description": "============================================================================"
+          "description": "description: Erro ao listar chamados"
         },
         "_todos-chamados": {
           "method": "GET",
           "path": "/todos-chamados",
-          "description": "============================================================================"
+          "description": "description: Erro ao listar chamados"
         },
         "_abertos": {
           "method": "GET",
           "path": "/abertos",
-          "description": "============================================================================"
+          "description": "description: Erro ao listar chamados abertos"
+        },
+        "_estatisticas": {
+          "method": "GET",
+          "path": "/estatisticas",
+          "description": "description: Erro ao buscar estatísticas"
         }
       }
     },
@@ -32,27 +37,27 @@
         "_": {
           "method": "POST",
           "path": "/",
-          "description": "============================================================================"
+          "description": "description: Erro ao criar serviço"
         },
         "_id": {
           "method": "GET",
           "path": "/:id",
-          "description": "============================================================================"
+          "description": "description: Erro ao buscar serviço"
         },
         "_id_desativar": {
-          "method": "DELETE",
+          "method": "PATCH",
           "path": "/:id/desativar",
-          "description": "============================================================================"
+          "description": "description: Erro ao desativar serviço"
         },
         "_id_reativar": {
           "method": "PATCH",
           "path": "/:id/reativar",
-          "description": "============================================================================"
+          "description": "description: Erro ao reativar serviço"
         },
-        "_id_excluir": {
-          "method": "DELETE",
-          "path": "/:id/excluir",
-          "description": "============================================================================"
+        "_id_restaurar": {
+          "method": "PATCH",
+          "path": "/:id/restaurar",
+          "description": "description: Erro ao restaurar serviço"
         }
       }
     },
@@ -62,27 +67,32 @@
         "_": {
           "method": "POST",
           "path": "/",
-          "description": "============================================================================"
+          "description": "description: Erro ao criar técnico"
         },
         "_id": {
-          "method": "PUT",
+          "method": "GET",
           "path": "/:id",
-          "description": "============================================================================"
+          "description": "description: Erro ao buscar técnico"
         },
         "_id_password": {
           "method": "PUT",
           "path": "/:id/password",
-          "description": "============================================================================"
+          "description": "description: Erro ao alterar senha"
         },
         "_id_horarios": {
           "method": "PUT",
           "path": "/:id/horarios",
-          "description": "============================================================================"
+          "description": "description: Erro ao atualizar horário"
         },
         "_id_avatar": {
           "method": "POST",
           "path": "/:id/avatar",
-          "description": "============================================================================"
+          "description": "description: Erro ao fazer upload"
+        },
+        "_id_restaurar": {
+          "method": "PATCH",
+          "path": "/:id/restaurar",
+          "description": "description: Erro ao restaurar técnico"
         }
       }
     },
@@ -92,27 +102,32 @@
         "_": {
           "method": "POST",
           "path": "/",
-          "description": "============================================================================"
+          "description": "description: Erro ao criar usuário"
+        },
+        "_id": {
+          "method": "GET",
+          "path": "/:id",
+          "description": "description: Erro ao buscar usuário"
         },
         "_email": {
           "method": "POST",
           "path": "/email",
-          "description": "============================================================================"
-        },
-        "_id": {
-          "method": "PUT",
-          "path": "/:id",
-          "description": "============================================================================"
+          "description": "description: Erro ao buscar usuário"
         },
         "_id_senha": {
           "method": "PUT",
           "path": "/:id/senha",
-          "description": "============================================================================"
+          "description": "description: Erro ao alterar senha"
         },
         "_id_avatar": {
           "method": "POST",
           "path": "/:id/avatar",
-          "description": "============================================================================"
+          "description": "description: Erro ao fazer upload"
+        },
+        "_id_restaurar": {
+          "method": "PATCH",
+          "path": "/:id/restaurar",
+          "description": "description: Erro ao restaurar usuário"
         }
       }
     },
@@ -122,32 +137,32 @@
         "_abertura-chamado": {
           "method": "POST",
           "path": "/abertura-chamado",
-          "description": "============================================================================"
+          "description": "description: Erro ao criar o chamado"
         },
         "_id_status": {
           "method": "PATCH",
           "path": "/:id/status",
-          "description": "============================================================================"
+          "description": "description: Erro ao atualizar status"
         },
         "_id_historico": {
           "method": "GET",
           "path": "/:id/historico",
-          "description": "============================================================================"
+          "description": "description: Erro ao buscar histórico"
         },
         "_id_reabrir-chamado": {
           "method": "PATCH",
           "path": "/:id/reabrir-chamado",
-          "description": "============================================================================"
+          "description": "description: Erro ao reabrir chamado"
         },
         "_id_cancelar-chamado": {
           "method": "PATCH",
           "path": "/:id/cancelar-chamado",
-          "description": "============================================================================"
+          "description": "description: Erro ao cancelar chamado"
         },
-        "_id_excluir-chamado": {
+        "_id": {
           "method": "DELETE",
-          "path": "/:id/excluir-chamado",
-          "description": "============================================================================"
+          "path": "/:id",
+          "description": "description: Erro ao deletar chamado"
         }
       }
     },
@@ -157,22 +172,27 @@
         "_login": {
           "method": "POST",
           "path": "/login",
-          "description": "============================================================================"
+          "description": "description: Erro interno do servidor"
         },
         "_logout": {
           "method": "POST",
           "path": "/logout",
-          "description": "============================================================================"
+          "description": "description: Erro ao realizar logout ou encerrar sessão"
         },
         "_refresh-token": {
           "method": "POST",
           "path": "/refresh-token",
-          "description": "============================================================================"
+          "description": "description: Refresh token inválido, expirado ou usuário inativo"
         },
         "_me": {
           "method": "GET",
           "path": "/me",
-          "description": "============================================================================"
+          "description": "description: Erro ao buscar perfil do usuário"
+        },
+        "_status": {
+          "method": "GET",
+          "path": "/status",
+          "description": "description: Não autenticado"
         }
       }
     },
@@ -182,12 +202,17 @@
         "_": {
           "method": "POST",
           "path": "/",
-          "description": "============================================================================"
+          "description": "description: Sem permissão (requer perfil ADMIN)"
         },
         "_id": {
-          "method": "PUT",
+          "method": "GET",
           "path": "/:id",
-          "description": "============================================================================"
+          "description": "description: Sem permissão"
+        },
+        "_id_reativar": {
+          "method": "PATCH",
+          "path": "/:id/reativar",
+          "description": "description: Administrador já está ativo"
         }
       }
     }

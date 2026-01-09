@@ -17,17 +17,14 @@ import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../../utils/password';
 
 vi.setConfig({ testTimeout: 20000 });
 
 const BASE_URL = '/chamado';
 
 describe('E2E - Rotas de Chamados', () => {
-  // ========================================
-  // DADOS DE TESTES E CONFIGURAÇÕES
-  // ========================================
-  
+
   let tokenAutenticacaoUsuario: string;
   let tokenAutenticacaoUsuario2: string;
   let tokenAutenticacaoTecnico: string;
@@ -38,10 +35,6 @@ describe('E2E - Rotas de Chamados', () => {
   let idAdmin: string;
   let idServico: string;
   let idChamado: string;
-
-  // ========================================
-  // FUNÇÕES AUXILIARES
-  // ========================================
 
   let contadorOS = 0;
 
@@ -62,7 +55,7 @@ describe('E2E - Rotas de Chamados', () => {
   };
 
   const criarUsuariosDeTeste = async () => {
-    const senhaHash = await bcrypt.hash('Senha123!', 10);
+    const senhaHash = hashPassword('Senha123!');
 
     const usuario = await prisma.usuario.create({
       data: {
@@ -139,7 +132,7 @@ describe('E2E - Rotas de Chamados', () => {
   };
 
   const gerarTokensAutenticacao = (usuarios: any) => {
-    const secret = process.env.JWT_SECRET || 'testsecret';
+    const secret = process.env.JWT_SECRET || 'testsecret-must-be-at-least-32-chars-long!!';
     
     const tokenUsuario = jwt.sign(
       {
@@ -208,10 +201,6 @@ describe('E2E - Rotas de Chamados', () => {
     return { tokenUsuario, tokenUsuario2, tokenTecnico, tokenAdmin };
   };
 
-  // ========================================
-  // Hooks Globais
-  // ========================================
-
   beforeAll(async () => {
     const mongoUri = process.env.MONGO_URI_TEST ||
       'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
@@ -244,10 +233,6 @@ describe('E2E - Rotas de Chamados', () => {
     await mongoose.disconnect();
     await prisma.$disconnect();
   });
-
-  // ========================================
-  // POST /abertura-chamado - Criação de Chamados
-  // ========================================
 
   describe('POST /abertura-chamado', () => {
     it('deve criar chamado com dados válidos e retornar número OS', async () => {
@@ -374,10 +359,6 @@ describe('E2E - Rotas de Chamados', () => {
       expect(numeroOS2).toBeGreaterThan(numeroOS1);
     });
   });
-
-  // ========================================
-  // PATCH /:id/status - Atualização de Status
-  // ========================================
 
   describe('PATCH /:id/status', () => {
     it('deve permitir técnico assumir chamado dentro do expediente', async () => {
@@ -565,10 +546,6 @@ describe('E2E - Rotas de Chamados', () => {
     });
   });
 
-  // ========================================
-  // GET /:id/historico - Consulta de Histórico
-  // ========================================
-
   describe('GET /:id/historico', () => {
     it('deve retornar histórico do chamado em array', async () => {
       const resposta = await request(app)
@@ -594,10 +571,6 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.status).toBe(200);
     });
   });
-
-  // ========================================
-  // PATCH /:id/reabrir-chamado - Reabertura de Chamados
-  // ========================================
 
   describe('PATCH /:id/reabrir-chamado', () => {
     let idChamadoEncerrado: string;
@@ -712,10 +685,6 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.error).toContain('não encontrado');
     });
   });
-
-  // ========================================
-  // PATCH /:id/cancelar-chamado - Cancelamento de Chamados
-  // ========================================
 
   describe('PATCH /:id/cancelar-chamado', () => {
     it('deve cancelar chamado do usuário com justificativa', async () => {
@@ -842,10 +811,6 @@ describe('E2E - Rotas de Chamados', () => {
     });
   });
 
-  // ========================================
-  // DELETE /:id - Soft Delete de Chamados
-  // ========================================
-
   describe('DELETE /:id', () => {
     it('deve fazer soft delete do chamado por padrão', async () => {
       const chamado = await prisma.chamado.create({
@@ -943,10 +908,6 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.error).toContain('não encontrado');
     });
   });
-
-  // ========================================
-  // Testes de Autenticação e Segurança
-  // ========================================
 
   describe('Autenticação e Segurança', () => {
     it('deve rejeitar requisição sem token de autenticação', async () => {

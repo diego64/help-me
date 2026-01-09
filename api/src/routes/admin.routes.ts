@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/password';
 import {
   authMiddleware,
   authorizeRoles,
@@ -9,7 +9,6 @@ import {
 
 export const router: Router = Router();
 
-const BCRYPT_ROUNDS = 10;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -35,13 +34,9 @@ function removerCamposSensiveis(usuario: any) {
 /**
  * @swagger
  * tags:
- *   name: Admin
+ *   name: Administradores
  *   description: Gerenciamento de usuários administradores
  */
-
-// ========================================
-// CRIAÇÃO DE USUARIO COM PERFIL ADMIN
-// ========================================
 
 /**
  * @swagger
@@ -152,15 +147,13 @@ router.post(
         return res.status(400).json({ error: validacaoSenha.erro });
       }
 
-      // Verificar se email já existe (incluindo soft deleted)
       const usuarioExistente = await prisma.usuario.findUnique({
         where: { email }
       });
 
       if (usuarioExistente) {
-        // Se foi soft deleted, pode reativar
         if (usuarioExistente.deletadoEm) {
-          const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+          const hashedPassword = hashPassword(password);
 
           const adminReativado = await prisma.usuario.update({
             where: { email },
@@ -187,7 +180,7 @@ router.post(
         return res.status(400).json({ error: 'Email já cadastrado' });
       }
 
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = hashPassword(password);
 
       const admin = await prisma.usuario.create({
         data: {
@@ -211,10 +204,6 @@ router.post(
     }
   }
 );
-
-// ==========================================================
-// LISTAGEM DE TODOS OS USUÁRIOS COM A REGRA DE PERFIL ADMIN
-// ==========================================================
 
 /**
  * @swagger
@@ -284,7 +273,6 @@ router.get(
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 10));
       const skip = (page - 1) * limit;
 
-      // Buscar total e admins em paralelo
       const [total, admins] = await Promise.all([
         prisma.usuario.count({
           where: {
@@ -333,10 +321,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// BUSCAR ADMIN POR ID
-// ========================================
 
 /**
  * @swagger
@@ -402,10 +386,6 @@ router.get(
     }
   }
 );
-
-// ==============================================
-// EDIÇÃO DE USUÁRIOS COM A REGRA DE PERFIL ADMIN
-// ==============================================
 
 /**
  * @swagger
@@ -480,7 +460,6 @@ router.put(
         return res.status(404).json({ error: 'Administrador não encontrado' });
       }
 
-      // Validação de email se foi alterado
       if (email && email !== adminExistente.email) {
         if (!validarEmail(email)) {
           return res.status(400).json({ error: 'Email inválido' });
@@ -495,7 +474,6 @@ router.put(
         }
       }
 
-      // Preparar dados para atualização
       const data: any = {};
 
       if (nome !== undefined) data.nome = nome;
@@ -512,7 +490,7 @@ router.put(
         if (!validacaoSenha.valida) {
           return res.status(400).json({ error: validacaoSenha.erro });
         }
-        data.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        data.password = hashPassword(password);
       }
 
       const admin = await prisma.usuario.update({
@@ -541,10 +519,6 @@ router.put(
     }
   }
 );
-
-// ==================================================
-// EXCLUSÃO DOS USUÁRIOS COM A REGRA DE PERFIL ADMIN (SOFT DELETE)
-// ==================================================
 
 /**
  * @swagger
@@ -588,7 +562,6 @@ router.delete(
       const { id } = req.params;
       const permanente = req.query.permanente === 'true';
 
-      // Verificar se admin existe
       const admin = await prisma.usuario.findUnique({
         where: { id },
       });
@@ -597,7 +570,6 @@ router.delete(
         return res.status(404).json({ error: 'Administrador não encontrado' });
       }
 
-      // Não permitir deletar a si mesmo
       if (req.usuario?.id === id) {
         return res.status(400).json({
           error: 'Não é possível deletar sua própria conta'
@@ -615,7 +587,6 @@ router.delete(
         });
       }
 
-      // SOFT DELETE (Recomendado)
       await prisma.usuario.update({
         where: { id },
         data: {
@@ -634,10 +605,6 @@ router.delete(
     }
   }
 );
-
-// ========================================
-// REATIVAR ADMIN (DESFAZER SOFT DELETE)
-// ========================================
 
 /**
  * @swagger

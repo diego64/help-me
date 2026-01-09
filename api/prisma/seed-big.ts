@@ -1,15 +1,16 @@
-import { PrismaClient, Regra, Setor, ChamadoStatus } from '@prisma/client';
+import {
+  PrismaClient,
+  Regra,
+  Setor,
+  ChamadoStatus
+} from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../src/utils/password';
 import dotenv from 'dotenv';
 import path from 'path';
 
 const { Pool } = pkg;
-
-// ========================================
-// CORES PARA TERMINAL
-// ========================================
 
 const colors = {
   reset: '\x1b[0m',
@@ -32,10 +33,6 @@ const log = {
   normal: (msg: string) => console.log(msg),
 };
 
-// ========================================
-// CARREGAMENTO DO .ENV
-// ========================================
-
 const envPaths = [
   path.resolve(process.cwd(), '.env'),
   path.resolve(process.cwd(), 'api/.env'),
@@ -54,11 +51,6 @@ if (!process.env.DATABASE_URL) {
   log.error('[ERRO] DATABASE_URL não encontrada');
   process.exit(1);
 }
-
-// ========================================
-// CLIENTE PRISMA
-// ========================================
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: parseInt(process.env.DB_MAX_CONNECTIONS || '20', 10),
@@ -70,10 +62,6 @@ const prisma = new PrismaClient({
   adapter,
   log: ['error', 'warn'],
 });
-
-// ========================================
-// TIPOS
-// ========================================
 
 interface DadosUsuario {
   nome: string;
@@ -96,10 +84,6 @@ interface ChamadoBatch {
   chamadoData: any;
   servicoId: string;
 }
-
-// ========================================
-// UTILITÁRIOS
-// ========================================
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -135,7 +119,6 @@ function gerarDataInteligente(index: number, total: number): Date {
   const msAtras = diasAtras * 24 * 60 * 60 * 1000;
   let data = new Date(agora.getTime() - msAtras);
   
-  // Garantir que não é futuro
   if (data.getTime() > agora.getTime() - 5 * 60 * 1000) {
     data = new Date(agora.getTime() - 5 * 60 * 1000);
   }
@@ -144,7 +127,7 @@ function gerarDataInteligente(index: number, total: number): Date {
 }
 
 async function criarUsuario(email: string, dados: DadosUsuario) {
-  const hashed = await bcrypt.hash(dados.password, 10);
+  const hashed = hashPassword(dados.password);
 
   return prisma.usuario.upsert({
     where: { email },
@@ -190,10 +173,6 @@ async function criarExpediente(usuarioId: string, entrada: string, saida: string
     },
   });
 }
-
-// ========================================
-// DADOS PARA GERAÇÃO
-// ========================================
 
 const problemas = [
   'Computador não liga',
@@ -284,10 +263,6 @@ const resolucoes = [
   'Problema resolvido remotamente',
 ];
 
-// ========================================
-// FUNÇÃO PRINCIPAL
-// ========================================
-
 async function main() {
   const TOTAL_CHAMADOS = 15000;
   const BATCH_SIZE = 100;
@@ -297,16 +272,10 @@ async function main() {
   log.title('='.repeat(80) + '\n');
 
   try {
-    // ========================================
-    // 1. CONECTAR AO BANCO
-    // ========================================
     log.info('[CONEXÃO] Conectando ao PostgreSQL...');
     await prisma.$connect();
     log.success('[CONEXÃO] Conectado com sucesso\n');
 
-    // ========================================
-    // 2. LIMPAR BASE
-    // ========================================
     log.warn('[LIMPEZA] Limpando base de dados...\n');
     
     await prisma.ordemDeServico.deleteMany({});
@@ -324,9 +293,6 @@ async function main() {
     await prisma.usuario.deleteMany({});
     log.success('  [OK] Usuários removidos\n');
 
-    // ========================================
-    // 3. CRIAR ADMIN
-    // ========================================
     log.title('[1/6] CRIANDO ADMIN...\n');
     
     const adminUser = await criarUsuario('admin@helpme.com', {
@@ -342,9 +308,6 @@ async function main() {
 
     log.success(`  [OK] Admin: ${adminUser.email}\n`);
 
-    // ========================================
-    // 4. CRIAR 10 TÉCNICOS
-    // ========================================
     log.title('[2/6] CRIANDO 10 TÉCNICOS...\n');
     
     const tecnicosData = [
@@ -376,9 +339,6 @@ async function main() {
     }
     log.info('');
 
-    // ========================================
-    // 5. CRIAR 20 USUÁRIOS
-    // ========================================
     log.title('[3/6] CRIANDO 20 USUÁRIOS...\n');
     
     const usuariosData = [
@@ -421,9 +381,6 @@ async function main() {
     }
     log.info('');
 
-    // ========================================
-    // 6. CRIAR SERVIÇOS
-    // ========================================
     log.title('[4/6] CRIANDO SERVIÇOS...\n');
     
     const servicosData: DadosServico[] = [
@@ -451,12 +408,8 @@ async function main() {
     }
     log.info('');
 
-    // ========================================
-    // 7. CRIAR 15.000 CHAMADOS
-    // ========================================
     log.title(`[5/6] CRIANDO ${TOTAL_CHAMADOS.toLocaleString()} CHAMADOS...\n`);
 
-    // Distribuição de status (baseada em dados reais de helpdesk)
     const distribuicaoStatus = [
       ...Array(800).fill(ChamadoStatus.ABERTO),           // 5.3% - 800 chamados
       ...Array(2200).fill(ChamadoStatus.EM_ATENDIMENTO),  // 14.7% - 2.200 chamados
@@ -473,7 +426,6 @@ async function main() {
       const chamadosNesteBatch = Math.min(BATCH_SIZE, TOTAL_CHAMADOS - chamadosCriados);
       const chamadosBatch: ChamadoBatch[] = [];
 
-      // Preparar dados do lote
       for (let i = 0; i < chamadosNesteBatch; i++) {
         const numero = chamadosCriados + 1;
         const OS = `INC${numero.toString().padStart(6, '0')}`;
@@ -494,7 +446,6 @@ async function main() {
           geradoEm,
         };
 
-        // Atribuir técnico se não for ABERTO
         if (status !== ChamadoStatus.ABERTO) {
           const tecnico = randomElement(tecnicos);
           chamadoData.tecnicoId = tecnico.id;
@@ -506,7 +457,6 @@ async function main() {
             : atualizadoEm;
         }
 
-        // Se ENCERRADO ou CANCELADO, adicionar data e descrição
         if (status === ChamadoStatus.ENCERRADO || status === ChamadoStatus.CANCELADO) {
           const horasResolucao = randomInt(1, 72);
           const encerradoEm = new Date(geradoEm.getTime() + horasResolucao * 60 * 60 * 1000);
@@ -523,7 +473,6 @@ async function main() {
         chamadosCriados++;
       }
 
-      // Inserir lote no banco (transação)
       await prisma.$transaction(async (tx) => {
         for (const { chamadoData, servicoId } of chamadosBatch) {
           const chamado = await tx.chamado.create({ data: chamadoData });
@@ -533,7 +482,6 @@ async function main() {
         }
       });
 
-      // Progresso
       const progresso = ((chamadosCriados / TOTAL_CHAMADOS) * 100).toFixed(1);
       const barraProgresso = '█'.repeat(Math.floor(parseFloat(progresso) / 2));
       const espacos = '░'.repeat(50 - barraProgresso.length);
@@ -545,9 +493,6 @@ async function main() {
 
     log.success(`\n  [CONCLUÍDO] ${TOTAL_CHAMADOS.toLocaleString()} chamados criados!\n`);
 
-    // ========================================
-    // 8. ESTATÍSTICAS
-    // ========================================
     log.title('[6/6] ESTATÍSTICAS FINAIS...\n');
 
     const stats = await prisma.chamado.groupBy({
@@ -573,9 +518,6 @@ async function main() {
     log.normal(`    Últimos 7 dias:   ${ultimos7Dias.toString().padStart(6)} (${((ultimos7Dias/TOTAL_CHAMADOS)*100).toFixed(1)}%)`);
     log.normal(`    Últimos 30 dias:  ${ultimos30Dias.toString().padStart(6)} (${((ultimos30Dias/TOTAL_CHAMADOS)*100).toFixed(1)}%)`);
 
-    // ========================================
-    // 9. RESUMO FINAL
-    // ========================================
     log.title('\n' + '='.repeat(80));
     log.title('  SEED CONCLUÍDO COM SUCESSO!');
     log.title('='.repeat(80) + '\n');
@@ -603,10 +545,6 @@ async function main() {
     throw error;
   }
 }
-
-// ========================================
-// EXECUÇÃO
-// ========================================
 
 main()
   .catch((error) => {

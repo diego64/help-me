@@ -2,430 +2,758 @@ import {
   describe,
   it,
   expect,
+  beforeAll,
   beforeEach,
-  afterEach,
-  vi
+  vi,
+  afterEach
 } from 'vitest';
-import express, {
-  Request,
-  Response,
-  NextFunction
-} from 'express';
+import express from 'express';
 import request from 'supertest';
-import { Regra } from '@prisma/client';
 
-import {
-  authMiddleware,
-  authorizeRoles,
-  AuthRequest
-} from '../../middleware/auth';
-import * as jwtUtil from '../../auth/jwt';
-import { redisClient } from '../../services/redisClient';
+const prismaMock = {
+  usuario: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  }
+};
 
-describe('Middleware de Autenticação', () => {
-  // ================================
-  // dadoS PARA TESTES
-  // ================================
+vi.mock('../../lib/prisma.ts', () => ({
+  prisma: prismaMock,
+}));
 
-  const createApp = () => {
+const usuarioBase = {
+  id: '1',
+  nome: 'Nome',
+  sobrenome: 'Sobrenome',
+  email: 'mail@x.com',
+  password: 'HASHED_PASSWORD_PBKDF2',
+  regra: 'ADMIN',
+  refreshToken: 'refresh-token',
+  ativo: true,
+  deletadoEm: null,
+  setor: 'TECNOLOGIA_INFORMACAO',
+  telefone: '(11) 99999-0001',
+  ramal: '1000',
+  avatarUrl: null,
+  geradoEm: '2025-01-01T00:00:00.000Z',
+  atualizadoEm: '2025-01-01T00:00:00.000Z',
+};
+
+const usuarioSemSenha = {
+  id: '1',
+  nome: 'Nome',
+  sobrenome: 'Sobrenome',
+  email: 'mail@x.com',
+  regra: 'ADMIN',
+  ativo: true,
+  setor: 'TECNOLOGIA_INFORMACAO',
+  telefone: '(11) 99999-0001',
+  ramal: '1000',
+  avatarUrl: null,
+  geradoEm: '2025-01-01T00:00:00.000Z',
+};
+
+const verifyPasswordMock = vi.fn();
+
+vi.mock('../../utils/password', () => ({
+  verifyPassword: verifyPasswordMock,
+}));
+
+const tokenPairMock = {
+  accessToken: 'access-token',
+  refreshToken: 'refresh-token',
+  expiresIn: 3600,
+};
+
+const generateTokenPairMock = vi.fn(() => tokenPairMock);
+const verifyTokenMock = vi.fn();
+const jwtDecodeMock = vi.fn();
+
+vi.mock('../../auth/jwt', () => ({
+  generateTokenPair: generateTokenPairMock,
+  verifyToken: verifyTokenMock,
+}));
+
+vi.mock('jsonwebtoken', () => ({
+  default: { decode: jwtDecodeMock },
+  decode: jwtDecodeMock,
+}));
+
+const cacheSetMock = vi.fn().mockResolvedValue(undefined);
+const cacheGetMock = vi.fn().mockResolvedValue(null);
+
+vi.mock('../../services/redisClient', () => ({
+  cacheSet: cacheSetMock,
+  cacheGet: cacheGetMock,
+}));
+
+vi.mock('@prisma/client', () => ({
+  PrismaClient: function () { return prismaMock; },
+}));
+
+let deveAutenticar = true;
+let usuarioMock: any = { ...usuarioBase };
+
+const extractTokenFromHeaderMock = vi.fn();
+
+vi.mock('../../middleware/auth', () => ({
+  authMiddleware: (req: any, res: any, next: any) => {
+    if (!deveAutenticar) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
+    req.usuario = usuarioMock;
+    if (!req.session) {
+      req.session = { 
+        destroy: (cb: any) => cb(null)
+      };
+    }
+    next();
+  },
+  extractTokenFromHeader: extractTokenFromHeaderMock,
+}));
+
+let authRouter: any;
+
+beforeAll(async () => {
+  authRouter = (await import('../../routes/auth.routes')).default;
+});
+
+beforeEach(() => {
+  deveAutenticar = true;
+  usuarioMock = { ...usuarioBase };
+  vi.clearAllMocks();
+  
+  cacheGetMock.mockResolvedValue(null);
+  cacheSetMock.mockResolvedValue(undefined);
+  
+  verifyPasswordMock.mockImplementation((senha, hash) => 
+    senha === 'senhaCorreta' && hash === 'HASHED_PASSWORD_PBKDF2'
+  );
+  
+  verifyTokenMock.mockImplementation((token, type) => {
+    if (token === 'refresh-token' && type === 'refresh') {
+      return { id: '1', regra: 'ADMIN' };
+    }
+    throw new Error('Refresh token inválido');
+  });
+  
+  generateTokenPairMock.mockReturnValue(tokenPairMock);
+  
+  jwtDecodeMock.mockReturnValue({ 
+    jti: 'JTI', 
+    exp: Math.floor(Date.now() / 1000) + 3600 
+  });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+  deveAutenticar = true;
+  usuarioMock = { ...usuarioBase };
+});
+
+function adicionarSessionMiddleware(req: any, res: any, next: any) {
+  req.session = req.session || { destroy: (cb: any) => cb(null) };
+  next();
+}
+
+function criarAppSemAuth() {
+  const app = express();
+  app.use(express.json());
+  app.use(adicionarSessionMiddleware);
+  app.use('/auth', authRouter);
+  return app;
+}
+
+function criarAppComAuthPadrao() {
+  deveAutenticar = true;
+  usuarioMock = { ...usuarioBase };
+  const app = express();
+  app.use(express.json());
+  app.use(adicionarSessionMiddleware);
+  app.use('/auth', authRouter);
+  return app;
+}
+
+function criarAppComAuthDesabilitada() {
+  deveAutenticar = false;
+  const app = express();
+  app.use(express.json());
+  app.use(adicionarSessionMiddleware);
+  app.use('/auth', authRouter);
+  return app;
+}
+
+describe('POST /auth/login', () => {
+  it('deve retornar status 400 quando campos email ou senha não forem enviados', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/login').send({});
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
+  });
+
+  it('deve retornar status 400 quando apenas email for enviado', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/login').send({ email: 'mail@x.com' });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
+  });
+
+  it('deve retornar status 400 quando apenas senha for enviada', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/login').send({ password: 'senhaCorreta' });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Email e senha são obrigatórios' });
+  });
+
+  it('deve retornar status 400 quando email for inválido', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'email-invalido',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Email inválido' });
+  });
+
+  it('deve retornar status 429 quando exceder tentativas de login', async () => {
+    const app = criarAppSemAuth();
+    cacheGetMock.mockResolvedValue('5');
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(429);
+    expect(resposta.body).toHaveProperty('error');
+    expect(resposta.body).toHaveProperty('tentativasRestantes', 0);
+    expect(resposta.body).toHaveProperty('bloqueadoAte');
+  });
+
+  it('deve retornar status 401 quando usuário não for encontrado no banco', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'inexistente@email.com',
+      password: 'qualquerSenha'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Credenciais inválidas',
+      tentativasRestantes: 4
+    });
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:inexistente@email.com',
+      '1',
+      900
+    );
+  });
+
+  it('deve retornar status 401 quando conta estiver inativa', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...usuarioBase,
+      ativo: false
+    });
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Conta inativa. Entre em contato com o administrador.' 
+    });
+  });
+
+  it('deve retornar status 401 quando conta estiver soft deleted', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...usuarioBase,
+      deletadoEm: '2024-12-01T00:00:00.000Z'
+    });
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Conta inativa. Entre em contato com o administrador.' 
+    });
+  });
+
+  it('deve retornar status 401 quando senha fornecida estiver incorreta', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    verifyPasswordMock.mockReturnValue(false);
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaIncorreta'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ 
+      error: 'Credenciais inválidas',
+      tentativasRestantes: 4
+    });
+    expect(cacheSetMock).toHaveBeenCalled();
+  });
+
+  it('deve retornar status 200 com dados do usuário e tokens quando credenciais forem válidas', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    prismaMock.usuario.update.mockResolvedValue({ 
+      ...usuarioBase, 
+      refreshToken: 'refresh-token' 
+    });
+    verifyPasswordMock.mockReturnValue(true);
+
+    const resposta = await request(app).post('/auth/login').send({
+      email: usuarioBase.email,
+      password: 'senhaCorreta'
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.usuario).toMatchObject({
+      id: usuarioBase.id,
+      nome: usuarioBase.nome,
+      sobrenome: usuarioBase.sobrenome,
+      email: usuarioBase.email,
+      regra: usuarioBase.regra,
+    });
+    expect(resposta.body.usuario).not.toHaveProperty('password');
+    expect(resposta.body.usuario).not.toHaveProperty('refreshToken');
+    expect(resposta.body.accessToken).toBe('access-token');
+    expect(resposta.body.refreshToken).toBe('refresh-token');
+    expect(resposta.body.expiresIn).toBe(3600);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: usuarioBase.id },
+      data: { refreshToken: 'refresh-token' }
+    });
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:mail@x.com',
+      '0',
+      1
+    );
+  });
+
+  it('deve incrementar tentativas quando houver tentativas anteriores', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    cacheGetMock.mockResolvedValue('2');
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaErrada'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body.tentativasRestantes).toBe(2);
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'login:attempts:mail@x.com',
+      '3',
+      900
+    );
+  });
+
+  it('deve retornar status 500 quando ocorrer erro inesperado no login', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockRejectedValue(new Error('Database connection failed'));
+    
+    const resposta = await request(app).post('/auth/login').send({
+      email: 'mail@x.com',
+      password: 'senhaCorreta'
+    });
+    
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
+  });
+
+  it('deve retornar status 500 quando falhar ao atualizar refreshToken no banco', async () => {
+    const app = criarAppSemAuth();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    prismaMock.usuario.update.mockRejectedValue(new Error('Update failed'));
+    verifyPasswordMock.mockReturnValue(true);
+
+    const resposta = await request(app).post('/auth/login').send({
+      email: usuarioBase.email,
+      password: 'senhaCorreta'
+    });
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro interno ao realizar login.' });
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('deve retornar status 401 quando usuário não estiver autenticado', async () => {
+    const app = criarAppComAuthDesabilitada();
+    const resposta = await request(app).post('/auth/logout');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
+
+  it('deve retornar status 401 quando req.usuario for null no handler do logout', async () => {
+    deveAutenticar = true;
+    usuarioMock = null;
     const app = express();
     app.use(express.json());
+    app.use('/auth', authRouter);
+    
+    const resposta = await request(app).post('/auth/logout');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
 
-    app.get('/protegida',
-      authMiddleware,
-      (req: AuthRequest, res: Response) => {
-        res.status(200).json({ usuario: req.usuario });
-      });
+  it('deve retornar status 200 e realizar logout com sucesso', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
 
-    app.get(
-      '/admin',
-      authMiddleware,
-      authorizeRoles(Regra.ADMIN),
-      (req: AuthRequest, res: Response) => res.status(200).json({ ok: true })
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+    expect(cacheSetMock).toHaveBeenCalledWith(
+      'jwt:blacklist:JTI',
+      'revogado',
+      expect.any(Number)
     );
-    return app;
-  };
-
-  const createDefaultUser = () => ({
-    id: '1',
-    nome: 'Usuário',
-    sobrenome: 'Teste',
-    email: 'usuario@teste.com',
-    password: 'senha123',
-    regra: Regra.USUARIO,
-    setor: null,
-    telefone: null,
-    ramal: null,
-    avatarUrl: null,
-    geradoEm: new Date(),
-    atualizadoEm: new Date(),
-    deletadoEm: null,
-    ativo: true,
-    refreshToken: null,
-  });
-
-  const FAKE_SECRET = 'a'.repeat(32);
-  const FAKE_REFRESH_SECRET = 'b'.repeat(32);
-  const createAuthHeader = (token: string) => ({ Authorization: `Bearer ${token}` });
-
-  // ================================
-  // CONFIGURAÇÃO E LIMPEZA
-  // ================================
-
-  beforeEach(() => {
-    process.env.JWT_SECRET = FAKE_SECRET;
-    process.env.JWT_REFRESH_SECRET = FAKE_REFRESH_SECRET;
-    process.env.JWT_EXPIRATION = '1h';
-    process.env.JWT_REFRESH_EXPIRATION = '1d';
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  // ================================
-  // Testes de authMiddleware
-  // ================================
-
-  describe('authMiddleware', () => {
-    it('dado token JWT válido, quando chamar rota protegida, então retorna 200 e payload do usuário', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      const validToken = jwtUtil.generateToken(defaultUser, 'access');
-
-      // Mock Redis para retornar null (token NÃO está na blacklist)
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(validToken));
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(200);
-
-      // Assert - Conteúdo da resposta
-      expect(response.body).toHaveProperty('usuario');
-      expect(response.body.usuario.email).toBe(defaultUser.email);
-      expect(response.body.usuario.id).toBe(defaultUser.id);
-    });
-
-    it('dado request sem token, quando chamar rota protegida, então retorna 401 com mensagem de erro', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-
-      // Act (Ação)
-      const response = await request(app).get('/protegida');
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toMatch(/Token não fornecido/i);
-    });
-
-    it('dado token expirado, quando chamar rota protegida, então retorna 401 com mensagem de expiração', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      const expiredToken = jwtUtil.generateToken(defaultUser, 'access');
-
-      const verifyTokenSpy = vi.spyOn(jwtUtil, 'verifyToken').mockImplementation(() => {
-        throw new Error('Token expirado');
-      });
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(expiredToken));
-
-      // Assert (Verificação) - Verificação do token
-      expect(verifyTokenSpy).toHaveBeenCalledTimes(1);
-
-      // Assert - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toMatch(/expirado/i);
-    });
-
-    it('dado token revogado na blacklist do Redis, quando chamar rota protegida, então retorna 401 com mensagem de revogação', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      const jti = 'test-jti-revoked-123';
-      const userWithJti = { ...defaultUser, jti };
-
-      // Mock verifyToken para retornar payload com jti
-      const verifyTokenSpy = vi
-        .spyOn(jwtUtil, 'verifyToken')
-        .mockReturnValue({ 
-          ...userWithJti, 
-          jti, 
-          type: 'access',
-          iat: Math.floor(Date.now() / 1000),
-          exp: Math.floor(Date.now() / 1000) + 3600
-        });
-
-      // Mock Redis.get para indicar que token está na blacklist
-      const redisGetSpy = vi
-        .spyOn(redisClient, 'get')
-        .mockResolvedValue('1'); // '1' ou 'true' indica token revogado
-
-      const revokedToken = jwtUtil.generateToken(userWithJti, 'access');
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(revokedToken));
-
-      // Assert (Verificação) - Verificação do token
-      expect(verifyTokenSpy).toHaveBeenCalled();
-
-      // Assert - Verificação do Redis
-      // Se o middleware checa blacklist, o get deve ser chamado
-      if (redisGetSpy.mock.calls.length > 0) {
-        expect(redisGetSpy).toHaveBeenCalledWith(`jwt:blacklist:${jti}`);
-      }
-
-      // Assert - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro (pode variar dependendo da implementação)
-      expect(response.body).toHaveProperty('error');
-      // Aceita múltiplas mensagens possíveis
-      const possibleMessages = [/revogado/i, /inválido/i, /expirado/i];
-      const matchesAny = possibleMessages.some(pattern => 
-        pattern.test(response.body.error)
-      );
-      expect(matchesAny).toBe(true);
-    });
-
-    it('dado token inválido, quando chamar rota protegida, então retorna 401 com mensagem de token inválido', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const invalidToken = 'token.invalido.xyz';
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(invalidToken));
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toMatch(/inválido/i);
-    });
-
-    it('dado token com formato incorreto no header, quando chamar rota protegida, então retorna 401', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set({ Authorization: 'InvalidFormat token123' });
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro
-      expect(response.body).toHaveProperty('error');
-    });
-
-    it('dado token válido não revogado, quando verificar blacklist, então permite acesso', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      
-      //Gerar token SEM jti customizado - usar token real
-      const validToken = jwtUtil.generateToken(defaultUser, 'access');
-
-      //Mock Redis.get para indicar que token NÃO está na blacklist
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(validToken));
-
-      // Assert (Verificação)
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('usuario');
-      expect(response.body.usuario.email).toBe(defaultUser.email);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: usuarioBase.id },
+      data: { refreshToken: null }
     });
   });
 
-  // ================================
-  // Testes de authorizeRoles
-  // ================================
+  it('deve retornar status 500 quando falhar ao invalidar refresh token', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
 
-  describe('authorizeRoles', () => {
-    it('dado usuário com role permitida, quando chamar rota de admin, então retorna 200 e permite acesso', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const adminUser = { ...createDefaultUser(), regra: Regra.ADMIN };
-      const adminToken = jwtUtil.generateToken(adminUser, 'access');
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
 
-      // Mock Redis
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/admin')
-        .set(createAuthHeader(adminToken));
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(200);
-
-      // Assert - Conteúdo da resposta
-      expect(response.body).toHaveProperty('ok');
-      expect(response.body.ok).toBe(true);
-    });
-
-    it('dado usuário com role não permitida, quando chamar rota de admin, então retorna 403 com mensagem de acesso negado', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      const userToken = jwtUtil.generateToken(defaultUser, 'access');
-
-      // Mock Redis
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/admin')
-        .set(createAuthHeader(userToken));
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(403);
-
-      // Assert - Mensagem de erro
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toMatch(/Acesso negado/i);
-    });
-
-    it('dado ausência de usuário autenticado, quando chamar authorizeRoles, então retorna 401 com mensagem de não autorizado', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const expectedErrors = ['Não autorizado.', 'Token não fornecido.'];
-
-      // Act (Ação)
-      const response = await request(app).get('/admin');
-
-      // Assert (Verificação) - Status da resposta
-      expect(response.status).toBe(401);
-
-      // Assert - Mensagem de erro (aceita ambas as mensagens possíveis)
-      expect(response.body).toHaveProperty('error');
-      expect(expectedErrors).toContain(response.body.error);
-    });
-
-    it('dado múltiplas roles permitidas, quando usuário tem uma delas, então permite acesso', async () => {
-      // Arrange (Preparação)
-      const app = express();
-      app.use(express.json());
-      
-      app.get(
-        '/multi-role',
-        authMiddleware,
-        authorizeRoles(Regra.ADMIN, Regra.TECNICO),
-        (req: AuthRequest, res: Response) => res.status(200).json({ ok: true })
-      );
-
-      const tecnicoUser = { ...createDefaultUser(), regra: Regra.TECNICO };
-      const tecnicoToken = jwtUtil.generateToken(tecnicoUser, 'access');
-
-      // Mock Redis
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/multi-role')
-        .set(createAuthHeader(tecnicoToken));
-
-      // Assert (Verificação)
-      expect(response.status).toBe(200);
-      expect(response.body.ok).toBe(true);
-    });
-
-    it('dado múltiplas roles permitidas, quando usuário não tem nenhuma, então nega acesso', async () => {
-      // Arrange (Preparação)
-      const app = express();
-      app.use(express.json());
-      
-      app.get(
-        '/multi-role',
-        authMiddleware,
-        authorizeRoles(Regra.ADMIN, Regra.TECNICO),
-        (req: AuthRequest, res: Response) => res.status(200).json({ ok: true })
-      );
-
-      const defaultUser = createDefaultUser(); // USUARIO role
-      const userToken = jwtUtil.generateToken(defaultUser, 'access');
-
-      // Mock Redis
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/multi-role')
-        .set(createAuthHeader(userToken));
-
-      // Assert (Verificação)
-      expect(response.status).toBe(403);
-      expect(response.body.error).toMatch(/Acesso negado/i);
-    });
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro ao realizar logout.' });
   });
 
-  // ================================
-  // Testes de Segurança
-  // ================================
-
-  describe('Segurança do Middleware', () => {
-    it('dado token com payload manipulado, quando verificar assinatura, então rejeita token', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const fakeToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEiLCJlbWFpbCI6ImFkbWluQGhhY2tlci5jb20iLCJyZWdyYSI6IkFETUlOIn0.fake_signature';
-
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(fakeToken));
-
-      // Assert (Verificação)
-      expect(response.status).toBe(401);
-      expect(response.body.error).toMatch(/inválido/i);
+  it('deve retornar status 500 quando session.destroy retornar erro', async () => {
+    const erroSession = new Error('Session destroy failed');
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.session = { 
+        destroy: (cb: any) => cb(erroSession)
+      };
+      next();
     });
+    app.use('/auth', authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
 
-    it('dado token sem tipo especificado, quando validar, então aceita ou rejeita conforme implementação', async () => {
-      // Arrange (Preparação)
-      const app = createApp();
-      const defaultUser = createDefaultUser();
-      
-      // Mock Redis
-      vi.spyOn(redisClient, 'get').mockResolvedValue(null);
-      
-      // Criar token sem campo 'type'
-      const verifyTokenSpy = vi
-        .spyOn(jwtUtil, 'verifyToken')
-        .mockReturnValue({ ...defaultUser, jti: 'test-jti' } as any);
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
 
-      const tokenSemTipo = jwtUtil.generateToken(defaultUser, 'access');
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro ao realizar logout.' });
+  });
 
-      // Act (Ação)
-      const response = await request(app)
-        .get('/protegida')
-        .set(createAuthHeader(tokenSemTipo));
+  it('deve processar logout quando não houver authorization header', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      delete req.headers.authorization;
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
 
-      // Assert (Verificação) - Aceita ambos dependendo da implementação
-      expect([200, 401]).toContain(response.status);
+    const resposta = await request(app).post('/auth/logout');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('deve processar logout quando jwt.decode retornar null', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce(null);
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer dummy-token');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('deve adicionar token à blacklist com TTL correto quando exp for válido', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 7200;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce({ 
+      jti: 'UNIQUE-JTI', 
+      exp: futureTimestamp
+    });
+    cacheSetMock.mockClear();
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer valid-token');
+
+    expect(resposta.status).toBe(200);
+    const ttlCall = cacheSetMock.mock.calls.find(
+      call => call[0] === 'jwt:blacklist:UNIQUE-JTI'
+    );
+    expect(ttlCall).toBeDefined();
+    expect(ttlCall![2]).toBeGreaterThan(0);
+  });
+});
+
+describe('POST /auth/refresh-token', () => {
+  it('deve retornar status 400 quando refreshToken não for enviado', async () => {
+    const app = criarAppSemAuth();
+    const resposta = await request(app).post('/auth/refresh-token').send({});
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ error: 'Refresh token é obrigatório.' });
+  });
+
+  it('deve retornar status 401 quando refreshToken for inválido', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockImplementation(() => { 
+      throw new Error('Refresh token inválido.'); 
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'token-invalido'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Refresh token inválido.' });
+  });
+
+  it('deve retornar status 401 quando usuário não for encontrado', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Usuário não encontrado.' });
+  });
+
+  it('deve retornar status 401 quando conta estiver inativa', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue({ 
+      ...usuarioBase, 
+      ativo: false 
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Conta inativa.' });
+  });
+
+  it('deve retornar status 401 quando conta estiver soft deleted', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue({ 
+      ...usuarioBase, 
+      deletadoEm: '2024-12-01T00:00:00.000Z'
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Conta inativa.' });
+  });
+
+  it('deve retornar status 401 quando refreshToken não corresponder ao armazenado', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue({ 
+      ...usuarioBase, 
+      refreshToken: 'token-diferente' 
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Refresh token inválido ou expirado.' });
+  });
+
+  it('deve retornar status 200 com novos tokens quando refreshToken for válido', async () => {
+    const app = criarAppSemAuth();
+    verifyTokenMock.mockReturnValue({ id: '1' });
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
+    prismaMock.usuario.update.mockResolvedValue({ 
+      ...usuarioBase, 
+      refreshToken: 'refresh-token' 
+    });
+    
+    const resposta = await request(app).post('/auth/refresh-token').send({
+      refreshToken: 'refresh-token'
+    });
+    
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toMatchObject({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresIn: 3600,
+    });
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: { refreshToken: 'refresh-token' }
+    });
+  });
+});
+
+describe('GET /auth/me', () => {
+  it('deve retornar status 401 quando usuário não estiver autenticado', async () => {
+    const app = criarAppComAuthDesabilitada();
+    const resposta = await request(app).get('/auth/me');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
+
+  it('deve retornar status 401 quando req.usuario for null', async () => {
+    deveAutenticar = true;
+    usuarioMock = null;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', authRouter);
+    
+    const resposta = await request(app).get('/auth/me');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
+
+  it('deve retornar status 404 quando usuário não for encontrado no banco', async () => {
+    const app = criarAppComAuthPadrao();
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const resposta = await request(app).get('/auth/me');
+    
+    expect(resposta.status).toBe(404);
+    expect(resposta.body).toEqual({ error: 'Usuário não encontrado.' });
+  });
+
+  it('deve retornar status 200 com dados do usuário quando autenticado', async () => {
+    const app = criarAppComAuthPadrao();
+    prismaMock.usuario.findUnique.mockResolvedValue(usuarioSemSenha);
+    
+    const resposta = await request(app).get('/auth/me');
+    
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toMatchObject({
+      id: usuarioBase.id,
+      nome: usuarioBase.nome,
+      email: usuarioBase.email,
+      regra: usuarioBase.regra,
+    });
+    expect(resposta.body).not.toHaveProperty('password');
+    expect(resposta.body).not.toHaveProperty('refreshToken');
+  });
+
+  it('deve retornar status 500 quando ocorrer erro ao buscar dados do usuário', async () => {
+    const app = criarAppComAuthPadrao();
+    prismaMock.usuario.findUnique.mockRejectedValue(new Error('Database connection failed'));
+    
+    const resposta = await request(app).get('/auth/me');
+    
+    expect(resposta.status).toBe(500);
+    expect(resposta.body).toEqual({ error: 'Erro ao buscar perfil do usuário.' });
+  });
+});
+
+describe('GET /auth/status', () => {
+  it('deve retornar status 401 com erro quando middleware bloqueia', async () => {
+    const app = criarAppComAuthDesabilitada();
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ error: 'Não autorizado.' });
+  });
+
+  it('deve retornar status 401 com autenticado false quando req.usuario for null no handler', async () => {
+    deveAutenticar = true;
+    usuarioMock = null;
+    
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', authRouter);
+    
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(401);
+    expect(resposta.body).toEqual({ autenticado: false });
+  });
+
+  it('deve retornar status 200 com informações quando autenticado', async () => {
+    const app = criarAppComAuthPadrao();
+    
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({
+      autenticado: true,
+      usuario: {
+        id: usuarioBase.id,
+        email: usuarioBase.email,
+        regra: usuarioBase.regra,
+      },
     });
   });
 });

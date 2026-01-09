@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import { verifyPassword } from '../utils/password';
 import { prisma } from '../lib/prisma';
 import { generateTokenPair, verifyToken } from '../auth/jwt';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -8,10 +8,9 @@ import { cacheSet, cacheGet } from '../services/redisClient';
 
 export const router: Router = Router();
 
-const BCRYPT_ROUNDS = 10;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_TIME = 15 * 60; // 15 minutos em segundos
+const LOGIN_LOCKOUT_TIME = 15 * 60;
 
 const USUARIO_SELECT_COMPLETO = {
   id: true,
@@ -60,85 +59,238 @@ async function incrementarTentativasLogin(email: string): Promise<void> {
   await cacheSet(key, tentativas.toString(), LOGIN_LOCKOUT_TIME);
 }
 
-
 async function limparTentativasLogin(email: string): Promise<void> {
   const key = `login:attempts:${email}`;
-  await cacheSet(key, '0', 1); // Expira em 1 segundo
+  await cacheSet(key, '0', 1);
 }
 
 /**
  * @swagger
- * tags:
- *   name: Auth
- *   description: Endpoints de autenticação e gerenciamento de sessão
+ * components:
+ *   schemas:
+ *     LoginRequest:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           description: Email do usuário
+ *           example: usuario@exemplo.com
+ *         password:
+ *           type: string
+ *           format: password
+ *           description: Senha do usuário
+ *           example: SenhaSegura123!
+ *     
+ *     LoginResponse:
+ *       type: object
+ *       properties:
+ *         usuario:
+ *           $ref: '#/components/schemas/Usuario'
+ *         accessToken:
+ *           type: string
+ *           description: Token de acesso JWT
+ *           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         refreshToken:
+ *           type: string
+ *           description: Token de atualização
+ *           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         expiresIn:
+ *           type: number
+ *           description: Tempo de expiração do token em segundos
+ *           example: 3600
+ *     
+ *     Usuario:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: ID único do usuário
+ *           example: clx1234567890abcdef
+ *         nome:
+ *           type: string
+ *           description: Nome do usuário
+ *           example: João
+ *         sobrenome:
+ *           type: string
+ *           description: Sobrenome do usuário
+ *           example: Silva
+ *         email:
+ *           type: string
+ *           format: email
+ *           description: Email do usuário
+ *           example: joao.silva@exemplo.com
+ *         telefone:
+ *           type: string
+ *           description: Telefone do usuário
+ *           example: (11) 98765-4321
+ *         ramal:
+ *           type: string
+ *           description: Ramal do usuário
+ *           example: "1234"
+ *         setor:
+ *           type: string
+ *           description: Setor do usuário
+ *           example: TI
+ *         regra:
+ *           type: string
+ *           enum: [ADMIN, USUARIO, MODERADOR]
+ *           description: Regra/papel do usuário no sistema
+ *           example: USUARIO
+ *         avatarUrl:
+ *           type: string
+ *           description: URL do avatar do usuário
+ *           example: https://exemplo.com/avatar.jpg
+ *         ativo:
+ *           type: boolean
+ *           description: Status de ativação da conta
+ *           example: true
+ *         geradoEm:
+ *           type: string
+ *           format: date-time
+ *           description: Data de criação da conta
+ *           example: 2024-01-01T10:00:00.000Z
+ *     
+ *     RefreshTokenRequest:
+ *       type: object
+ *       required:
+ *         - refreshToken
+ *       properties:
+ *         refreshToken:
+ *           type: string
+ *           description: Token de atualização válido
+ *           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *     
+ *     RefreshTokenResponse:
+ *       type: object
+ *       properties:
+ *         accessToken:
+ *           type: string
+ *           description: Novo token de acesso JWT
+ *           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         refreshToken:
+ *           type: string
+ *           description: Novo token de atualização
+ *           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         expiresIn:
+ *           type: number
+ *           description: Tempo de expiração em segundos
+ *           example: 3600
+ *     
+ *     StatusResponse:
+ *       type: object
+ *       properties:
+ *         autenticado:
+ *           type: boolean
+ *           description: Status de autenticação
+ *           example: true
+ *         usuario:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *               example: clx1234567890abcdef
+ *             email:
+ *               type: string
+ *               example: usuario@exemplo.com
+ *             regra:
+ *               type: string
+ *               example: USUARIO
+ *     
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         error:
+ *           type: string
+ *           description: Mensagem de erro
+ *           example: Credenciais inválidas
+ *         tentativasRestantes:
+ *           type: number
+ *           description: Tentativas de login restantes
+ *           example: 3
+ *         bloqueadoAte:
+ *           type: string
+ *           format: date-time
+ *           description: Data até quando a conta está bloqueada
+ *           example: 2024-01-01T10:15:00.000Z
+ *   
+ *   securitySchemes:
+ *     BearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *       description: Token JWT obtido através do endpoint de login
  */
-
-// ================================
-// LOGIN
-// ================================
 
 /**
  * @swagger
- * /api/auth/login:
+ * /auth/login:
  *   post:
- *     summary: Autentica um usuário no sistema
- *     description: Realiza o login do usuário, gerando tokens de acesso (accessToken) e atualização (refreshToken). Implementa proteção contra força bruta (5 tentativas em 15 minutos).
- *     tags: [Auth]
+ *     summary: Realizar login no sistema
+ *     description: Autentica um usuário com email e senha, retornando tokens de acesso e atualização. Implementa proteção contra força bruta com limite de 5 tentativas e bloqueio de 15 minutos.
+ *     tags:
+ *       - Autenticação
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 example: admin@helpme.com
- *               password:
- *                 type: string
- *                 format: password
- *                 example: Admin123!
+ *             $ref: '#/components/schemas/LoginRequest'
  *     responses:
  *       200:
  *         description: Login realizado com sucesso
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 usuario:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                     nome:
- *                       type: string
- *                     sobrenome:
- *                       type: string
- *                     email:
- *                       type: string
- *                     regra:
- *                       type: string
- *                     setor:
- *                       type: string
- *                 accessToken:
- *                   type: string
- *                 refreshToken:
- *                   type: string
- *                 expiresIn:
- *                   type: number
+ *               $ref: '#/components/schemas/LoginResponse'
  *       400:
- *         description: Email e senha são obrigatórios
+ *         description: Dados inválidos ou ausentes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               camposObrigatorios:
+ *                 value:
+ *                   error: Email e senha são obrigatórios
+ *               emailInvalido:
+ *                 value:
+ *                   error: Email inválido
  *       401:
  *         description: Credenciais inválidas ou conta inativa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               credenciaisInvalidas:
+ *                 value:
+ *                   error: Credenciais inválidas
+ *                   tentativasRestantes: 3
+ *               contaInativa:
+ *                 value:
+ *                   error: Conta inativa. Entre em contato com o administrador.
  *       429:
  *         description: Muitas tentativas de login - conta temporariamente bloqueada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Muitas tentativas de login. Tente novamente em 15 minutos.
+ *               tentativasRestantes: 0
+ *               bloqueadoAte: 2024-01-01T10:15:00.000Z
  *       500:
  *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Erro interno ao realizar login.
  */
 router.post('/login', async (req, res) => {
   try {
@@ -184,7 +336,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const passwordMatch = await bcrypt.compare(password, usuario.password);
+    const passwordMatch = verifyPassword(password, usuario.password);
     if (!passwordMatch) {
       await incrementarTentativasLogin(email);
       return res.status(401).json({ 
@@ -224,26 +376,43 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ================================
-// LOGOUT
-// ================================
-
 /**
  * @swagger
- * /api/auth/logout:
+ * /auth/logout:
  *   post:
- *     summary: Encerra a sessão do usuário
- *     description: Realiza o logout do usuário, revogando o token JWT (adicionando à blacklist), removendo o refreshToken do banco de dados e destruindo a sessão no Redis. Requer autenticação.
- *     tags: [Auth]
+ *     summary: Realizar logout do sistema
+ *     description: Invalida o token de acesso atual, remove o refresh token do banco de dados e destroi a sessão do usuário. O token é adicionado à blacklist até sua expiração natural.
+ *     tags:
+ *       - Autenticação
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Logout realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logout realizado com sucesso.
  *       401:
- *         description: Não autorizado
+ *         description: Token inválido ou ausente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Não autorizado.
  *       500:
- *         description: Erro ao realizar logout ou encerrar sessão
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Erro ao realizar logout.
  */
 router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {
@@ -251,7 +420,6 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   }
 
   try {
-    // Extrair e adicionar JWT à blacklist
     const token = req.headers.authorization?.replace('Bearer ', '');
     
     if (token) {
@@ -265,13 +433,11 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
     }
 
     await Promise.all([
-      // Remover refreshToken do usuário
       prisma.usuario.update({
         where: { id: req.usuario.id },
         data: { refreshToken: null },
       }),
       
-      // Destruir sessão
       new Promise<void>((resolve, reject) => {
         req.session.destroy((err: any) => {
           if (err) {
@@ -292,47 +458,57 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-// ================================
-// REFRESH TOKEN
-// ================================
-
 /**
  * @swagger
- * /api/auth/refresh-token:
+ * /auth/refresh-token:
  *   post:
- *     summary: Renova o token de acesso
- *     description: Gera um novo par de tokens (accessToken e refreshToken) usando um refreshToken válido. O refreshToken antigo é invalidado e substituído pelo novo.
- *     tags: [Auth]
+ *     summary: Renovar tokens de autenticação
+ *     description: Gera um novo par de tokens (access e refresh) utilizando um refresh token válido. O refresh token antigo é invalidado e um novo é gerado.
+ *     tags:
+ *       - Autenticação
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - refreshToken
- *             properties:
- *               refreshToken:
- *                 type: string
- *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *             $ref: '#/components/schemas/RefreshTokenRequest'
  *     responses:
  *       200:
  *         description: Tokens renovados com sucesso
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 accessToken:
- *                   type: string
- *                 refreshToken:
- *                   type: string
- *                 expiresIn:
- *                   type: number
+ *               $ref: '#/components/schemas/RefreshTokenResponse'
  *       400:
  *         description: Refresh token não fornecido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Refresh token é obrigatório.
  *       401:
- *         description: Refresh token inválido, expirado ou usuário inativo
+ *         description: Refresh token inválido, expirado ou conta inativa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               usuarioNaoEncontrado:
+ *                 value:
+ *                   error: Usuário não encontrado.
+ *               contaInativa:
+ *                 value:
+ *                   error: Conta inativa.
+ *               tokenInvalido:
+ *                 value:
+ *                   error: Refresh token inválido ou expirado.
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/refresh-token', async (req, res) => {
   try {
@@ -393,56 +569,47 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
-// ================================
-// ME (PERFIL DO USUÁRIO)
-// ================================
-
 /**
  * @swagger
- * /api/auth/me:
+ * /auth/me:
  *   get:
- *     summary: Retorna o perfil do usuário autenticado
- *     description: Busca as informações completas do usuário logado, incluindo dados pessoais e profissionais. Requer autenticação.
- *     tags: [Auth]
+ *     summary: Obter perfil do usuário autenticado
+ *     description: Retorna as informações completas do perfil do usuário atualmente autenticado, excluindo dados sensíveis como senha e tokens.
+ *     tags:
+ *       - Autenticação
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Perfil do usuário retornado com sucesso
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                 nome:
- *                   type: string
- *                 sobrenome:
- *                   type: string
- *                 email:
- *                   type: string
- *                 telefone:
- *                   type: string
- *                 ramal:
- *                   type: string
- *                 setor:
- *                   type: string
- *                 regra:
- *                   type: string
- *                 avatarUrl:
- *                   type: string
- *                 geradoEm:
- *                   type: string
- *                   format: date-time
- *                 ativo:
- *                   type: boolean
+ *               $ref: '#/components/schemas/Usuario'
  *       401:
- *         description: Não autorizado
+ *         description: Token inválido ou ausente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Não autorizado.
  *       404:
- *         description: Usuário não encontrado
+ *         description: Usuário não encontrado no banco de dados
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Usuário não encontrado.
  *       500:
- *         description: Erro ao buscar perfil do usuário
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: Erro ao buscar perfil do usuário.
  */
 router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {
@@ -482,22 +649,25 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-// ================================
-// VERIFICAR STATUS DA CONTA
-// ================================
-
 /**
  * @swagger
- * /api/auth/status:
+ * /auth/status:
  *   get:
- *     summary: Verifica o status da autenticação
- *     description: Retorna informações sobre o status da sessão e token do usuário. Útil para verificar se o usuário ainda está autenticado.
- *     tags: [Auth]
+ *     summary: Verificar status de autenticação
+ *     description: Verifica se o usuário está autenticado e retorna informações básicas da sessão. Útil para validar tokens antes de realizar operações sensíveis.
+ *     tags:
+ *       - Autenticação
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
- *         description: Status retornado com sucesso
+ *         description: Status de autenticação retornado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StatusResponse'
+ *       401:
+ *         description: Usuário não autenticado
  *         content:
  *           application/json:
  *             schema:
@@ -505,10 +675,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
  *               properties:
  *                 autenticado:
  *                   type: boolean
- *                 usuario:
- *                   type: object
- *       401:
- *         description: Não autenticado
+ *                   example: false
  */
 router.get('/status', authMiddleware, async (req: AuthRequest, res) => {
   if (!req.usuario) {

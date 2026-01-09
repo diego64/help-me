@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// MOCK DO PRISMA
-// ========================================
-
 const prismaMock = {
   chamado: {
     findFirst: vi.fn(),
@@ -34,25 +30,13 @@ const prismaMock = {
   $disconnect: vi.fn().mockResolvedValue(undefined)
 };
 
-// ========================================
-// MOCKS DOS REPOSITÓRIOS
-// ========================================
-
 const salvarHistoricoChamadoMock = vi.fn().mockResolvedValue({});
 const listarHistoricoChamadoMock = vi.fn().mockResolvedValue([]);
-
-// ========================================
-// MOCK DO MODELO MONGODB
-// ========================================
 
 const chamadoAtualizacaoModelMock = {
   findOne: vi.fn(),
   create: vi.fn().mockResolvedValue({}),
 };
-
-// ========================================
-// FIXTURES DE USUÁRIO
-// ========================================
 
 const usuarioPadrao = {
   id: 'uid1',
@@ -61,10 +45,6 @@ const usuarioPadrao = {
   email: 'usu@em.com',
   regra: 'USUARIO',
 };
-
-// ========================================
-// FIXTURES DE CHAMADO
-// ========================================
 
 const chamadoBase = {
   id: 'chmid1',
@@ -100,10 +80,6 @@ const chamadoBase = {
   },
 };
 
-// ========================================
-// MOCKS DE MÓDULOS
-// ========================================
-
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () {
     return prismaMock;
@@ -130,10 +106,6 @@ vi.mock('../../models/chamadoAtualizacao.model', () => ({
   default: chamadoAtualizacaoModelMock,
 }));
 
-// ========================================
-// ESTADO DE AUTENTICAÇÃO
-// ========================================
-
 let Regra = 'USUARIO';
 let UsarUsuarioNulo = false;
 
@@ -154,10 +126,6 @@ vi.mock('../../middleware/auth', () => ({
         ? next()
         : res.status(403).json({ error: 'Forbidden' }),
 }));
-
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
 
 let router: any;
 
@@ -187,20 +155,12 @@ beforeEach(() => {
   chamadoAtualizacaoModelMock.create.mockResolvedValue({});
 });
 
-// ========================================
-// FUNÇÕES AUXILIARES
-// ========================================
-
 function criarApp() {
   const app = express();
   app.use(express.json());
   app.use('/chamado', router);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('POST /chamado/abertura-chamado', () => {
   it('deve retornar status 400 quando campo "descricao" não for enviado', async () => {

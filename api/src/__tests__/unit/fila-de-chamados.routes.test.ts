@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// MOCK DO PRISMA
-// ========================================
-
 const prismaMock = {
   chamado: {
     count: vi.fn(),
@@ -21,10 +17,6 @@ const prismaMock = {
   },
   $disconnect: vi.fn().mockResolvedValue(undefined)
 };
-
-// ========================================
-// MOCKS DE MÓDULOS
-// ========================================
 
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () {
@@ -43,9 +35,6 @@ vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
-// ========================================
-// FIXTURES DE USUÁRIO
-// ========================================
 
 const usuarioPadrao = {
   id: 'uid1',
@@ -70,10 +59,6 @@ const adminPadrao = {
   email: 'admin@em.com',
   regra: 'ADMIN',
 };
-
-// ========================================
-// FIXTURES DE CHAMADO
-// ========================================
 
 const chamadoBase = {
   id: 'chmid1',
@@ -106,10 +91,6 @@ const chamadoBase = {
   ],
 };
 
-// ========================================
-// ESTADO DE AUTENTICAÇÃO
-// ========================================
-
 let usuarioAtual: any = usuarioPadrao;
 
 vi.mock('../../middleware/auth', () => ({
@@ -124,10 +105,6 @@ vi.mock('../../middleware/auth', () => ({
         ? next()
         : res.status(403).json({ error: 'Forbidden' }),
 }));
-
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
 
 let router: any;
 
@@ -147,20 +124,12 @@ beforeEach(() => {
   prismaMock.chamado.groupBy.mockResolvedValue([]);
 });
 
-// ========================================
-// FUNÇÕES AUXILIARES
-// ========================================
-
 function criarApp() {
   const app = express();
   app.use(express.json());
   app.use('/listagens', router);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('GET /listagens/meus-chamados', () => {
   it('deve retornar status 403 quando usuário não for USUARIO', async () => {

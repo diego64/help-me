@@ -44,7 +44,7 @@ model Usuario {
   nome                   String      @db.VarChar(100)
   sobrenome              String      @db.VarChar(100)
   email                  String      @unique @db.VarChar(255)
-  password               String      @db.VarChar(255)
+  password               String      @db.VarChar(512)
   regra                  Regra
   setor                  Setor?
   telefone               String?

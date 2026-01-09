@@ -6,15 +6,11 @@ import {
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../src/utils/password';
 import dotenv from 'dotenv';
 import path from 'path';
 
 const { Pool } = pkg;
-
-// ========================================
-// CORES PARA TERMINAL
-// ========================================
 
 const colors = {
   reset: '\x1b[0m',
@@ -34,9 +30,6 @@ const log = {
   title: (msg: string) => console.log(`${colors.bright}${colors.blue}${msg}${colors.reset}`),
 };
 
-// ========================================
-// CARREGAMENTO DO .ENV
-// ========================================
 
 const envPaths = [
   path.resolve(process.cwd(), '.env'),
@@ -57,10 +50,6 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// ========================================
-// CLIENTE PRISMA
-// ========================================
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: parseInt(process.env.DB_MAX_CONNECTIONS || '10', 10),
@@ -72,10 +61,6 @@ const prisma = new PrismaClient({
   adapter,
   log: ['error', 'warn'],
 });
-
-// ========================================
-// TIPOS
-// ========================================
 
 interface DadosUsuario {
   nome: string;
@@ -95,19 +80,15 @@ interface DadosServico {
   ativo: boolean;
 }
 
-// ========================================
-// FUNÇÃO PARA CRIAR USUÁRIO
-// ========================================
-
 async function criarUsuario(email: string, dados: DadosUsuario) {
-  const hashed = await bcrypt.hash(dados.password, 10);
+  const hashed = hashPassword(dados.password);
 
   return prisma.usuario.upsert({
     where: { email },
     update: {
       password: hashed,
       ativo: true,
-      deletadoEm: null, // Remove soft delete se existir
+      deletadoEm: null,
     },
     create: {
       ...dados,
@@ -117,16 +98,11 @@ async function criarUsuario(email: string, dados: DadosUsuario) {
   });
 }
 
-// ========================================
-// FUNÇÃO PARA CRIAR EXPEDIENTE
-// ========================================
 
 async function criarExpediente(usuarioId: string, entrada: string, saida: string) {
-  // Converter strings de horário para DateTime
   const entradaDate = new Date(`1970-01-01T${entrada}:00Z`);
   const saidaDate = new Date(`1970-01-01T${saida}:00Z`);
 
-  // Buscar expediente existente
   const expedienteExistente = await prisma.expediente.findFirst({
     where: {
       usuarioId,
@@ -156,24 +132,16 @@ async function criarExpediente(usuarioId: string, entrada: string, saida: string
   });
 }
 
-// ========================================
-// FUNÇÃO PRINCIPAL DE SEED
-// ========================================
-
 async function main() {
   log.title('\n========================================');
   log.title('  SEED DO BANCO DE DADOS - HELP ME API  ');
   log.title('========================================\n');
 
   try {
-    // Conectar ao banco
     log.info('[INFO] Conectando ao banco de dados...');
     await prisma.$connect();
     log.success('[SUCESSO] Conectado com sucesso\n');
 
-    // ========================================
-    // LIMPEZA DO BANCO
-    // ========================================
     log.warn('[WARN] Limpando banco de dados...\n');
 
     await prisma.ordemDeServico.deleteMany({});
@@ -193,9 +161,6 @@ async function main() {
 
     log.success('[SUCESSO] Banco limpo com sucesso!\n');
 
-    // ========================================
-    // CRIAÇÃO DE ADMINS
-    // ========================================
     log.title('[1/5] CRIANDO ADMINISTRADORES...\n');
 
     const admin = await criarUsuario('admin@helpme.com', {
@@ -237,9 +202,6 @@ async function main() {
     });
     log.success(`[SUCESSO] ${adminTI.nome} ${adminTI.sobrenome} - ${adminTI.email}\n`);
 
-    // ========================================
-    // CRIAÇÃO DE TÉCNICOS
-    // ========================================
     log.title('[2/5] CRIANDO TÉCNICOS...\n');
 
     const tecnico1 = await criarUsuario('tecnico@helpme.com', {
@@ -281,9 +243,6 @@ async function main() {
     });
     log.success(`[SUCESSO] ${tecnico3.nome} ${tecnico3.sobrenome} - ${tecnico3.email}\n`);
 
-    // ========================================
-    // CRIAÇÃO DE USUÁRIOS
-    // ========================================
     log.title('[3/5] CRIANDO USUÁRIOS...\n');
 
     const usuario = await criarUsuario('user@helpme.com', {
@@ -325,9 +284,6 @@ async function main() {
     });
     log.success(`[SUCESSO] ${usuario3.nome} ${usuario3.sobrenome} - ${usuario3.email}\n`);
 
-    // ========================================
-    // CRIAÇÃO DE EXPEDIENTES
-    // ========================================
     log.title('[4/5] CONFIGURANDO EXPEDIENTES...\n');
 
     await criarExpediente(tecnico1.id, '08:00', '17:00');
@@ -339,114 +295,48 @@ async function main() {
     await criarExpediente(tecnico3.id, '09:00', '18:00');
     log.success(`[SUCESSO] ${tecnico3.nome} ${tecnico3.sobrenome}: 09:00 - 18:00\n`);
 
-    // ========================================
-    // CRIAÇÃO DE SERVIÇOS
-    // ========================================
     log.title('[5/5] CRIANDO SERVIÇOS...\n');
 
     const servicosData: DadosServico[] = [
-      {
-        nome: 'Suporte Técnico Geral',
-        descricao: 'Suporte técnico para problemas gerais de TI',
-        ativo: true,
-      },
-      {
-        nome: 'Instalação de Software',
-        descricao: 'Instalação e configuração de softwares corporativos',
-        ativo: true,
-      },
-      {
-        nome: 'Manutenção de Hardware',
-        descricao: 'Reparo e manutenção de equipamentos de informática',
-        ativo: true,
-      },
-      {
-        nome: 'Suporte de Rede',
-        descricao: 'Configuração e troubleshooting de rede e conectividade',
-        ativo: true,
-      },
-      {
-        nome: 'Backup e Recuperação',
-        descricao: 'Serviços de backup e recuperação de dados',
-        ativo: true,
-      },
-      {
-        nome: 'Configuração de Email',
-        descricao: 'Configuração de contas de email e clientes de email',
-        ativo: true,
-      },
-      {
-        nome: 'Acesso e Permissões',
-        descricao: 'Gerenciamento de acessos e permissões de usuários',
-        ativo: true,
-      },
-      {
-        nome: 'Impressoras e Periféricos',
-        descricao: 'Suporte para impressoras, scanners e periféricos',
-        ativo: true,
-      },
-      {
-        nome: 'VPN e Acesso Remoto',
-        descricao: 'Configuração de VPN e ferramentas de acesso remoto',
-        ativo: true,
-      },
-      {
-        nome: 'Serviço Teste K6',
-        descricao: 'Serviço para testes automatizados e performance',
-        ativo: false,
-      },
+      { nome: 'Suporte Técnico Geral', descricao: 'Suporte técnico para problemas gerais de TI', ativo: true },
+      { nome: 'Instalação de Software', descricao: 'Instalação e configuração de softwares corporativos', ativo: true },
+      { nome: 'Manutenção de Hardware', descricao: 'Reparo e manutenção de equipamentos de informática', ativo: true },
+      { nome: 'Suporte de Rede', descricao: 'Configuração e troubleshooting de rede e conectividade', ativo: true },
+      { nome: 'Backup e Recuperação', descricao: 'Serviços de backup e recuperação de dados', ativo: true },
+      { nome: 'Configuração de Email', descricao: 'Configuração de contas de email e clientes de email', ativo: true },
+      { nome: 'Acesso e Permissões', descricao: 'Gerenciamento de acessos e permissões de usuários', ativo: true },
+      { nome: 'Impressoras e Periféricos', descricao: 'Suporte para impressoras, scanners e periféricos', ativo: true },
+      { nome: 'VPN e Acesso Remoto', descricao: 'Configuração de VPN e ferramentas de acesso remoto', ativo: true },
+      { nome: 'Serviço Teste K6', descricao: 'Serviço para testes automatizados e performance', ativo: false },
     ];
 
     for (const dados of servicosData) {
       const servico = await prisma.servico.upsert({
         where: { nome: dados.nome },
-        update: {
-          descricao: dados.descricao,
-          ativo: dados.ativo,
-          deletadoEm: null,
-        },
+        update: { descricao: dados.descricao, ativo: dados.ativo, deletadoEm: null },
         create: dados,
       });
-
-      const status = servico.ativo ? 'ativo' : 'inativo';
-      log.success(`[SUCESSO] Serviço: ${servico.nome} (${status})`);
+      log.success(`[SUCESSO] Serviço: ${servico.nome} (${servico.ativo ? 'ativo' : 'inativo'})`);
     }
 
     log.info('');
-
-    // ========================================
-    // CRIAÇÃO DE CHAMADOS DE EXEMPLO
-    // ========================================
     log.title('\n[BONUS] CRIANDO CHAMADOS DE EXEMPLO...\n');
 
-    const servicoSuporte = await prisma.servico.findFirst({
-      where: { nome: 'Suporte Técnico Geral' },
-    });
-
-    const servicoInstalacao = await prisma.servico.findFirst({
-      where: { nome: 'Instalação de Software' },
-    });
-
-    const servicoRede = await prisma.servico.findFirst({
-      where: { nome: 'Suporte de Rede' },
-    });
+    const servicoSuporte = await prisma.servico.findFirst({ where: { nome: 'Suporte Técnico Geral' } });
+    const servicoInstalacao = await prisma.servico.findFirst({ where: { nome: 'Instalação de Software' } });
+    const servicoRede = await prisma.servico.findFirst({ where: { nome: 'Suporte de Rede' } });
 
     if (!servicoSuporte || !servicoInstalacao || !servicoRede) {
       log.warn('[WARN] Alguns serviços não encontrados, pulando criação de chamados\n');
     } else {
-      // Verificar se chamados já existem
       const chamadosExistentes = await prisma.chamado.findMany({
-        where: {
-          OS: { in: ['INC0001', 'INC0002', 'INC0003', 'INC0004', 'INC0005'] },
-        },
+        where: { OS: { in: ['INC0001', 'INC0002', 'INC0003', 'INC0004', 'INC0005'] } },
       });
 
       if (chamadosExistentes.length > 0) {
         log.info(`[INFO] Chamados já existem (${chamadosExistentes.length}), pulando criação\n`);
       } else {
-        // Criar chamados em transação
         const chamados = await prisma.$transaction(async (tx) => {
-          // CHAMADO 1: ABERTO - João precisa de suporte
           const c1 = await tx.chamado.create({
             data: {
               OS: 'INC0001',
@@ -455,15 +345,8 @@ async function main() {
               usuarioId: usuario.id,
             },
           });
+          await tx.ordemDeServico.create({ data: { chamadoId: c1.id, servicoId: servicoSuporte.id } });
 
-          await tx.ordemDeServico.create({
-            data: {
-              chamadoId: c1.id,
-              servicoId: servicoSuporte.id,
-            },
-          });
-
-          // CHAMADO 2: EM ATENDIMENTO - Maria com problema de rede
           const c2 = await tx.chamado.create({
             data: {
               OS: 'INC0002',
@@ -473,35 +356,21 @@ async function main() {
               tecnicoId: tecnico1.id,
             },
           });
+          await tx.ordemDeServico.create({ data: { chamadoId: c2.id, servicoId: servicoRede.id } });
 
-          await tx.ordemDeServico.create({
-            data: {
-              chamadoId: c2.id,
-              servicoId: servicoRede.id,
-            },
-          });
-
-          // CHAMADO 3: ENCERRADO - Pedro teve software instalado
           const c3 = await tx.chamado.create({
             data: {
               OS: 'INC0003',
               descricao: 'Preciso do Microsoft Office instalado urgente para apresentação.',
               descricaoEncerramento: 'Microsoft Office 365 instalado e configurado. Usuário testou e confirmou funcionamento.',
               status: ChamadoStatus.ENCERRADO,
-              encerradoEm: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 horas atrás
+              encerradoEm: new Date(Date.now() - 2 * 60 * 60 * 1000),
               usuarioId: usuario3.id,
               tecnicoId: tecnico2.id,
             },
           });
+          await tx.ordemDeServico.create({ data: { chamadoId: c3.id, servicoId: servicoInstalacao.id } });
 
-          await tx.ordemDeServico.create({
-            data: {
-              chamadoId: c3.id,
-              servicoId: servicoInstalacao.id,
-            },
-          });
-
-          // CHAMADO 4: EM ATENDIMENTO - João com outro problema
           const c4 = await tx.chamado.create({
             data: {
               OS: 'INC0004',
@@ -511,45 +380,28 @@ async function main() {
               tecnicoId: tecnico3.id,
             },
           });
+          await tx.ordemDeServico.create({ data: { chamadoId: c4.id, servicoId: servicoSuporte.id } });
 
-          await tx.ordemDeServico.create({
-            data: {
-              chamadoId: c4.id,
-              servicoId: servicoSuporte.id,
-            },
-          });
-
-          // CHAMADO 5: ENCERRADO - Maria problema resolvido
           const c5 = await tx.chamado.create({
             data: {
               OS: 'INC0005',
               descricao: 'Email não sincroniza no celular. Preciso urgente para trabalho remoto.',
               descricaoEncerramento: 'Reconfigurado contas de email no dispositivo móvel. Sincronização funcionando corretamente.',
               status: ChamadoStatus.ENCERRADO,
-              encerradoEm: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 dia atrás
+              encerradoEm: new Date(Date.now() - 24 * 60 * 60 * 1000),
               usuarioId: usuario2.id,
               tecnicoId: tecnico1.id,
             },
           });
-
-          await tx.ordemDeServico.create({
-            data: {
-              chamadoId: c5.id,
-              servicoId: servicoSuporte.id,
-            },
-          });
+          await tx.ordemDeServico.create({ data: { chamadoId: c5.id, servicoId: servicoSuporte.id } });
 
           return [c1, c2, c3, c4, c5];
         });
 
-        const osNumbers = chamados.map((c) => c.OS).join(', ');
-        log.success(`[SUCESSO] Chamados criados: ${osNumbers}\n`);
+        log.success(`[SUCESSO] Chamados criados: ${chamados.map((c) => c.OS).join(', ')}\n`);
       }
     }
 
-    // ========================================
-    // RESUMO FINAL
-    // ========================================
     log.title('\n========================================');
     log.title('  SEED CONCLUÍDO COM SUCESSO!          ');
     log.title('========================================\n');
@@ -559,61 +411,24 @@ async function main() {
     console.log('═══════════════════════════════════════');
     console.log('ADMINISTRADORES:');
     console.log('═══════════════════════════════════════\n');
-    
-    console.log('1. Admin Sistema');
-    console.log(`   Email:    admin@helpme.com`);
-    console.log(`   Senha:    Admin123!`);
-    console.log(`   Setor:    TECNOLOGIA_INFORMACAO\n`);
-
-    console.log('2. Super Admin');
-    console.log(`   Email:    superadmin@helpme.com`);
-    console.log(`   Senha:    Super123!`);
-    console.log(`   Setor:    TECNOLOGIA_INFORMACAO\n`);
-
-    console.log('3. Diego Ferreira');
-    console.log(`   Email:    diego.ferreira@helpme.com`);
-    console.log(`   Senha:    Diego123!`);
-    console.log(`   Setor:    TECNOLOGIA_INFORMACAO\n`);
+    console.log('1. Admin Sistema\n   Email:    admin@helpme.com\n   Senha:    Admin123!\n   Setor:    TECNOLOGIA_INFORMACAO\n');
+    console.log('2. Super Admin\n   Email:    superadmin@helpme.com\n   Senha:    Super123!\n   Setor:    TECNOLOGIA_INFORMACAO\n');
+    console.log('3. Diego Ferreira\n   Email:    diego.ferreira@helpme.com\n   Senha:    Diego123!\n   Setor:    TECNOLOGIA_INFORMACAO\n');
 
     console.log('═══════════════════════════════════════');
     console.log('TÉCNICOS:');
     console.log('═══════════════════════════════════════\n');
-    
-    console.log('1. Carlos Silva');
-    console.log(`   Email:    tecnico@helpme.com`);
-    console.log(`   Senha:    Tecnico123!`);
-    console.log(`   Horário:  08:00 - 17:00\n`);
-
-    console.log('2. Ana Santos');
-    console.log(`   Email:    ana.santos@helpme.com`);
-    console.log(`   Senha:    Tecnico123!`);
-    console.log(`   Horário:  08:00 - 18:00\n`);
-
-    console.log('3. Roberto Ferreira');
-    console.log(`   Email:    roberto.ferreira@helpme.com`);
-    console.log(`   Senha:    Tecnico123!`);
-    console.log(`   Horário:  09:00 - 18:00\n`);
+    console.log('1. Carlos Silva\n   Email:    tecnico@helpme.com\n   Senha:    Tecnico123!\n   Horário:  08:00 - 17:00\n');
+    console.log('2. Ana Santos\n   Email:    ana.santos@helpme.com\n   Senha:    Tecnico123!\n   Horário:  08:00 - 18:00\n');
+    console.log('3. Roberto Ferreira\n   Email:    roberto.ferreira@helpme.com\n   Senha:    Tecnico123!\n   Horário:  09:00 - 18:00\n');
 
     console.log('═══════════════════════════════════════');
     console.log('USUÁRIOS:');
     console.log('═══════════════════════════════════════\n');
-    
-    console.log('1. João Oliveira');
-    console.log(`   Email:    user@helpme.com`);
-    console.log(`   Senha:    User123!`);
-    console.log(`   Setor:    COMERCIAL\n`);
+    console.log('1. João Oliveira\n   Email:    user@helpme.com\n   Senha:    User123!\n   Setor:    COMERCIAL\n');
+    console.log('2. Maria Costa\n   Email:    maria.costa@helpme.com\n   Senha:    User123!\n   Setor:    FINANCEIRO\n');
+    console.log('3. Pedro Lima\n   Email:    pedro.lima@helpme.com\n   Senha:    User123!\n   Setor:    MARKETING\n');
 
-    console.log('2. Maria Costa');
-    console.log(`   Email:    maria.costa@helpme.com`);
-    console.log(`   Senha:    User123!`);
-    console.log(`   Setor:    FINANCEIRO\n`);
-
-    console.log('3. Pedro Lima');
-    console.log(`   Email:    pedro.lima@helpme.com`);
-    console.log(`   Senha:    User123!`);
-    console.log(`   Setor:    MARKETING\n`);
-
-    // Estatísticas
     const stats = await Promise.all([
       prisma.usuario.count({ where: { deletadoEm: null, regra: Regra.ADMIN } }),
       prisma.usuario.count({ where: { deletadoEm: null, regra: Regra.TECNICO } }),
@@ -639,10 +454,6 @@ async function main() {
     throw error;
   }
 }
-
-// ========================================
-// EXECUÇÃO
-// ========================================
 
 main()
   .catch((error) => {

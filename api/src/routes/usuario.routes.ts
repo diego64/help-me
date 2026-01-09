@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { Setor, Regra } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/password';
 import multer from 'multer';
 import path from 'path';
 import {
@@ -9,11 +9,14 @@ import {
   authorizeRoles,
   AuthRequest
 } from '../middleware/auth';
-import { cacheSet, cacheGet, cacheDel } from '../services/redisClient';
+import {
+  cacheSet,
+  cacheGet,
+  cacheDel
+} from '../services/redisClient';
 
 export const router: Router = Router();
 
-const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
 const MIN_NOME_LENGTH = 2;
 const MAX_NOME_LENGTH = 100;
@@ -21,12 +24,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-const CACHE_TTL = 60; // 60 segundos
+const CACHE_TTL = 60;
 const CACHE_KEY_PREFIX = 'usuarios:';
 
-// Upload config
 const UPLOAD_DIR = 'uploads/avatars';
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 interface PaginationParams {
@@ -192,10 +194,6 @@ const USUARIO_SELECT = {
  *   description: Gerenciamento de usuários do sistema
  */
 
-// ========================================
-// CRIAÇÃO DE USUÁRIO
-// ========================================
-
 /**
  * @swagger
  * /api/usuarios:
@@ -262,7 +260,6 @@ router.post(
     try {
       const { nome, sobrenome, email, password, telefone, ramal, setor } = req.body;
 
-      // Validações
       const validacaoNome = validarNome(nome, 'Nome');
       if (!validacaoNome.valido) {
         return res.status(400).json({ error: validacaoNome.erro });
@@ -290,7 +287,6 @@ router.post(
         });
       }
 
-      // Verificar email único
       const emailExistente = await prisma.usuario.findUnique({
         where: { email: email.toLowerCase() },
         select: { id: true, deletadoEm: true },
@@ -307,7 +303,7 @@ router.post(
         });
       }
 
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = hashPassword(password);
 
       const usuario = await prisma.usuario.create({
         data: {
@@ -323,7 +319,6 @@ router.post(
         select: USUARIO_SELECT,
       });
 
-      // Invalidar cache
       await invalidarCacheListagem();
 
       console.log('[USUARIO CREATED]', { id: usuario.id, email: usuario.email });
@@ -337,10 +332,6 @@ router.post(
     }
   }
 );
-
-// ========================================
-// LISTAGEM DE USUÁRIOS (COM CACHE E PAGINAÇÃO)
-// ========================================
 
 /**
  * @swagger
@@ -400,16 +391,13 @@ router.get(
       const { page, limit, skip } = getPaginationParams(req.query);
       const { incluirInativos, incluirDeletados, setor, busca } = req.query;
 
-      // Construir chave de cache
       const cacheKey = `${CACHE_KEY_PREFIX}list:${page}:${limit}:${incluirInativos}:${incluirDeletados}:${setor}:${busca}`;
 
-      // Tentar buscar do cache
       const cached = await cacheGet(cacheKey);
       if (cached) {
         return res.json(JSON.parse(cached));
       }
 
-      // Construir filtros
       const where: any = {
         regra: Regra.USUARIO,
       };
@@ -434,7 +422,6 @@ router.get(
         ];
       }
 
-      // Buscar em paralelo
       const [total, usuarios] = await Promise.all([
         prisma.usuario.count({ where }),
         prisma.usuario.findMany({
@@ -448,7 +435,6 @@ router.get(
 
       const response = createPaginatedResponse(usuarios, total, page, limit);
 
-      // Salvar no cache
       await cacheSet(cacheKey, JSON.stringify(response), CACHE_TTL);
 
       res.json(response);
@@ -460,10 +446,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// BUSCAR USUÁRIO POR ID
-// ========================================
 
 /**
  * @swagger
@@ -500,7 +482,6 @@ router.get(
     try {
       const { id } = req.params;
 
-      // Usuário só pode ver seu próprio perfil
       if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode visualizar seu próprio perfil',
@@ -527,10 +508,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// BUSCAR POR EMAIL
-// ========================================
 
 /**
  * @swagger
@@ -601,10 +578,6 @@ router.post(
   }
 );
 
-// ========================================
-// ATUALIZAR USUÁRIO
-// ========================================
-
 /**
  * @swagger
  * /api/usuarios/{id}:
@@ -663,7 +636,6 @@ router.put(
       const { id } = req.params;
       const { nome, sobrenome, email, telefone, ramal, setor } = req.body;
 
-      // Verificar permissão
       if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode editar seu próprio perfil',
@@ -759,7 +731,6 @@ router.put(
         select: USUARIO_SELECT,
       });
 
-      // Invalidar cache
       await invalidarCacheListagem();
 
       console.log('[USUARIO UPDATED]', { id, email: updated.email });
@@ -773,10 +744,6 @@ router.put(
     }
   }
 );
-
-// ========================================
-// ALTERAR SENHA
-// ========================================
 
 /**
  * @swagger
@@ -829,20 +796,17 @@ router.put(
       const { id } = req.params;
       const { password } = req.body;
 
-      // Verificar permissão
       if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
         return res.status(403).json({
           error: 'Você só pode alterar sua própria senha',
         });
       }
 
-      // Validar senha
       const validacao = validarSenha(password);
       if (!validacao.valida) {
         return res.status(400).json({ error: validacao.erro });
       }
 
-      // Verificar usuário
       const usuario = await prisma.usuario.findUnique({
         where: { id },
         select: { id: true, regra: true },
@@ -854,7 +818,7 @@ router.put(
         });
       }
 
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = hashPassword(password);
 
       await prisma.usuario.update({
         where: { id },
@@ -874,10 +838,6 @@ router.put(
     }
   }
 );
-
-// ========================================
-// UPLOAD DE AVATAR
-// ========================================
 
 /**
  * @swagger
@@ -953,7 +913,6 @@ router.post(
         });
       }
 
-      // Atualizar avatarUrl
       const updated = await prisma.usuario.update({
         where: { id },
         data: { avatarUrl: `/uploads/avatars/${file.filename}` },
@@ -963,7 +922,6 @@ router.post(
         },
       });
 
-      // Invalidar cache
       await invalidarCacheListagem();
 
       console.log('[USUARIO AVATAR UPLOADED]', {
@@ -983,10 +941,6 @@ router.post(
     }
   }
 );
-
-// ========================================
-// SOFT DELETE
-// ========================================
 
 /**
  * @swagger
@@ -1080,7 +1034,6 @@ router.delete(
         });
       }
 
-      // SOFT DELETE
       await prisma.usuario.update({
         where: { id },
         data: {
@@ -1105,10 +1058,6 @@ router.delete(
     }
   }
 );
-
-// ========================================
-// RESTAURAR USUÁRIO
-// ========================================
 
 /**
  * @swagger

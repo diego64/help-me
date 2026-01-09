@@ -186,7 +186,6 @@ describe('E2E - Kafka Service', () => {
         })
       };
 
-      // Usa a função sendMessage do serviço
       await expect(sendMessage(nomeTopico, [mensagemTeste])).resolves.not.toThrow();
     }, 15000);
 
@@ -254,7 +253,6 @@ describe('E2E - Kafka Service', () => {
       expect(Array.isArray(resultadoEnvio)).toBe(true);
       expect(resultadoEnvio.length).toBeGreaterThan(0);
 
-      // Valida que não houve erros
       resultadoEnvio.forEach(metadata => {
         expect(metadata.errorCode).toBe(0);
         expect(metadata).toHaveProperty('partition');
@@ -406,11 +404,9 @@ describe('E2E - Kafka Service', () => {
     it('sendMessage loga warning quando desconectado', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
       
-      // Garante que está desconectado
       await desconectarKafkaProducer();
       expect(isKafkaConnected()).toBe(false);
 
-      // Deve retornar sem erro
       await expect(
         sendMessage('test-send-message-offline', [{ 
           value: JSON.stringify({ teste: 'offline' }) 

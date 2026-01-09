@@ -10,10 +10,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// MOCK DO PRISMA
-// ========================================
-
 const prismaMock = {
   usuario: {
     findUnique: vi.fn(),
@@ -25,16 +21,12 @@ vi.mock('../../lib/prisma.ts', () => ({
   prisma: prismaMock,
 }));
 
-// ========================================
-// FIXTURES DE USUÁRIO
-// ========================================
-
 const usuarioBase = {
   id: '1',
   nome: 'Nome',
   sobrenome: 'Sobrenome',
   email: 'mail@x.com',
-  password: 'HASHED',
+  password: 'HASHED_PASSWORD_PBKDF2',
   regra: 'ADMIN',
   refreshToken: 'refresh-token',
   ativo: true,
@@ -61,20 +53,11 @@ const usuarioSemSenha = {
   geradoEm: '2025-01-01T00:00:00.000Z',
 };
 
-// ========================================
-// MOCK DO BCRYPT
-// ========================================
+const verifyPasswordMock = vi.fn();
 
-const bcryptCompareMock = vi.fn();
-
-vi.mock('bcrypt', () => ({
-  default: { compare: bcryptCompareMock },
-  compare: bcryptCompareMock,
+vi.mock('../../utils/password', () => ({
+  verifyPassword: verifyPasswordMock,
 }));
-
-// ========================================
-// MOCKS DO JWT
-// ========================================
 
 const tokenPairMock = {
   accessToken: 'access-token',
@@ -96,10 +79,6 @@ vi.mock('jsonwebtoken', () => ({
   decode: jwtDecodeMock,
 }));
 
-// ========================================
-// MOCK DO CACHE (REDIS)
-// ========================================
-
 const cacheSetMock = vi.fn().mockResolvedValue(undefined);
 const cacheGetMock = vi.fn().mockResolvedValue(null);
 
@@ -108,24 +87,12 @@ vi.mock('../../services/redisClient', () => ({
   cacheGet: cacheGetMock,
 }));
 
-// ========================================
-// MOCKS DE MÓDULOS
-// ========================================
-
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () { return prismaMock; },
 }));
 
-// ========================================
-// ESTADO DE AUTENTICAÇÃO
-// ========================================
-
 let deveAutenticar = true;
 let usuarioMock: any = { ...usuarioBase };
-
-// ========================================
-// MOCK DO AUTH MIDDLEWARE
-// ========================================
 
 const extractTokenFromHeaderMock = vi.fn();
 
@@ -145,10 +112,6 @@ vi.mock('../../middleware/auth', () => ({
   extractTokenFromHeader: extractTokenFromHeaderMock,
 }));
 
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
-
 let authRouter: any;
 
 beforeAll(async () => {
@@ -160,12 +123,11 @@ beforeEach(() => {
   usuarioMock = { ...usuarioBase };
   vi.clearAllMocks();
   
-  // Reset cache mocks
   cacheGetMock.mockResolvedValue(null);
   cacheSetMock.mockResolvedValue(undefined);
   
-  bcryptCompareMock.mockImplementation(async (senha, hash) => 
-    senha === 'senhaCorreta' && hash === 'HASHED'
+  verifyPasswordMock.mockImplementation((senha, hash) => 
+    senha === 'senhaCorreta' && hash === 'HASHED_PASSWORD_PBKDF2'
   );
   
   verifyTokenMock.mockImplementation((token, type) => {
@@ -188,10 +150,6 @@ afterEach(() => {
   deveAutenticar = true;
   usuarioMock = { ...usuarioBase };
 });
-
-// ========================================
-// FUNÇÕES AUXILIARES
-// ========================================
 
 function adicionarSessionMiddleware(req: any, res: any, next: any) {
   req.session = req.session || { destroy: (cb: any) => cb(null) };
@@ -224,10 +182,6 @@ function criarAppComAuthDesabilitada() {
   app.use('/auth', authRouter);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('POST /auth/login', () => {
   it('deve retornar status 400 quando campos email ou senha não forem enviados', async () => {
@@ -340,7 +294,7 @@ describe('POST /auth/login', () => {
   it('deve retornar status 401 quando senha fornecida estiver incorreta', async () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
-    bcryptCompareMock.mockResolvedValue(false);
+    verifyPasswordMock.mockReturnValue(false);
     
     const resposta = await request(app).post('/auth/login').send({
       email: 'mail@x.com',
@@ -362,7 +316,7 @@ describe('POST /auth/login', () => {
       ...usuarioBase, 
       refreshToken: 'refresh-token' 
     });
-    bcryptCompareMock.mockResolvedValue(true);
+    verifyPasswordMock.mockReturnValue(true);
 
     const resposta = await request(app).post('/auth/login').send({
       email: usuarioBase.email,
@@ -429,7 +383,7 @@ describe('POST /auth/login', () => {
     const app = criarAppSemAuth();
     prismaMock.usuario.findUnique.mockResolvedValue(usuarioBase);
     prismaMock.usuario.update.mockRejectedValue(new Error('Update failed'));
-    bcryptCompareMock.mockResolvedValue(true);
+    verifyPasswordMock.mockReturnValue(true);
 
     const resposta = await request(app).post('/auth/login').send({
       email: usuarioBase.email,

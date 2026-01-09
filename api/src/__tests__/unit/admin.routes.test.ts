@@ -29,11 +29,10 @@ vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
-const bcryptHashMock = vi.fn().mockResolvedValue('HASHED');
+const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
 
-vi.mock('bcrypt', () => ({
-  default: { hash: bcryptHashMock },
-  hash: bcryptHashMock,
+vi.mock('../../utils/password', () => ({
+  hashPassword: hashPasswordMock,
 }));
 
 vi.mock('../../middleware/auth', () => ({
@@ -62,15 +61,11 @@ const adminFixture = {
 
 const adminFixtureWithPassword = {
   ...adminFixture,
-  password: 'HASHED',
+  password: 'HASHED_PASSWORD_PBKDF2',
   refreshToken: null,
 };
 
 const fakeAdmins = [adminFixture];
-
-// ========================================
-// SETUP & TEARDOWN
-// ========================================
 
 let adminRouter: any;
 const app = express();
@@ -80,8 +75,6 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  // Limpa o app para não empilhar múltiplas rotas
-  // @ts-ignore
   if (app._router?.stack?.length) {
     app._router.stack.splice(0);
   }
@@ -89,16 +82,11 @@ beforeEach(() => {
   app.use(express.json());
   app.use('/api/admin', adminRouter);
   
-  // Reset todos os mocks do Prisma
   Object.values(prismaMock.usuario).forEach(fn => (fn as any).mockReset());
 
-  bcryptHashMock.mockClear();
-  bcryptHashMock.mockResolvedValue('HASHED');
+  hashPasswordMock.mockClear();
+  hashPasswordMock.mockReturnValue('HASHED_PASSWORD_PBKDF2');
 });
-
-// ========================================
-// TEST SUITES
-// ========================================
 
 describe('POST /api/admin (criar novo administrador)', () => {
   it('deve retornar status 400 quando campos obrigatórios não forem enviados', async () => {
@@ -215,7 +203,7 @@ describe('POST /api/admin (criar novo administrador)', () => {
         nome: 'Admin',
         sobrenome: 'Teste',
         email: 'admin@dom.com',
-        password: 'HASHED',
+        password: 'HASHED_PASSWORD_PBKDF2',
         regra: 'ADMIN',
         setor: 'TECNOLOGIA_INFORMACAO',
         telefone: '(11) 99999-0001',
@@ -224,7 +212,7 @@ describe('POST /api/admin (criar novo administrador)', () => {
         ativo: true,
       },
     });
-    expect(bcryptHashMock).toHaveBeenCalledWith('senha12345', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('senha12345');
   });
 
   it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
@@ -377,9 +365,7 @@ describe('GET /api/admin/:id (buscar administrador por ID)', () => {
 
 describe('PUT /api/admin/:id (editar administrador)', () => {
   beforeEach(() => {
-    // Limpa o bcrypt mock específico para este grupo
-    bcryptHashMock.mockClear();
-    // Configura mock padrão do findUnique
+    hashPasswordMock.mockClear();
     prismaMock.usuario.findUnique.mockResolvedValue(adminFixtureWithPassword);
   });
 
@@ -410,7 +396,7 @@ describe('PUT /api/admin/:id (editar administrador)', () => {
       },
       select: expect.any(Object),
     });
-    expect(bcryptHashMock).not.toHaveBeenCalled();
+    expect(hashPasswordMock).not.toHaveBeenCalled();
   });
 
   it('deve atualizar senha quando enviada', async () => {
@@ -423,11 +409,11 @@ describe('PUT /api/admin/:id (editar administrador)', () => {
       });
     
     expect(res.status).toBe(200);
-    expect(bcryptHashMock).toHaveBeenCalledWith('novaSenha123', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('novaSenha123');
     expect(prismaMock.usuario.update).toHaveBeenCalledWith({
       where: { id: '1' },
       data: {
-        password: 'HASHED',
+        password: 'HASHED_PASSWORD_PBKDF2',
       },
       select: expect.any(Object),
     });

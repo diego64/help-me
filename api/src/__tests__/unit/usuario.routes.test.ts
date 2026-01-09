@@ -9,10 +9,6 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-// ========================================
-// FIXTURES E MOCKS
-// ========================================
-
 const usuarioBase = {
   id: 'user1',
   nome: 'João',
@@ -43,9 +39,7 @@ const prismaMock = {
   },
 };
 
-const bcryptMock = {
-  hash: vi.fn().mockResolvedValue('hashed_password'),
-};
+const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
 
 const cacheSetMock = vi.fn().mockResolvedValue(undefined);
 const cacheGetMock = vi.fn().mockResolvedValue(null);
@@ -53,10 +47,6 @@ const cacheDelMock = vi.fn().mockResolvedValue(undefined);
 
 let usuarioRegra = 'ADMIN';
 let usuarioAtualId = 'admin1';
-
-// ========================================
-// CONFIGURAÇÃO DE MOCKS
-// ========================================
 
 vi.mock('@prisma/client', () => ({
   PrismaClient: function () {
@@ -78,8 +68,8 @@ vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('bcrypt', () => ({
-  default: bcryptMock,
+vi.mock('../../utils/password', () => ({
+  hashPassword: hashPasswordMock,
 }));
 
 vi.mock('../../middleware/auth', () => ({
@@ -118,10 +108,6 @@ vi.mock('multer', () => {
   };
 });
 
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
-
 let router: any;
 
 beforeAll(async () => {
@@ -140,15 +126,12 @@ beforeEach(() => {
   prismaMock.usuario.update.mockReset();
   prismaMock.usuario.delete.mockReset();
 
-  bcryptMock.hash.mockResolvedValue('hashed_password');
+  hashPasswordMock.mockClear();
+  hashPasswordMock.mockReturnValue('HASHED_PASSWORD_PBKDF2');
   cacheSetMock.mockResolvedValue(undefined);
   cacheGetMock.mockResolvedValue(null);
   cacheDelMock.mockResolvedValue(undefined);
 });
-
-// ========================================
-// FUNÇÃO AUXILIAR
-// ========================================
 
 function criarApp(mockFile?: any) {
   const app = express();
@@ -162,10 +145,6 @@ function criarApp(mockFile?: any) {
   app.use('/usuarios', router);
   return app;
 }
-
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('POST /usuarios (criação de usuário)', () => {
   it('deve retornar status 201 e criar usuário com sucesso', async () => {
@@ -185,7 +164,7 @@ describe('POST /usuarios (criação de usuário)', () => {
     expect(resposta.status).toBe(201);
     expect(resposta.body.nome).toBe('João');
     expect(resposta.body.regra).toBe('USUARIO');
-    expect(bcryptMock.hash).toHaveBeenCalledWith('senha123456', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('senha123456');
     expect(cacheDelMock).toHaveBeenCalledWith('usuarios:list');
   });
 
@@ -793,7 +772,7 @@ describe('PUT /usuarios/:id/senha (alteração de senha)', () => {
 
     expect(resposta.status).toBe(200);
     expect(resposta.body.message).toContain('Senha alterada com sucesso');
-    expect(bcryptMock.hash).toHaveBeenCalledWith('novasenha123', 10);
+    expect(hashPasswordMock).toHaveBeenCalledWith('novasenha123');
   });
 
   it('deve retornar status 403 quando usuário tentar alterar senha de outro', async () => {
@@ -1085,10 +1064,6 @@ describe('PATCH /usuarios/:id/restaurar (restauração de usuário)', () => {
     expect(resposta.body.error).toContain('Erro ao restaurar usuário');
   });
 });
-
-// ========================================
-// FUNÇÃO AUXILIAR PARA PAGINAÇÃO
-// ========================================
 
 function createPaginatedResponse<T>(
   data: T[],

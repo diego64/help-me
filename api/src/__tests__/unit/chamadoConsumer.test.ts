@@ -9,30 +9,18 @@ import { registrarAcaoNoHistorico, buscarHistorico } from '../../services/chamad
 import { salvarHistoricoChamado, listarHistoricoChamado } from '../../repositories/chamadoAtualizacao.repository';
 import { HistoricoChamadoInput } from '../../../@types/historicoChamado';
 
-// ========================================
-// MOCK DO REPOSITÓRIO
-// ========================================
-
 vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
   salvarHistoricoChamado: vi.fn(),
   listarHistoricoChamado: vi.fn(),
 }));
-
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
 
 describe('ChamadoAtualizacao Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // ==========================================================================
-  // TESTES: registrarAcaoNoHistorico
-  // ==========================================================================
-
   describe('registrarAcaoNoHistorico', () => {
-    it('Deve chamar salvarHistoricoChamado com os parâmetros corretos', async () => {
+    it('deve chamar salvarHistoricoChamado com os parâmetros corretos', async () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-123',
@@ -59,7 +47,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(salvarHistoricoChamado).toHaveBeenCalledWith(mockHistorico);
     });
 
-    it('Deve propagar erro quando salvarHistoricoChamado falhar', async () => {
+    it('deve propagar erro quando salvarHistoricoChamado falhar', async () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-123',
@@ -82,7 +70,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(salvarHistoricoChamado).toHaveBeenCalledWith(mockHistorico);
     });
 
-    it('Deve registrar ação do tipo REABERTURA', async () => {
+    it('deve registrar ação do tipo REABERTURA', async () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-456',
@@ -108,7 +96,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(salvarHistoricoChamado).toHaveBeenCalledWith(mockHistorico);
     });
 
-    it('Deve registrar ação com descricao vazia', async () => {
+    it('deve registrar ação com descricao vazia', async () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-789',
@@ -135,12 +123,8 @@ describe('ChamadoAtualizacao Service', () => {
     });
   });
 
-  // ==========================================================================
-  // TESTES: buscarHistorico
-  // ==========================================================================
-
   describe('buscarHistorico', () => {
-    it('Deve retornar histórico completo do chamado com múltiplos registros', async () => {
+    it('deve retornar histórico completo do chamado com múltiplos registros', async () => {
       // Arrange
       const chamadoId = 'chamado-789';
       const mockHistorico = [
@@ -196,7 +180,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(resultado[0].para).toBe('ABERTO');
     });
 
-    it('Deve retornar array vazio quando chamado não possuir histórico', async () => {
+    it('deve retornar array vazio quando chamado não possuir histórico', async () => {
       // Arrange
       const chamadoId = 'chamado-sem-historico';
       vi.mocked(listarHistoricoChamado).mockResolvedValue([] as any);
@@ -210,7 +194,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(resultado).toHaveLength(0);
     });
 
-    it('Deve propagar erro quando listarHistoricoChamado falhar', async () => {
+    it('deve propagar erro quando listarHistoricoChamado falhar', async () => {
       // Arrange
       const chamadoId = 'chamado-erro';
       const erro = new Error('Erro de conexão com MongoDB');
@@ -223,7 +207,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(listarHistoricoChamado).toHaveBeenCalledWith(chamadoId);
     });
 
-    it('Deve buscar histórico com ID válido de formato UUID', async () => {
+    it('deve buscar histórico com ID válido de formato UUID', async () => {
       // Arrange
       const chamadoId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
       const mockHistorico = [
@@ -252,7 +236,7 @@ describe('ChamadoAtualizacao Service', () => {
       expect(resultado[0].chamadoId).toBe(chamadoId);
     });
 
-    it('Deve retornar histórico ordenado por data', async () => {
+    it('deve retornar histórico ordenado por data', async () => {
       // Arrange
       const chamadoId = 'chamado-123';
       const mockHistorico = [
@@ -293,7 +277,7 @@ describe('ChamadoAtualizacao Service', () => {
       );
     });
 
-    it('Deve propagar erro de timeout do MongoDB', async () => {
+    it('deve propagar erro de timeout do MongoDB', async () => {
       // Arrange
       const chamadoId = 'chamado-timeout';
       const erro = new Error('MongoDB connection timeout');

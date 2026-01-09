@@ -12,10 +12,6 @@ import {
 } from '../../repositories/chamadoAtualizacao.repository';
 
 describe('ChamadoAtualizacao Repository', () => {
-  // ========================================
-  // dadoS DE TESTES
-  // ========================================
-  
   const createMockHistorico = () => ({
     _id: 'fake_mongo_id',
     chamadoId: 'chamado123',
@@ -34,17 +30,9 @@ describe('ChamadoAtualizacao Repository', () => {
     },
   });
 
-  // ========================================
-  // CONFIGURAÇÃO E LIMPEZA
-  // ========================================
-
   beforeEach(() => {
     vi.restoreAllMocks();
   });
-
-  // ========================================
-  // Testes de salvarHistoricoChamado
-  // ========================================
 
   describe('salvarHistoricoChamado', () => {
     it('dado um conjunto válido de dados de histórico, quando salvarHistoricoChamado é chamado, então registra no banco e retorna o histórico salvo completo', async () => {
@@ -86,10 +74,6 @@ describe('ChamadoAtualizacao Repository', () => {
       });
     });
   });
-
-  // ========================================
-  // Testes de listarHistoricoChamado
-  // ========================================
 
   describe('listarHistoricoChamado', () => {
     it('dado um ID de chamado válido, quando listarHistoricoChamado é chamado, então retorna a lista de históricos do chamado ordenada por data crescente e completa', async () => {
