@@ -36,9 +36,6 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
-      dotenv:
-        specifier: ^17.2.3
-        version: 17.2.3
       express:
         specifier: ^5.1.0
         version: 5.2.1
@@ -121,6 +118,9 @@ importers:
       autocannon:
         specifier: ^8.0.0
         version: 8.0.0
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0

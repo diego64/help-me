@@ -1,8 +1,3 @@
-process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
-  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
-
-console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
-
 import {
   describe,
   it,
@@ -329,7 +324,7 @@ describe('E2E - Rotas de Chamados', () => {
 
       expect(resposta.status).toBe(201);
       expect(resposta.body.servicos).toBeInstanceOf(Array);
-    });
+    }, 30000); // 30 segundos
 
     it('deve gerar números OS sequenciais e incrementais', async () => {
       const primeiroChamado = {

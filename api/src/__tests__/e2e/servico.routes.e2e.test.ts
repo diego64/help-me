@@ -1,8 +1,3 @@
-process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
-  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
-
-console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
-
 import {
   describe,
   it,

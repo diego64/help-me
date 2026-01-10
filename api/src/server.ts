@@ -1,6 +1,3 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
-
 import { prisma } from '../src/lib/prisma';
 import mongoose from 'mongoose';
 import app from './app';

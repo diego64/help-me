@@ -7,8 +7,6 @@ import {
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
 import { hashPassword } from '../src/utils/password';
-import dotenv from 'dotenv';
-import path from 'path';
 
 const { Pool } = pkg;
 
@@ -29,21 +27,6 @@ const log = {
   error: (msg: string) => console.log(`${colors.red}${msg}${colors.reset}`),
   title: (msg: string) => console.log(`${colors.bright}${colors.blue}${msg}${colors.reset}`),
 };
-
-
-const envPaths = [
-  path.resolve(process.cwd(), '.env'),
-  path.resolve(process.cwd(), 'api/.env'),
-  '.env',
-];
-
-for (const envPath of envPaths) {
-  const result = dotenv.config({ path: envPath });
-  if (!result.error && process.env.DATABASE_URL) {
-    log.success(`[.ENV] Carregado de: ${envPath}\n`);
-    break;
-  }
-}
 
 if (!process.env.DATABASE_URL) {
   log.error('[ERROR] DATABASE_URL não encontrada');

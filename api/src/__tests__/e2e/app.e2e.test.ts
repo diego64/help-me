@@ -232,11 +232,11 @@ beforeAll(async () => {
   await criarUsuariosDeTeste();
   await autenticarUsuarios();
 
-  console.log('\n📋 Setup completo!\n');
+  console.log('\n[INFO] Setup completo!\n');
 });
 
 afterAll(async () => {
-  console.log('\n🧹 Limpando ambiente de teste...\n');
+  console.log('\n[INFO] Limpando ambiente de teste...\n');
 
   await limparBancoDeDados();
   await limparSessoesRedis();

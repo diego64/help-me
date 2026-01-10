@@ -10,6 +10,6 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src", "@types"],
+  "include": ["src", "@types", "vitest.setup.ts"],
   "exclude": ["node_modules"]
 }

@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
 import type ms from 'ms';
 import { Usuario, Regra } from '@prisma/client';
