@@ -2,7 +2,7 @@ import {
   describe,
   it,
   expect,
-  beforeEach
+  vi
 } from 'vitest';
 import crypto from 'crypto';
 import {
@@ -178,6 +178,64 @@ describe('password.ts - Utilitário de Senha', () => {
       expect(verifyPassword('senha', hashInvalidoSemDoisPontos)).toBe(false);
       expect(verifyPassword('senha', hashInvalidoSemHash)).toBe(false);
       expect(verifyPassword('senha', hashInvalidoSemSalt)).toBe(false);
+    });
+
+    it('deve retornar false para algoritmo não suportado (linha 108)', () => {
+      const senha = 'TesteSenha123!';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(senha, salt, 600000, 64, 'sha512').toString('hex');
+
+      const hashInvalido = `pbkdf2_sha256$600000$${salt}$${hash}`;
+      
+      const resultado = verifyPassword(senha, hashInvalido);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false para número de iterações inválido - NaN (linha 113)', () => {
+      const senha = 'TesteSenha123!';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(senha, salt, 600000, 64, 'sha512').toString('hex');
+      
+      const hashInvalido = `pbkdf2_sha512$abc$${salt}$${hash}`;
+      
+      const resultado = verifyPassword(senha, hashInvalido);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false para número de iterações zero ou negativo (linha 113)', () => {
+      const senha = 'TesteSenha123!';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(senha, salt, 600000, 64, 'sha512').toString('hex');
+      
+      const hashZero = `pbkdf2_sha512$0$${salt}$${hash}`;
+      expect(verifyPassword(senha, hashZero)).toBe(false);
+      
+      const hashNegativo = `pbkdf2_sha512$-1000$${salt}$${hash}`;
+      expect(verifyPassword(senha, hashNegativo)).toBe(false);
+    });
+
+    it('deve usar fallback quando comparação hex falha (linhas 157-159)', () => {
+      const senha = 'TesteSenha123!';
+      const salt = 'invalid_non_hex_salt!!!';
+      
+      const hashLegado = `${salt}:invalid_non_hex_hash!!!`;
+      
+      const resultado = verifyPassword(senha, hashLegado);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve logar erro quando verificação lança exceção inesperada (linha 168)', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      
+      const hashMalformado = 'pbkdf2_sha512$$$';
+      
+      const resultado = verifyPassword('senha', hashMalformado);
+      
+      expect(resultado).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(consoleErrorSpy.mock.calls[0][0]).toBe('Erro ao verificar senha:');
+      
+      consoleErrorSpy.mockRestore();
     });
   });
 

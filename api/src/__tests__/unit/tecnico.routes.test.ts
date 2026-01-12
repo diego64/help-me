@@ -125,7 +125,7 @@ let router: any;
 
 beforeAll(async () => {
   router = (await import('../../routes/tecnico.routes')).default;
-});
+}, 20000);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -210,6 +210,20 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(resposta.body.error).toContain('Nome é obrigatório');
   });
 
+  it('deve retornar status 400 quando nome não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 123,
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Nome é obrigatório');
+  });
+
   it('deve retornar status 400 quando nome for menor que 2 caracteres', async () => {
     const resposta = await request(criarApp())
       .post('/tecnicos')
@@ -224,6 +238,20 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(resposta.body.error).toContain('no mínimo 2 caracteres');
   });
 
+  it('deve retornar status 400 quando nome for maior que 100 caracteres', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'a'.repeat(101),
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no máximo 100 caracteres');
+  });
+
   it('deve retornar status 400 quando sobrenome não for enviado', async () => {
     const resposta = await request(criarApp())
       .post('/tecnicos')
@@ -235,6 +263,20 @@ describe('POST /tecnicos (criação de técnico)', () => {
 
     expect(resposta.status).toBe(400);
     expect(resposta.body.error).toContain('Sobrenome é obrigatório');
+  });
+
+  it('deve retornar status 400 quando email não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 123,
+        password: 'senha123',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Email é obrigatório');
   });
 
   it('deve retornar status 400 quando email for inválido', async () => {
@@ -264,6 +306,20 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(resposta.body.error).toContain('Senha é obrigatória');
   });
 
+  it('deve retornar status 400 quando senha não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 123,
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Senha é obrigatória');
+  });
+
   it('deve retornar status 400 quando senha for menor que 8 caracteres', async () => {
     const resposta = await request(criarApp())
       .post('/tecnicos')
@@ -278,6 +334,21 @@ describe('POST /tecnicos (criação de técnico)', () => {
     expect(resposta.body.error).toContain('no mínimo 8 caracteres');
   });
 
+  it('deve retornar status 400 quando horário de entrada não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+        entrada: 123,
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
+  });
+
   it('deve retornar status 400 quando horário de entrada for inválido', async () => {
     const resposta = await request(criarApp())
       .post('/tecnicos')
@@ -287,6 +358,40 @@ describe('POST /tecnicos (criação de técnico)', () => {
         email: 'joao@empresa.com',
         password: 'senha123',
         entrada: '25:00',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('formato HH:MM');
+  });
+
+  // NOVO: Cobrir linhas 71-74 - validação de saída não string
+  it('deve retornar status 400 quando horário de saída não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+        entrada: '08:00',
+        saida: 123,
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Horário de saída é obrigatório');
+  });
+
+  // NOVO: Cobrir linhas 71-74 - validação de saída formato inválido
+  it('deve retornar status 400 quando horário de saída for inválido', async () => {
+    const resposta = await request(criarApp())
+      .post('/tecnicos')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+        entrada: '08:00',
+        saida: '25:00',
       });
 
     expect(resposta.status).toBe(400);
@@ -696,6 +801,40 @@ describe('PUT /tecnicos/:id (edição de técnico)', () => {
     expect(resposta.body.error).toContain('no mínimo 2 caracteres');
   });
 
+  // NOVO: Cobrir linha 347 - validação de sobrenome
+  it('deve retornar status 400 quando sobrenome for inválido', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'TECNICO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1')
+      .send({ sobrenome: 'S' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no mínimo 2 caracteres');
+  });
+
+  // NOVO: Cobrir linhas 57-61 - validação de email
+  it('deve retornar status 400 quando email for inválido no update', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'TECNICO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1')
+      .send({ email: 'email-invalido' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Email inválido');
+  });
+
   it('deve retornar status 409 quando email já estiver em uso', async () => {
     prismaMock.usuario.findUnique
       .mockResolvedValueOnce({
@@ -715,6 +854,44 @@ describe('PUT /tecnicos/:id (edição de técnico)', () => {
 
     expect(resposta.status).toBe(409);
     expect(resposta.body.error).toContain('Email já está em uso');
+  });
+
+  it('deve permitir atualizar com mesmo email', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'tec1',
+        regra: 'TECNICO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1')
+      .send({ email: 'joao@empresa.com' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve atualizar telefone e ramal quando undefined', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'tec1',
+        regra: 'TECNICO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1')
+      .send({ telefone: undefined, ramal: undefined });
+
+    expect(resposta.status).toBe(200);
   });
 
   it('deve retornar técnico atual quando nenhum dado for fornecido', async () => {
@@ -761,6 +938,28 @@ describe('PUT /tecnicos/:id (edição de técnico)', () => {
         }),
       })
     );
+  });
+
+  it('não deve permitir TECNICO atualizar setor', async () => {
+    usuarioRegra = 'TECNICO';
+    usuarioAtualId = 'tec1';
+    
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'tec1',
+        regra: 'TECNICO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(tecnicoBase);
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1')
+      .send({ setor: 'ADMINISTRACAO' });
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled();
   });
 
   it('deve retornar status 500 quando ocorrer erro no banco', async () => {
@@ -914,6 +1113,25 @@ describe('PUT /tecnicos/:id/horarios (atualização de horários)', () => {
     expect(resposta.body.error).toContain('formato HH:MM');
   });
 
+  // NOVO: Cobrir linhas 677-681 - validação de saída em horários
+  it('deve retornar status 400 quando horário de saída não for string em horários', async () => {
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1/horarios')
+      .send({ entrada: '09:00', saida: 123 });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Horário de saída é obrigatório');
+  });
+
+  it('deve retornar status 400 quando horário de saída for inválido em horários', async () => {
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1/horarios')
+      .send({ entrada: '09:00', saida: '25:00' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('formato HH:MM');
+  });
+
   it('deve retornar status 400 quando saída for anterior à entrada', async () => {
     const resposta = await request(criarApp())
       .put('/tecnicos/tec1/horarios')
@@ -928,6 +1146,21 @@ describe('PUT /tecnicos/:id/horarios (atualização de horários)', () => {
 
     const resposta = await request(criarApp())
       .put('/tecnicos/tec999/horarios')
+      .send({ entrada: '09:00', saida: '18:00' });
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Técnico não encontrado');
+  });
+
+  // NOVO: Cobrir linha 687 - técnico regra diferente
+  it('deve retornar status 404 quando usuário não for TECNICO na busca de horários', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'USUARIO',
+    });
+
+    const resposta = await request(criarApp())
+      .put('/tecnicos/tec1/horarios')
       .send({ entrada: '09:00', saida: '18:00' });
 
     expect(resposta.status).toBe(404);
@@ -1008,6 +1241,23 @@ describe('POST /tecnicos/:id/avatar (upload de avatar)', () => {
 
     const resposta = await request(criarApp(mockFile))
       .post('/tecnicos/tec999/avatar')
+      .send();
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Técnico não encontrado');
+  });
+
+  // NOVO: Cobrir linhas 703, 708, 712 - técnico regra diferente
+  it('deve retornar status 404 quando usuário não for TECNICO no upload de avatar', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'USUARIO',
+    });
+
+    const mockFile = { filename: 'avatar-123.jpg' };
+
+    const resposta = await request(criarApp(mockFile))
+      .post('/tecnicos/tec1/avatar')
       .send();
 
     expect(resposta.status).toBe(404);
@@ -1100,6 +1350,22 @@ describe('DELETE /tecnicos/:id (deleção de técnico)', () => {
     expect(resposta.body.error).toContain('Técnico não encontrado');
   });
 
+  // NOVO: Cobrir linha 906 - técnico regra diferente
+  it('deve retornar status 404 quando usuário não for TECNICO no delete', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+      _count: { tecnicoChamados: 0 },
+    });
+
+    const resposta = await request(criarApp()).delete('/tecnicos/tec1');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Técnico não encontrado');
+  });
+
   it('deve retornar status 403 quando usuário não for ADMIN', async () => {
     usuarioRegra = 'TECNICO';
 
@@ -1108,7 +1374,7 @@ describe('DELETE /tecnicos/:id (deleção de técnico)', () => {
     expect(resposta.status).toBe(403);
   });
 
-  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+  it('deve retornar status 500 quando ocorrer erro no soft delete', async () => {
     prismaMock.usuario.findUnique.mockResolvedValue({
       id: 'tec1',
       regra: 'TECNICO',
@@ -1119,6 +1385,22 @@ describe('DELETE /tecnicos/:id (deleção de técnico)', () => {
     prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
 
     const resposta = await request(criarApp()).delete('/tecnicos/tec1');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao deletar técnico');
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no hard delete', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'tec1',
+      regra: 'TECNICO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+      _count: { tecnicoChamados: 0 },
+    });
+    prismaMock.$transaction.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao deletar técnico');

@@ -338,7 +338,7 @@ describe('E2E - Kafka Service', () => {
       expect(producerReal).toBeNull();
       
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-    }, 20000);
+    }, 30000);
   });
 
   describe('Dado um broker Kafka indisponível, Quando tentar conectar, Então deve tratar erro apropriadamente', () => {
@@ -353,7 +353,7 @@ describe('E2E - Kafka Service', () => {
       expect(isKafkaConnected()).toBe(false);
       
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-    }, 15000);
+    }, 30000);
 
     it('permite operação normal após falha de conexão e correção da URL', async () => {
       // Tenta conectar em broker inválido

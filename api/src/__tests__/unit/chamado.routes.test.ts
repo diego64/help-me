@@ -172,6 +172,15 @@ describe('POST /chamado/abertura-chamado', () => {
     expect(resposta.body.error).toBe('Descrição é obrigatória');
   });
 
+  it('deve retornar status 400 quando descricao não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/chamado/abertura-chamado')
+      .send({ descricao: 123, servico: 'ServicoA' });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toBe('Descrição é obrigatória');
+  });
+
   it('deve retornar status 400 quando descrição for muito curta (< 10 caracteres)', async () => {
     const resposta = await request(criarApp())
       .post('/chamado/abertura-chamado')
@@ -271,6 +280,31 @@ describe('POST /chamado/abertura-chamado', () => {
     expect(resposta.body.OS).toBe('INC0002');
   });
 
+  it('deve gerar INC0001 quando OS anterior for inválido (NaN)', async () => {
+    prismaMock.servico.findMany.mockResolvedValue([
+      { id: 'id1', nome: 'ServicoA' }
+    ]);
+    
+    prismaMock.$transaction.mockImplementation(async (fn) => {
+      return await fn(prismaMock);
+    });
+    
+    prismaMock.chamado.findFirst.mockResolvedValue({ OS: 'INCabc' });
+    prismaMock.chamado.create.mockResolvedValue({
+      ...chamadoBase,
+      OS: 'INC0001',
+    });
+    
+    const resposta = await request(criarApp())
+      .post('/chamado/abertura-chamado')
+      .send({ 
+        descricao: 'Descricao valida com mais de 10 caracteres', 
+        servico: 'ServicoA' 
+      });
+    
+    expect(resposta.status).toBe(201);
+  });
+
   it('deve processar serviço como array de strings', async () => {
     prismaMock.servico.findMany.mockResolvedValue([
       { id: 'id1', nome: 'ServicoA' },
@@ -341,6 +375,18 @@ describe('POST /chamado/abertura-chamado', () => {
       .send({ 
         descricao: 'Descricao valida com mais de 10 caracteres', 
         servico: null 
+      });
+    
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('obrigatório informar');
+  });
+
+  it('deve processar servico quando for número (normalizar e filtrar)', async () => {
+    const resposta = await request(criarApp())
+      .post('/chamado/abertura-chamado')
+      .send({ 
+        descricao: 'Descricao valida com mais de 10 caracteres', 
+        servico: 123 as any
       });
     
     expect(resposta.status).toBe(400);
@@ -438,6 +484,32 @@ describe('POST /chamado/abertura-chamado', () => {
     
     expect(resposta.status).toBe(201);
     expect(resposta.body.tecnico).toBeNull();
+  });
+
+  it('deve formatar resposta corretamente com servicos undefined', async () => {
+    prismaMock.servico.findMany.mockResolvedValue([
+      { id: 'id1', nome: 'ServicoA' }
+    ]);
+    
+    prismaMock.$transaction.mockImplementation(async (fn) => {
+      return await fn(prismaMock);
+    });
+    
+    prismaMock.chamado.findFirst.mockResolvedValue(null);
+    prismaMock.chamado.create.mockResolvedValue({
+      ...chamadoBase,
+      servicos: undefined,
+    });
+    
+    const resposta = await request(criarApp())
+      .post('/chamado/abertura-chamado')
+      .send({ 
+        descricao: 'Descricao valida com mais de 10 caracteres', 
+        servico: 'ServicoA' 
+      });
+    
+    expect(resposta.status).toBe(201);
+    expect(resposta.body.servicos).toEqual([]);
   });
 });
 
@@ -644,6 +716,31 @@ describe('PATCH /chamado/:id/status', () => {
     );
   });
 
+  it('deve usar descrição padrão quando mudar para CANCELADO', async () => {
+    Regra = 'ADMIN';
+    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
+    
+    prismaMock.$transaction.mockImplementation(async (fn) => {
+      return await fn(prismaMock);
+    });
+    
+    prismaMock.chamado.update.mockResolvedValue({
+      ...chamadoBase,
+      status: 'CANCELADO',
+    });
+    
+    const resposta = await request(criarApp())
+      .patch('/chamado/chmid1/status')
+      .send({ status: 'CANCELADO' });
+    
+    expect(resposta.status).toBe(200);
+    expect(salvarHistoricoChamadoMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descricao: 'Chamado cancelado',
+      })
+    );
+  });
+
   it('deve retornar status 500 quando ocorrer erro inesperado', async () => {
     Regra = 'ADMIN';
     prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
@@ -826,6 +923,37 @@ describe('PATCH /chamado/:id/reabrir-chamado', () => {
     
     expect(resposta.status).toBe(200);
     expect(chamadoAtualizacaoModelMock.findOne).toHaveBeenCalled();
+  });
+
+  it('deve tratar erro ao buscar último técnico', async () => {
+    Regra = 'USUARIO';
+    const encerradoRecente = new Date(Date.now() - 24 * 3600 * 1000);
+    
+    prismaMock.chamado.findUnique.mockResolvedValue({
+      ...chamadoBase,
+      status: 'ENCERRADO',
+      encerradoEm: encerradoRecente.toISOString(),
+      tecnicoId: null,
+    });
+    
+    chamadoAtualizacaoModelMock.findOne.mockRejectedValue(new Error('Mongo error'));
+    
+    prismaMock.$transaction.mockImplementation(async (fn) => {
+      return await fn(prismaMock);
+    });
+    
+    prismaMock.chamado.update.mockResolvedValue({
+      ...chamadoBase,
+      status: 'REABERTO',
+      tecnicoId: null,
+      encerradoEm: null,
+    });
+    
+    const resposta = await request(criarApp())
+      .patch('/chamado/chmid1/reabrir-chamado')
+      .send({});
+    
+    expect(resposta.status).toBe(200);
   });
 
   it('deve retornar status 500 quando ocorrer erro', async () => {
@@ -1012,6 +1140,18 @@ describe('DELETE /chamado/:id', () => {
   it('deve retornar status 500 quando ocorrer erro', async () => {
     Regra = 'ADMIN';
     prismaMock.chamado.findUnique.mockRejectedValue(new Error('Database error'));
+    
+    const resposta = await request(criarApp())
+      .delete('/chamado/chmid1');
+    
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toBe('Erro ao deletar o chamado');
+  });
+
+  it('deve retornar status 500 quando falhar ao fazer soft delete', async () => {
+    Regra = 'ADMIN';
+    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
+    prismaMock.chamado.update.mockRejectedValue(new Error('Update failed'));
     
     const resposta = await request(criarApp())
       .delete('/chamado/chmid1');

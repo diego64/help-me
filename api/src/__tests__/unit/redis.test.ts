@@ -996,6 +996,38 @@ describe('Redis Client', () => {
 
       expect(console.error).toHaveBeenCalledWith('[REDIS DISCONNECT ERROR]', 'Quit failed');
     });
+
+    it('deve desconectar gracefully ao receber SIGINT', async () => {
+      const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+      
+      vi.resetModules();
+      const { disconnectRedis } = await import('../../services/redisClient');
+      mockRedisClient.quit.mockResolvedValue('OK');
+
+      const sigintHandler = process.listeners('SIGINT').pop() as () => Promise<void>;
+      await sigintHandler();
+
+      expect(mockRedisClient.quit).toHaveBeenCalled();
+      expect(processExitSpy).toHaveBeenCalledWith(0);
+      
+      processExitSpy.mockRestore();
+    });
+
+    it('deve desconectar gracefully ao receber SIGTERM', async () => {
+      const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+      
+      vi.resetModules();
+      const { disconnectRedis } = await import('../../services/redisClient');
+      mockRedisClient.quit.mockResolvedValue('OK');
+
+      const sigtermHandler = process.listeners('SIGTERM').pop() as () => Promise<void>;
+      await sigtermHandler();
+
+      expect(mockRedisClient.quit).toHaveBeenCalled();
+      expect(processExitSpy).toHaveBeenCalledWith(0);
+      
+      processExitSpy.mockRestore();
+    });
   });
 
   describe('waitForRedis', () => {

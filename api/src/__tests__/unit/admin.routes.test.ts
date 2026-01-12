@@ -479,6 +479,182 @@ describe('PUT /api/admin/:id (editar administrador)', () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Erro ao atualizar administrador' });
   });
+
+  it('deve atualizar todos os campos opcionais quando enviados', async () => {
+    const adminAtualizado = {
+      ...adminFixture,
+      nome: 'Novo Nome',
+      sobrenome: 'Novo Sobrenome',
+      email: 'novo@email.com',
+      setor: 'FINANCEIRO',
+      telefone: '(11) 98888-7777',
+      ramal: '2000',
+      avatarUrl: 'https://exemplo.com/avatar.jpg',
+      ativo: false,
+    };
+    
+    prismaMock.usuario.update.mockResolvedValue(adminAtualizado);
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        nome: 'Novo Nome',
+        sobrenome: 'Novo Sobrenome',
+        email: 'novo@email.com',
+        setor: 'FINANCEIRO',
+        telefone: '(11) 98888-7777',
+        ramal: '2000',
+        avatarUrl: 'https://exemplo.com/avatar.jpg',
+        ativo: false,
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        nome: 'Novo Nome',
+        sobrenome: 'Novo Sobrenome',
+        email: 'novo@email.com',
+        setor: 'FINANCEIRO',
+        telefone: '(11) 98888-7777',
+        ramal: '2000',
+        avatarUrl: 'https://exemplo.com/avatar.jpg',
+        ativo: false,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve permitir atualizar email do mesmo usuário', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce(adminFixtureWithPassword)
+      .mockResolvedValueOnce(adminFixtureWithPassword);
+    
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      email: 'admin@dom.com',
+    });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        email: 'admin@dom.com',
+      });
+    
+    expect(res.status).toBe(200);
+  });
+
+  it('deve ignorar campos undefined e atualizar apenas campos definidos', async () => {
+    prismaMock.usuario.update.mockResolvedValue(adminFixture);
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        nome: 'Atualizado',
+        sobrenome: undefined,
+        email: undefined,
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        nome: 'Atualizado',
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve atualizar setor para null quando enviado null', async () => {
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      setor: null,
+    });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        setor: null,
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        setor: null,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve atualizar telefone e ramal quando enviados', async () => {
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      telefone: '(11) 91111-2222',
+      ramal: '3000',
+    });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        telefone: '(11) 91111-2222',
+        ramal: '3000',
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        telefone: '(11) 91111-2222',
+        ramal: '3000',
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve atualizar avatarUrl quando enviado', async () => {
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      avatarUrl: 'https://exemplo.com/novo-avatar.png',
+    });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        avatarUrl: 'https://exemplo.com/novo-avatar.png',
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        avatarUrl: 'https://exemplo.com/novo-avatar.png',
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve atualizar campo ativo quando enviado', async () => {
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      ativo: false,
+    });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        ativo: false,
+      });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        ativo: false,
+      },
+      select: expect.any(Object),
+    });
+  });
 });
 
 describe('DELETE /api/admin/:id (excluir administrador - soft delete)', () => {

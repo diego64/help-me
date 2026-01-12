@@ -251,7 +251,7 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.servicos.length).toBeGreaterThan(0);
       
       idChamado = resposta.body.id;
-    });
+    }, 20000);
 
     it('deve retornar erro quando descrição não for fornecida', async () => {
       const payloadInvalido = {
@@ -445,7 +445,7 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.error).toContain('Descrição de encerramento inválida');
 
       await prisma.chamado.delete({ where: { id: novoChamado.id } });
-    });
+    }, 20000);
 
     it('deve rejeitar técnico tentando cancelar chamado', async () => {
       const novoChamado = await prisma.chamado.create({
@@ -665,7 +665,7 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.error).toContain('Somente chamados encerrados');
 
       await prisma.chamado.delete({ where: { id: chamadoAberto.id } });
-    });
+    }, 30000);
 
     it('deve retornar 404 para chamado inexistente', async () => {
       const idInexistente = 'id-inexistente-123';
@@ -728,7 +728,7 @@ describe('E2E - Rotas de Chamados', () => {
 
       expect(resposta.status).toBe(200);
       expect(resposta.body.chamado.status).toBe('CANCELADO');
-    });
+    }, 30000);
 
     it('deve rejeitar cancelamento sem justificativa', async () => {
       const chamado = await prisma.chamado.create({

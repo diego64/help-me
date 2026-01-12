@@ -197,6 +197,21 @@ describe('POST /usuarios (criação de usuário)', () => {
     expect(resposta.body.error).toContain('no mínimo 2 caracteres');
   });
 
+  it('deve retornar status 400 quando nome for maior que 100 caracteres', async () => {
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'a'.repeat(101),
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 'senha123',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no máximo 100 caracteres');
+  });
+
   it('deve retornar status 400 quando sobrenome não for enviado', async () => {
     const resposta = await request(criarApp())
       .post('/usuarios')
@@ -209,6 +224,21 @@ describe('POST /usuarios (criação de usuário)', () => {
 
     expect(resposta.status).toBe(400);
     expect(resposta.body.error).toContain('Sobrenome é obrigatório');
+  });
+
+  it('deve retornar status 400 quando email não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 123,
+        password: 'senha123',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Email é obrigatório');
   });
 
   it('deve retornar status 400 quando email for inválido', async () => {
@@ -233,6 +263,21 @@ describe('POST /usuarios (criação de usuário)', () => {
         nome: 'João',
         sobrenome: 'Silva',
         email: 'joao@empresa.com',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Senha é obrigatória');
+  });
+
+  it('deve retornar status 400 quando senha não for string', async () => {
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@empresa.com',
+        password: 123,
         setor: 'TECNOLOGIA_INFORMACAO',
       });
 
@@ -326,6 +371,24 @@ describe('POST /usuarios (criação de usuário)', () => {
     expect(resposta.body.error).toContain('usuário deletado com este email');
   });
 
+  it('deve continuar criação quando cacheDel falhar', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.create.mockResolvedValue(usuarioBase);
+    cacheDelMock.mockRejectedValue(new Error('Cache error'));
+
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao.silva@empresa.com',
+        password: 'senha123456',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(201);
+  });
+
   it('deve retornar status 403 quando usuário não for ADMIN', async () => {
     usuarioRegra = 'USUARIO';
 
@@ -358,6 +421,52 @@ describe('POST /usuarios (criação de usuário)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao criar usuário');
+  });
+
+  it('deve aceitar telefone e ramal opcionais', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.create.mockResolvedValue({
+      ...usuarioBase,
+      telefone: '11999999999',
+      ramal: '1234',
+    });
+
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao.silva@empresa.com',
+        password: 'senha123456',
+        telefone: '11999999999',
+        ramal: '1234',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(201);
+    expect(resposta.body.telefone).toBe('11999999999');
+    expect(resposta.body.ramal).toBe('1234');
+  });
+
+  it('deve aceitar telefone e ramal como null quando não fornecidos', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.create.mockResolvedValue({
+      ...usuarioBase,
+      telefone: null,
+      ramal: null,
+    });
+
+    const resposta = await request(criarApp())
+      .post('/usuarios')
+      .send({
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao.silva@empresa.com',
+        password: 'senha123456',
+        setor: 'TECNOLOGIA_INFORMACAO',
+      });
+
+    expect(resposta.status).toBe(201);
   });
 });
 
@@ -482,6 +591,73 @@ describe('GET /usuarios (listagem de usuários)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao listar usuários');
+  });
+
+  it('deve incluir usuários deletados quando solicitado', async () => {
+    cacheGetMock.mockResolvedValue(null);
+    prismaMock.usuario.count.mockResolvedValue(2);
+    prismaMock.usuario.findMany.mockResolvedValue([
+      usuarioBase,
+      { ...usuarioBase, deletadoEm: new Date() },
+    ]);
+
+    const resposta = await request(criarApp()).get('/usuarios?incluirDeletados=true');
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          regra: 'USUARIO',
+          ativo: true,
+        }),
+      })
+    );
+  });
+
+  it('deve aplicar paginação personalizada', async () => {
+    cacheGetMock.mockResolvedValue(null);
+    prismaMock.usuario.count.mockResolvedValue(50);
+    prismaMock.usuario.findMany.mockResolvedValue([usuarioBase]);
+
+    const resposta = await request(criarApp()).get('/usuarios?page=2&limit=10');
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 10,
+        take: 10,
+      })
+    );
+  });
+
+  it('deve limitar paginação ao máximo permitido', async () => {
+    cacheGetMock.mockResolvedValue(null);
+    prismaMock.usuario.count.mockResolvedValue(200);
+    prismaMock.usuario.findMany.mockResolvedValue([usuarioBase]);
+
+    const resposta = await request(criarApp()).get('/usuarios?limit=999');
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100, // MAX_LIMIT
+      })
+    );
+  });
+
+  it('deve tratar valores de página inválidos', async () => {
+    cacheGetMock.mockResolvedValue(null);
+    prismaMock.usuario.count.mockResolvedValue(50);
+    prismaMock.usuario.findMany.mockResolvedValue([usuarioBase]);
+
+    const resposta = await request(criarApp()).get('/usuarios?page=-1');
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0, // Página mínima 1
+      })
+    );
   });
 });
 
@@ -698,6 +874,43 @@ describe('PUT /usuarios/:id (edição de usuário)', () => {
     expect(resposta.body.error).toContain('Email já está em uso');
   });
 
+  it('deve permitir atualizar com mesmo email', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'user1',
+        regra: 'USUARIO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(usuarioBase);
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ email: 'joao@empresa.com' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve atualizar telefone e ramal quando undefined', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'user1',
+        regra: 'USUARIO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    prismaMock.usuario.update.mockResolvedValue(usuarioBase);
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ telefone: undefined, ramal: undefined });
+
+    expect(resposta.status).toBe(200);
+  });
+
   it('deve permitir ADMIN atualizar setor', async () => {
     usuarioRegra = 'ADMIN';
     
@@ -717,6 +930,28 @@ describe('PUT /usuarios/:id (edição de usuário)', () => {
       .send({ setor: 'FINANCEIRO' });
 
     expect(resposta.status).toBe(200);
+  });
+
+  it('não deve permitir USUARIO atualizar setor', async () => {
+    usuarioRegra = 'USUARIO';
+    usuarioAtualId = 'user1';
+    
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'user1',
+        regra: 'USUARIO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(usuarioBase);
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ setor: 'FINANCEIRO' });
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled();
   });
 
   it('deve retornar usuário atual quando nenhum dado for fornecido', async () => {
@@ -752,6 +987,120 @@ describe('PUT /usuarios/:id (edição de usuário)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao atualizar usuário');
+  });
+
+  it('deve validar nome quando fornecido na atualização', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ nome: 'A' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no mínimo 2 caracteres');
+  });
+
+  it('deve validar sobrenome quando fornecido na atualização', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ sobrenome: 'S' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no mínimo 2 caracteres');
+  });
+
+  it('deve validar email quando fornecido na atualização', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ email: 'email-invalido' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Email inválido');
+  });
+
+  it('deve permitir atualizar telefone com string vazia (null)', async () => {
+    usuarioRegra = 'USUARIO';
+    usuarioAtualId = 'user1';
+
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'user1',
+        regra: 'USUARIO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    prismaMock.usuario.update.mockResolvedValue({
+      ...usuarioBase,
+      telefone: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ telefone: '' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve permitir atualizar ramal com string vazia (null)', async () => {
+    usuarioRegra = 'USUARIO';
+    usuarioAtualId = 'user1';
+
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({
+        id: 'user1',
+        regra: 'USUARIO',
+        email: 'joao@empresa.com',
+        deletadoEm: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    prismaMock.usuario.update.mockResolvedValue({
+      ...usuarioBase,
+      ramal: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ ramal: '' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve retornar status 404 quando tentar editar não-USUARIO', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'ADMIN',
+      email: 'admin@empresa.com',
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1')
+      .send({ nome: 'Teste' });
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Usuário não encontrado');
   });
 });
 
@@ -829,6 +1178,36 @@ describe('PUT /usuarios/:id/senha (alteração de senha)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao alterar senha');
+  });
+
+  it('deve permitir ADMIN alterar senha de qualquer usuário', async () => {
+    usuarioRegra = 'ADMIN';
+
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+    });
+    prismaMock.usuario.update.mockResolvedValue(usuarioBase);
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1/senha')
+      .send({ password: 'novasenha123' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve retornar status 404 quando tentar alterar senha de não-USUARIO', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'ADMIN',
+    });
+
+    const resposta = await request(criarApp())
+      .put('/usuarios/user1/senha')
+      .send({ password: 'novasenha123' });
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Usuário não encontrado');
   });
 });
 
@@ -912,6 +1291,46 @@ describe('POST /usuarios/:id/avatar (upload de avatar)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao fazer upload do avatar');
+  });
+
+  it('deve permitir ADMIN fazer upload de avatar para qualquer usuário', async () => {
+    usuarioRegra = 'ADMIN';
+
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+    });
+    prismaMock.usuario.update.mockResolvedValue({
+      id: 'user1',
+      avatarUrl: '/uploads/avatars/avatar-123.jpg',
+    });
+
+    const mockFile = {
+      filename: 'avatar-123.jpg',
+      path: '/uploads/avatars/avatar-123.jpg',
+    };
+
+    const resposta = await request(criarApp(mockFile))
+      .post('/usuarios/user1/avatar')
+      .send();
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve retornar status 404 quando tentar upload para não-USUARIO', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'ADMIN',
+    });
+
+    const mockFile = { filename: 'avatar-123.jpg' };
+
+    const resposta = await request(criarApp(mockFile))
+      .post('/usuarios/user1/avatar')
+      .send();
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Usuário não encontrado');
   });
 });
 
@@ -999,6 +1418,59 @@ describe('DELETE /usuarios/:id (deleção de usuário)', () => {
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao deletar usuário');
   });
+
+  it('deve permitir USUARIO deletar própria conta (soft delete)', async () => {
+    usuarioRegra = 'USUARIO';
+    usuarioAtualId = 'user1';
+
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+      _count: { chamadoOS: 0 },
+    });
+    prismaMock.usuario.update.mockResolvedValue(usuarioBase);
+
+    const resposta = await request(criarApp()).delete('/usuarios/user1');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('deletado com sucesso');
+  });
+
+  it('deve permitir USUARIO deletar própria conta (hard delete)', async () => {
+    usuarioRegra = 'USUARIO';
+    usuarioAtualId = 'user1';
+
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'USUARIO',
+      email: 'joao@empresa.com',
+      deletadoEm: null,
+      _count: { chamadoOS: 0 },
+    });
+    prismaMock.usuario.delete.mockResolvedValue(usuarioBase);
+
+    const resposta = await request(criarApp()).delete('/usuarios/user1?permanente=true');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('removido permanentemente');
+  });
+
+  it('deve retornar status 404 quando tentar deletar não-USUARIO', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'ADMIN',
+      email: 'admin@empresa.com',
+      deletadoEm: null,
+      _count: { chamadoOS: 0 },
+    });
+
+    const resposta = await request(criarApp()).delete('/usuarios/user1');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Usuário não encontrado');
+  });
 });
 
 describe('PATCH /usuarios/:id/restaurar (restauração de usuário)', () => {
@@ -1062,6 +1534,20 @@ describe('PATCH /usuarios/:id/restaurar (restauração de usuário)', () => {
 
     expect(resposta.status).toBe(500);
     expect(resposta.body.error).toContain('Erro ao restaurar usuário');
+  });
+
+  it('deve retornar status 404 quando tentar restaurar não-USUARIO', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: 'user1',
+      regra: 'ADMIN',
+      email: 'admin@empresa.com',
+      deletadoEm: new Date(),
+    });
+
+    const resposta = await request(criarApp()).patch('/usuarios/user1/restaurar');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Usuário não encontrado');
   });
 });
 

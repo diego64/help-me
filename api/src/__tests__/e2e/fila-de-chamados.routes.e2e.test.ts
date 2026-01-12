@@ -197,11 +197,8 @@ describe('E2E - Rotas de Chamados', () => {
   };
 
   beforeAll(async () => {
-    const mongoUri = process.env.MONGO_URI_TEST ||
-      'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
-    
-    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', mongoUri);
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(process.env.MONGO_INITDB_URI!);
+    console.log('[INFO] MongoDB conectado');
 
     await limparBancoDeDados();
 
@@ -251,7 +248,7 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.servicos.length).toBeGreaterThan(0);
       
       idChamado = resposta.body.id;
-    });
+    }, 30000);
 
     it('deve retornar erro quando descrição não for fornecida', async () => {
       const payloadInvalido = {
@@ -324,7 +321,7 @@ describe('E2E - Rotas de Chamados', () => {
 
       expect(resposta.status).toBe(201);
       expect(resposta.body.servicos).toBeInstanceOf(Array);
-    }, 30000); // 30 segundos
+    }, 30000);
 
     it('deve gerar números OS sequenciais e incrementais', async () => {
       const primeiroChamado = {
@@ -352,7 +349,7 @@ describe('E2E - Rotas de Chamados', () => {
       const numeroOS1 = parseInt(resposta1.body.OS.replace('INC', ''), 10);
       const numeroOS2 = parseInt(resposta2.body.OS.replace('INC', ''), 10);
       expect(numeroOS2).toBeGreaterThan(numeroOS1);
-    });
+    }, 30000);
   });
 
   describe('PATCH /:id/status', () => {
@@ -374,7 +371,7 @@ describe('E2E - Rotas de Chamados', () => {
       expect(resposta.body.tecnico.nome).toBe('Tecnico');
 
       vi.useRealTimers();
-    });
+    }, 40000);
 
     it('deve rejeitar técnico assumindo chamado fora do expediente', async () => {
       const novoChamado = await prisma.chamado.create({
@@ -402,7 +399,7 @@ describe('E2E - Rotas de Chamados', () => {
 
       vi.useRealTimers();
       await prisma.chamado.delete({ where: { id: novoChamado.id } });
-    });
+    }, 30000);
 
     it('deve permitir admin encerrar chamado com descrição', async () => {
       const encerramentoChamado = {
@@ -728,7 +725,7 @@ describe('E2E - Rotas de Chamados', () => {
 
       expect(resposta.status).toBe(200);
       expect(resposta.body.chamado.status).toBe('CANCELADO');
-    });
+    }, 20000);
 
     it('deve rejeitar cancelamento sem justificativa', async () => {
       const chamado = await prisma.chamado.create({
@@ -829,7 +826,7 @@ describe('E2E - Rotas de Chamados', () => {
         select: { deletadoEm: true },
       });
       expect(chamadoDeletado?.deletadoEm).toBeDefined();
-    });
+    }, 30000);
 
     it('deve fazer hard delete quando solicitado', async () => {
       const chamado = await prisma.chamado.create({

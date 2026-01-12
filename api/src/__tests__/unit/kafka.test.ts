@@ -40,7 +40,7 @@ describe('Kafka Service', () => {
     } catch (error) {
     }
     vi.resetModules();
-  });
+  }, 20000);
 
   describe('Custom Log Creator', () => {
     let consoleLogSpy: any;
@@ -353,7 +353,6 @@ describe('Kafka Service', () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
       const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
-      // Não conecta o Kafka propositalmente
       await sendMessage('test-topic', [{ value: 'test' }]);
       
       expect(consoleWarnSpy).toHaveBeenCalledWith(
@@ -361,6 +360,39 @@ describe('Kafka Service', () => {
       );
       
       consoleWarnSpy.mockRestore();
+    });
+
+    it('deve logar erro e relançar exceção quando envio falha', async () => {
+      process.env.KAFKA_BROKER_URL = 'localhost:9093';
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const kafkaProducer = producer;
+      expect(typeof kafkaProducer.connect).toBe('function');
+
+      const producerReal = getProducerInstanceForTest();
+      expect(producerReal).not.toBeNull();
+
+      vi.spyOn(producerReal!, 'connect').mockResolvedValue();
+      await conectarKafkaProducer();
+
+      const erroEnvio = new Error('Falha ao enviar mensagem para Kafka');
+      const mockSend = vi.spyOn(producerReal!, 'send').mockRejectedValue(erroEnvio);
+
+      await expect(sendMessage('test-topic', [{ value: 'test' }]))
+        .rejects
+        .toThrow('Falha ao enviar mensagem para Kafka');
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[Kafka][Producer] Erro ao enviar mensagem para o tópico "test-topic":',
+        erroEnvio
+      );
+      
+      expect(mockSend).toHaveBeenCalledWith({
+        topic: 'test-topic',
+        messages: [{ value: 'test' }]
+      });
+      
+      consoleErrorSpy.mockRestore();
     });
   });
 

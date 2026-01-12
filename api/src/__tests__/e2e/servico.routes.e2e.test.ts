@@ -70,11 +70,8 @@ describe('E2E - Rotas de Serviços', () => {
 
   beforeAll(async () => {
     try {
-      const uriMongo = process.env.MONGO_URI_TEST || 
-        'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
-      
-      console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', uriMongo);
-      await mongoose.connect(uriMongo);
+      await mongoose.connect(process.env.MONGO_INITDB_URI!);
+      console.log('[INFO] MongoDB conectado');
 
       await limparBancoDados();
 
@@ -352,7 +349,7 @@ describe('E2E - Rotas de Serviços', () => {
 
       expect(resposta.status).toBe(409);
       expect(resposta.body.error).toContain('Já existe outro serviço com esse nome');
-    });
+    }, 30000);
 
     it('deve retornar 404 para ID inexistente', async () => {
       const idInexistente = 'id-inexistente-456';

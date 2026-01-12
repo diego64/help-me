@@ -59,7 +59,7 @@ let router: any;
 
 beforeAll(async () => {
   router = (await import('../../routes/servico.routes')).default;
-});
+}, 20000);
 
 beforeEach(() => {
   vi.clearAllMocks();

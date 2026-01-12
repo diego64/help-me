@@ -10,16 +10,10 @@ const RETRY_DELAY_BASE = 1000; // 1 segundo
 const DEFAULT_TTL = 3600; // 1 hora
 const CONNECTION_TIMEOUT = 5000; // 5 segundos
 
-/**
- * Monta a URL do Redis com ou sem senha
- */
 const redisUrl = REDIS_PASSWORD
   ? `redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}`
   : `redis://${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}`;
 
-/**
- * Cliente Redis com configuração otimizada
- */
 export const redisClient: RedisClientType = createClient({
   url: redisUrl,
   socket: {
@@ -31,7 +25,6 @@ export const redisClient: RedisClientType = createClient({
         return new Error('Máximo de tentativas de reconexão excedido');
       }
 
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
       const delay = Math.min(
         RETRY_DELAY_BASE * Math.pow(2, retries - 1),
         30000 // Max 30 segundos
@@ -49,10 +42,6 @@ export const redisClient: RedisClientType = createClient({
   commandsQueueMaxLength: 1000,
   disableOfflineQueue: false,
 });
-
-// ========================================
-// EVENT HANDLERS
-// ========================================
 
 redisClient.on('error', (err) => {
   console.error('[REDIS ERROR]', err.message);
@@ -74,26 +63,16 @@ redisClient.on('end', () => {
   console.log('[REDIS END] Conexão encerrada');
 });
 
-// ========================================
-// CONEXÃO AUTOMÁTICA
-// ========================================
-
 if (!redisClient.isOpen) {
   redisClient.connect().catch((err) => {
     console.error('[REDIS CONNECT ERROR]', err.message);
   });
 }
 
-/**
- * Verifica se o Redis está conectado
- */
 export function isRedisConnected(): boolean {
   return redisClient.isOpen && redisClient.isReady;
 }
 
-/**
- * Aguarda o Redis estar pronto
- */
 export async function waitForRedis(timeout = 10000): Promise<boolean> {
   const startTime = Date.now();
 
@@ -106,10 +85,6 @@ export async function waitForRedis(timeout = 10000): Promise<boolean> {
 
   return false;
 }
-
-// ========================================
-// CACHE FUNCTIONS
-// ========================================
 
 /**
  * Define um valor no cache com TTL opcional
@@ -135,7 +110,6 @@ export async function cacheSet(
     await redisClient.set(key, valueToStore, { EX: ttlToUse });
   } catch (err: any) {
     console.error('[REDIS SET ERROR]', { key, error: err.message });
-    // Não propaga erro para não quebrar a aplicação
   }
 }
 
@@ -339,9 +313,6 @@ export async function cacheFlush(): Promise<boolean> {
   }
 }
 
-/**
- * Obtém informações do Redis
- */
 export async function cacheInfo(): Promise<{
   connected: boolean;
   ready: boolean;
@@ -358,9 +329,6 @@ export async function cacheInfo(): Promise<{
   };
 }
 
-/**
- * Health check do Redis
- */
 export async function cacheHealthCheck(): Promise<{
   status: 'healthy' | 'unhealthy';
   latency?: number;
@@ -390,13 +358,6 @@ export async function cacheHealthCheck(): Promise<{
   }
 }
 
-// ========================================
-// GRACEFUL SHUTDOWN
-// ========================================
-
-/**
- * Desconecta do Redis gracefully
- */
 export async function disconnectRedis(): Promise<void> {
   try {
     if (redisClient.isOpen) {
@@ -408,7 +369,6 @@ export async function disconnectRedis(): Promise<void> {
   }
 }
 
-// Handler para graceful shutdown
 process.on('SIGINT', async () => {
   await disconnectRedis();
   process.exit(0);
@@ -418,9 +378,5 @@ process.on('SIGTERM', async () => {
   await disconnectRedis();
   process.exit(0);
 });
-
-// ========================================
-// EXPORTS
-// ========================================
 
 export default redisClient;

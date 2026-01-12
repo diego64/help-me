@@ -546,6 +546,96 @@ describe('POST /auth/logout', () => {
     expect(ttlCall).toBeDefined();
     expect(ttlCall![2]).toBeGreaterThan(0);
   });
+
+  it('deve processar logout quando token já estiver expirado (ttl <= 0)', async () => {
+    const expiredTimestamp = Math.floor(Date.now() / 1000) - 3600;
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce({ 
+      jti: 'EXPIRED-JTI', 
+      exp: expiredTimestamp
+    });
+    cacheSetMock.mockClear();
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer expired-token');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+    
+    const blacklistCall = cacheSetMock.mock.calls.find(
+      call => call[0].startsWith('jwt:blacklist:')
+    );
+    expect(blacklistCall).toBeUndefined();
+  });
+
+  it('deve processar logout quando decoded não tiver jti', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce({ 
+      exp: Math.floor(Date.now() / 1000) + 3600
+    });
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer token-sem-jti');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('deve processar logout quando decoded não tiver exp', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce({ 
+      jti: 'JTI-SEM-EXP'
+    });
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer token-sem-exp');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
+
+  it('deve processar logout quando decoded não for um objeto', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', (req: any, _res: any, next: any) => {
+      req.usuario = { ...usuarioBase };
+      req.session = { destroy: (cb: any) => cb(null) };
+      next();
+    }, authRouter);
+    prismaMock.usuario.update.mockResolvedValue({ ...usuarioBase, refreshToken: null });
+    jwtDecodeMock.mockReturnValueOnce('string-value');
+
+    const resposta = await request(app)
+      .post('/auth/logout')
+      .set('authorization', 'Bearer invalid-decoded');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ message: 'Logout realizado com sucesso.' });
+  });
 });
 
 describe('POST /auth/refresh-token', () => {
@@ -753,6 +843,33 @@ describe('GET /auth/status', () => {
         id: usuarioBase.id,
         email: usuarioBase.email,
         regra: usuarioBase.regra,
+      },
+    });
+  });
+
+  it('deve retornar dados corretos quando todos os campos do usuário estiverem presentes', async () => {
+    deveAutenticar = true;
+    usuarioMock = {
+      id: '123',
+      email: 'test@example.com',
+      regra: 'USUARIO',
+      nome: 'Test',
+      sobrenome: 'User'
+    };
+    
+    const app = express();
+    app.use(express.json());
+    app.use('/auth', authRouter);
+    
+    const resposta = await request(app).get('/auth/status');
+    
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({
+      autenticado: true,
+      usuario: {
+        id: '123',
+        email: 'test@example.com',
+        regra: 'USUARIO',
       },
     });
   });

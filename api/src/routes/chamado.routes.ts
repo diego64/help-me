@@ -184,10 +184,6 @@ function formatarChamadoResposta(chamado: any) {
  *   description: Gerenciamento de chamados de suporte
  */
 
-// ========================================
-// ABERTURA DE CHAMADO
-// ========================================
-
 /**
  * @swagger
  * /api/chamados/abertura-chamado:
@@ -342,10 +338,6 @@ router.post(
     }
   }
 );
-
-// ========================================
-// STATUS DO CHAMADO
-// ========================================
 
 /**
  * @swagger
@@ -585,10 +577,6 @@ router.patch(
   }
 );
 
-// ========================================
-// HISTÓRICO DO CHAMADO
-// ========================================
-
 /**
  * @swagger
  * /api/chamados/{id}/historico:
@@ -629,10 +617,6 @@ router.get(
     }
   }
 );
-
-// ========================================
-// REABERTURA DO CHAMADO
-// ========================================
 
 /**
  * @swagger
@@ -808,10 +792,6 @@ router.patch(
   }
 );
 
-// ========================================
-// CANCELAR O CHAMADO
-// ========================================
-
 /**
  * @swagger
  * /api/chamados/{id}/cancelar-chamado:
@@ -967,10 +947,6 @@ router.patch(
     }
   }
 );
-
-// ========================================
-// SOFT DELETE DO CHAMADO
-// ========================================
 
 /**
  * @swagger
