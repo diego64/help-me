@@ -21,6 +21,9 @@ importers:
 
   .:
     dependencies:
+      '@influxdata/influxdb-client':
+        specifier: ^1.35.0
+        version: 1.35.0
       '@prisma/adapter-pg':
         specifier: ^7.0.0
         version: 7.2.0
@@ -51,6 +54,9 @@ importers:
       kafkajs:
         specifier: ^2.2.4
         version: 2.2.4
+      mongodb:
+        specifier: ^7.0.0
+        version: 7.0.0
       mongoose:
         specifier: ^9.0.2
         version: 9.0.2
@@ -85,6 +91,9 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
+      '@types/mongodb':
+        specifier: ^4.0.7
+        version: 4.0.7
       '@types/ms':
         specifier: ^2.1.0
         version: 2.1.0
@@ -527,6 +536,9 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
+
+  '@influxdata/influxdb-client@1.35.0':
+    resolution: {integrity: sha512-woWMi8PDpPQpvTsRaUw4Ig+nOGS/CWwAwS66Fa1Vr/EkW+NEwxI8YfPBsdBMn33jK2Y86/qMiiuX/ROHIkJLTw==}
 
   '@isaacs/balanced-match@4.0.1':
     resolution: {integrity: sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ==}
@@ -1015,6 +1027,10 @@ packages:
 
   '@types/methods@1.1.4':
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
+
+  '@types/mongodb@4.0.7':
+    resolution: {integrity: sha512-lPUYPpzA43baXqnd36cZ9xxorprybxXDzteVKCPAdp14ppHtFJHnXYvNpmBvtMUTb5fKXVv6sVbzo1LHkWhJlw==}
+    deprecated: mongodb provides its own types. @types/mongodb is no longer needed.
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
@@ -3802,6 +3818,8 @@ snapshots:
     dependencies:
       hono: 4.10.6
 
+  '@influxdata/influxdb-client@1.35.0': {}
+
   '@isaacs/balanced-match@4.0.1': {}
 
   '@isaacs/brace-expansion@5.0.0':
@@ -4371,6 +4389,18 @@ snapshots:
       '@types/node': 25.0.3
 
   '@types/methods@1.1.4': {}
+
+  '@types/mongodb@4.0.7':
+    dependencies:
+      mongodb: 7.0.0
+    transitivePeerDependencies:
+      - '@aws-sdk/credential-providers'
+      - '@mongodb-js/zstd'
+      - gcp-metadata
+      - kerberos
+      - mongodb-client-encryption
+      - snappy
+      - socks
 
   '@types/ms@2.1.0': {}
 

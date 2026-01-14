@@ -38,8 +38,9 @@
     "diagnostico:api": "bash scripts/check-api.sh"
   },
   "keywords": [],
-  "packageManager": "pnpm@10.23.0",
+  "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@influxdata/influxdb-client": "^1.35.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "7.2.0",
     "@prisma/config": "^7.0.0",
@@ -50,6 +51,7 @@
     "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.2",
     "kafkajs": "^2.2.4",
+    "mongodb": "^7.0.0",
     "mongoose": "^9.0.2",
     "ms": "^2.1.3",
     "multer": "^2.0.2",
@@ -63,6 +65,7 @@
     "@types/express": "^5.0.3",
     "@types/express-session": "^1.18.2",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/mongodb": "^4.0.7",
     "@types/ms": "^2.1.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^25.0.3",

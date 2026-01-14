@@ -7,7 +7,9 @@ import {
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
 import { hashPassword } from '../src/utils/password';
-import path from 'path';
+import { createClient as createRedisClient } from 'redis';
+import { MongoClient } from 'mongodb';
+import { InfluxDB, Point } from '@influxdata/influxdb-client';
 
 const { Pool } = pkg;
 
@@ -47,6 +49,20 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({
   adapter,
   log: ['error', 'warn'],
+});
+
+// Redis Client
+const redisClient = createRedisClient({
+  url: `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`,
+});
+
+// MongoDB Client
+const mongoClient = new MongoClient(process.env.MONGO_INITDB_URI || '');
+
+// InfluxDB Client
+const influxDB = new InfluxDB({
+  url: `http://localhost:${process.env.INFLUX_PORT || 8086}`,
+  token: process.env.INFLUX_ADMIN_TOKEN || '',
 });
 
 interface DadosUsuario {
@@ -249,12 +265,177 @@ const resolucoes = [
   'Problema resolvido remotamente',
 ];
 
+async function popularRedis(chamados: any[], usuarios: any[], tecnicos: any[], servicos: any[]) {
+  log.title('\n[REDIS] Populando cache Redis...\n');
+  
+  try {
+    await redisClient.connect();
+    
+    // Limpar dados antigos
+    await redisClient.flushDb();
+    
+    // Estatísticas gerais
+    await redisClient.set('stats:chamados:total', chamados.length.toString());
+    await redisClient.set('stats:usuarios:total', usuarios.length.toString());
+    await redisClient.set('stats:tecnicos:total', tecnicos.length.toString());
+    await redisClient.set('stats:servicos:total', servicos.length.toString());
+    
+    // Contadores por status
+    const statusCounts: Record<string, number> = chamados.reduce((acc, c) => {
+      acc[c.status] = (acc[c.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    for (const [status, count] of Object.entries(statusCounts)) {
+      await redisClient.set(`stats:chamados:status:${status}`, count.toString());
+    }
+    
+    // Chamados por período
+    const agora = new Date();
+    const ultimas24h = chamados.filter(c => 
+      new Date(c.geradoEm).getTime() > agora.getTime() - 24 * 60 * 60 * 1000
+    ).length;
+    const ultimos7dias = chamados.filter(c =>
+      new Date(c.geradoEm).getTime() > agora.getTime() - 7 * 24 * 60 * 60 * 1000
+    ).length;
+    const ultimos30dias = chamados.filter(c =>
+      new Date(c.geradoEm).getTime() > agora.getTime() - 30 * 24 * 60 * 60 * 1000
+    ).length;
+    
+    await redisClient.set('stats:chamados:periodo:24h', ultimas24h.toString());
+    await redisClient.set('stats:chamados:periodo:7dias', ultimos7dias.toString());
+    await redisClient.set('stats:chamados:periodo:30dias', ultimos30dias.toString());
+    
+    // SLA e tempo médio
+    const chamadosEncerrados = chamados.filter(c => c.encerradoEm);
+    const dentroSLA = chamadosEncerrados.filter(c => {
+      const tempo = (new Date(c.encerradoEm).getTime() - new Date(c.geradoEm).getTime()) / (1000 * 60 * 60);
+      return tempo <= 24;
+    }).length;
+    
+    const percentualSLA = chamadosEncerrados.length > 0 
+      ? ((dentroSLA / chamadosEncerrados.length) * 100).toFixed(2)
+      : '0';
+    await redisClient.set('stats:sla:percentual', percentualSLA);
+    
+    const tempoMedio = chamadosEncerrados.length > 0
+      ? (chamadosEncerrados.reduce((acc, c) => {
+          const tempo = (new Date(c.encerradoEm).getTime() - new Date(c.geradoEm).getTime()) / (1000 * 60 * 60);
+          return acc + tempo;
+        }, 0) / chamadosEncerrados.length).toFixed(2)
+      : '0';
+    
+    await redisClient.set('stats:tempo:medio:resolucao', tempoMedio);
+    
+    log.success('[REDIS] Cache populado com sucesso!\n');
+    
+  } catch (error) {
+    log.error('[REDIS] Erro ao popular cache:');
+    console.error(error);
+  } finally {
+    await redisClient.disconnect();
+  }
+}
+
+async function popularMongoDB(chamados: any[]) {
+  log.title('[MONGODB] Populando histórico de chamados...\n');
+  
+  try {
+    await mongoClient.connect();
+    const db = mongoClient.db(process.env.MONGO_INITDB_DATABASE || 'helpme-mongo');
+    const collection = db.collection('historico_chamados');
+    
+    // Limpar coleção
+    await collection.deleteMany({});
+    
+    // Inserir histórico apenas de chamados encerrados e cancelados
+    const chamadosHistorico = chamados
+      .filter(c => c.status === ChamadoStatus.ENCERRADO || c.status === ChamadoStatus.CANCELADO)
+      .map(c => ({
+        chamadoId: c.id,
+        OS: c.OS,
+        descricao: c.descricao,
+        status: c.status,
+        usuarioId: c.usuarioId,
+        tecnicoId: c.tecnicoId,
+        geradoEm: c.geradoEm,
+        atualizadoEm: c.atualizadoEm,
+        encerradoEm: c.encerradoEm,
+        descricaoEncerramento: c.descricaoEncerramento,
+        criadoEm: new Date(),
+      }));
+    
+    if (chamadosHistorico.length > 0) {
+      await collection.insertMany(chamadosHistorico);
+      log.success(`[MONGODB] ${chamadosHistorico.length} registros de histórico inseridos!\n`);
+    }
+    
+  } catch (error) {
+    log.error('[MONGODB] Erro ao popular histórico:');
+    console.error(error);
+  } finally {
+    await mongoClient.close();
+  }
+}
+
+async function popularInfluxDB(chamados: any[]) {
+  log.title('[INFLUXDB] Populando métricas...\n');
+  
+  try {
+    const writeApi = influxDB.getWriteApi(
+      process.env.INFLUX_ORG || 'org',
+      process.env.INFLUX_BUCKET || 'helpme_bucket'
+    );
+    
+    // Agrupar chamados por dia
+    const chamadosPorDia: Record<string, any> = chamados.reduce((acc, c) => {
+      const dia = new Date(c.geradoEm).toISOString().split('T')[0];
+      if (!acc[dia]) {
+        acc[dia] = {
+          ABERTO: 0,
+          EM_ATENDIMENTO: 0,
+          ENCERRADO: 0,
+          CANCELADO: 0,
+          REABERTO: 0,
+          total: 0,
+        };
+      }
+      acc[dia][c.status]++;
+      acc[dia].total++;
+      return acc;
+    }, {} as Record<string, any>);
+    
+    // Escrever pontos no InfluxDB
+    for (const [dia, stats] of Object.entries(chamadosPorDia)) {
+      const timestamp = new Date(dia);
+      
+      const point = new Point('chamados')
+        .timestamp(timestamp)
+        .intField('ABERTO', stats.ABERTO)
+        .intField('EM_ATENDIMENTO', stats.EM_ATENDIMENTO)
+        .intField('ENCERRADO', stats.ENCERRADO)
+        .intField('CANCELADO', stats.CANCELADO)
+        .intField('REABERTO', stats.REABERTO)
+        .intField('total', stats.total);
+      
+      writeApi.writePoint(point);
+    }
+    
+    await writeApi.close();
+    log.success('[INFLUXDB] Métricas gravadas com sucesso!\n');
+    
+  } catch (error) {
+    log.error('[INFLUXDB] Erro ao popular métricas:');
+    console.error(error);
+  }
+}
+
 async function main() {
   const TOTAL_CHAMADOS = 15000;
   const BATCH_SIZE = 100;
   
   log.title('\n' + '='.repeat(80));
-  log.title('  BIG SEED DO BANCO DE DADOS - POSTGRESQL   ');
+  log.title('  BIG SEED - TODOS OS BANCOS DE DADOS');
   log.title('='.repeat(80) + '\n');
 
   try {
@@ -262,7 +443,7 @@ async function main() {
     await prisma.$connect();
     log.success('[CONEXÃO] Conectado com sucesso\n');
 
-    log.warn('[LIMPEZA] Limpando base de dados...\n');
+    log.warn('[LIMPEZA] Limpando base de dados PostgreSQL...\n');
     
     await prisma.ordemDeServico.deleteMany({});
     log.success('  [OK] Ordens de serviço removidas');
@@ -396,17 +577,19 @@ async function main() {
 
     log.title(`[5/6] CRIANDO ${TOTAL_CHAMADOS.toLocaleString()} CHAMADOS...\n`);
 
+    // NOVA DISTRIBUIÇÃO: 25% ABERTO, 30% EM_ATENDIMENTO, 30% ENCERRADO, 10% CANCELADO, 5% REABERTO
     const distribuicaoStatus = [
-      ...Array(800).fill(ChamadoStatus.ABERTO),           // 5.3% - 800 chamados
-      ...Array(2200).fill(ChamadoStatus.EM_ATENDIMENTO),  // 14.7% - 2.200 chamados
-      ...Array(10500).fill(ChamadoStatus.ENCERRADO),      // 70% - 10.500 chamados
-      ...Array(1000).fill(ChamadoStatus.CANCELADO),       // 6.7% - 1.000 chamados
-      ...Array(500).fill(ChamadoStatus.REABERTO),         // 3.3% - 500 chamados
+      ...Array(3750).fill(ChamadoStatus.ABERTO),           // 25% - 3.750 chamados
+      ...Array(4500).fill(ChamadoStatus.EM_ATENDIMENTO),  // 30% - 4.500 chamados
+      ...Array(4500).fill(ChamadoStatus.ENCERRADO),       // 30% - 4.500 chamados
+      ...Array(1500).fill(ChamadoStatus.CANCELADO),       // 10% - 1.500 chamados
+      ...Array(750).fill(ChamadoStatus.REABERTO),         // 5% - 750 chamados
     ];
 
     let chamadosCriados = 0;
     const totalBatches = Math.ceil(TOTAL_CHAMADOS / BATCH_SIZE);
     const tempoInicio = Date.now();
+    const todosChamados = [];
 
     for (let batch = 0; batch < totalBatches; batch++) {
       const chamadosNesteBatch = Math.min(BATCH_SIZE, TOTAL_CHAMADOS - chamadosCriados);
@@ -459,14 +642,19 @@ async function main() {
         chamadosCriados++;
       }
 
-      await prisma.$transaction(async (tx) => {
+      const chamadosInseridos = await prisma.$transaction(async (tx) => {
+        const results = [];
         for (const { chamadoData, servicoId } of chamadosBatch) {
           const chamado = await tx.chamado.create({ data: chamadoData });
           await tx.ordemDeServico.create({
             data: { chamadoId: chamado.id, servicoId },
           });
+          results.push(chamado);
         }
+        return results;
       });
+
+      todosChamados.push(...chamadosInseridos);
 
       const progresso = ((chamadosCriados / TOTAL_CHAMADOS) * 100).toFixed(1);
       const barraProgresso = '█'.repeat(Math.floor(parseFloat(progresso) / 2));
@@ -479,7 +667,18 @@ async function main() {
 
     log.success(`\n  [CONCLUÍDO] ${TOTAL_CHAMADOS.toLocaleString()} chamados criados!\n`);
 
-    log.title('[6/6] ESTATÍSTICAS FINAIS...\n');
+    log.title('[6/6] POPULANDO OUTROS BANCOS DE DADOS...\n');
+
+    // Popular Redis
+    await popularRedis(todosChamados, usuarios, tecnicos, servicos);
+
+    // Popular MongoDB
+    await popularMongoDB(todosChamados);
+
+    // Popular InfluxDB
+    await popularInfluxDB(todosChamados);
+
+    log.title('[ESTATÍSTICAS FINAIS]\n');
 
     const stats = await prisma.chamado.groupBy({
       by: ['status'],
@@ -505,7 +704,7 @@ async function main() {
     log.normal(`    Últimos 30 dias:  ${ultimos30Dias.toString().padStart(6)} (${((ultimos30Dias/TOTAL_CHAMADOS)*100).toFixed(1)}%)`);
 
     log.title('\n' + '='.repeat(80));
-    log.title('  SEED CONCLUÍDO COM SUCESSO!');
+    log.title('  SEED CONCLUÍDO COM SUCESSO - TODOS OS BANCOS!');
     log.title('='.repeat(80) + '\n');
 
     log.success('RESUMO:\n');
@@ -513,7 +712,10 @@ async function main() {
     log.normal(`  - ${tecnicos.length} Técnicos`);
     log.normal(`  - ${usuarios.length} Usuários`);
     log.normal(`  - ${servicos.length} Serviços`);
-    log.normal(`  - ${TOTAL_CHAMADOS.toLocaleString()} Chamados\n`);
+    log.normal(`  - ${TOTAL_CHAMADOS.toLocaleString()} Chamados`);
+    log.normal(`  - Redis: Populado`);
+    log.normal(`  - MongoDB: Populado`);
+    log.normal(`  - InfluxDB: Populado\n`);
 
     log.info('CREDENCIAIS:\n');
     log.normal('  Admin:    admin@helpme.com          | Admin123!');

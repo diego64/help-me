@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 4,
+  "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -32,7 +32,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "Kakfa Produção",
+      "title": "Redis Produção - Estatísticas",
       "type": "row"
     },
     {
@@ -60,7 +60,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 0,
         "y": 1
@@ -84,6 +84,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:total",
           "refId": "A",
@@ -118,7 +122,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 4,
         "y": 1
@@ -142,6 +146,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:usuarios:total",
           "refId": "A",
@@ -176,7 +184,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 8,
         "y": 1
@@ -200,6 +208,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:tecnicos:total",
           "refId": "A",
@@ -234,7 +246,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 12,
         "y": 1
@@ -258,6 +270,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:servicos:total",
           "refId": "A",
@@ -302,7 +318,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 16,
         "y": 1
@@ -326,6 +342,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:sla:percentual",
           "refId": "A",
@@ -368,7 +388,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 4,
         "x": 20,
         "y": 1
@@ -392,6 +412,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:tempo:medio:resolucao",
           "refId": "A",
@@ -407,7 +431,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 8
       },
       "id": 101,
       "panels": [],
@@ -441,7 +465,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 10
+        "y": 9
       },
       "id": 10,
       "options": {
@@ -462,6 +486,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:status:ABERTO",
           "refId": "A",
@@ -498,7 +526,7 @@
         "h": 6,
         "w": 5,
         "x": 4,
-        "y": 10
+        "y": 9
       },
       "id": 11,
       "options": {
@@ -519,6 +547,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:status:EM_ATENDIMENTO",
           "refId": "A",
@@ -555,7 +587,7 @@
         "h": 6,
         "w": 5,
         "x": 9,
-        "y": 10
+        "y": 9
       },
       "id": 12,
       "options": {
@@ -576,6 +608,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:status:ENCERRADO",
           "refId": "A",
@@ -612,7 +648,7 @@
         "h": 6,
         "w": 5,
         "x": 14,
-        "y": 10
+        "y": 9
       },
       "id": 13,
       "options": {
@@ -633,6 +669,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:status:CANCELADO",
           "refId": "A",
@@ -669,7 +709,7 @@
         "h": 6,
         "w": 5,
         "x": 19,
-        "y": 10
+        "y": 9
       },
       "id": 14,
       "options": {
@@ -690,6 +730,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:status:REABERTO",
           "refId": "A",
@@ -705,7 +749,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 15
       },
       "id": 102,
       "panels": [],
@@ -739,7 +783,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 17
+        "y": 16
       },
       "id": 21,
       "options": {
@@ -760,6 +804,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:periodo:24h",
           "refId": "A",
@@ -796,7 +844,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 17
+        "y": 16
       },
       "id": 22,
       "options": {
@@ -817,6 +865,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:periodo:7dias",
           "refId": "A",
@@ -853,7 +905,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 17
+        "y": 16
       },
       "id": 23,
       "options": {
@@ -874,6 +926,10 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
+          "datasource": {
+            "type": "redis-datasource",
+            "uid": "redis-datasource"
+          },
           "command": "get",
           "keyName": "stats:chamados:periodo:30dias",
           "refId": "A",
@@ -899,9 +955,9 @@
     "to": "now"
   },
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "America/Sao_Paulo",
   "title": "Banco de Dados - Redis - Produção",
   "uid": "redis-prod",
-  "version": 1,
+  "version": 0,
   "weekStart": ""
 }
