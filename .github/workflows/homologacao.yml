@@ -4,8 +4,8 @@ run-name: Pipeline CI executado por ${{ github.actor }} (#${{ github.run_number 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Versão da release (ex: 1.0.0, 1.2.3)'
+      version-override:
+        description: 'Sobrescrever versão do package.json (opcional, ex: 1.0.0)'
         required: false
         type: string
       create-tag:
@@ -13,6 +13,16 @@ on:
         required: false
         type: boolean
         default: false
+      bump-type:
+        description: 'Tipo de incremento de versão (se não informar version-override)'
+        required: false
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: none
 
 permissions:
   contents: write
@@ -43,6 +53,8 @@ jobs:
     needs: [ambiente-para-homologacao]
     runs-on: ubuntu-latest
     environment: homologacao
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     
     steps:
       - name: Checkout do código
@@ -79,21 +91,75 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Gerar .env temporário para build
+      - name: Determinar versão
+        id: version
         working-directory: ./api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
         run: |
-          cat > .env << 'EOF'
-          DATABASE_URL=${DATABASE_URL}
-          MONGO_INITDB_URI=${MONGO_INITDB_URI}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          NODE_ENV=production
-          EOF
+          # Função para incrementar versão
+          bump_version() {
+            local version=$1
+            local bump_type=$2
+            
+            IFS='.' read -ra VERSION_PARTS <<< "$version"
+            MAJOR="${VERSION_PARTS[0]}"
+            MINOR="${VERSION_PARTS[1]}"
+            PATCH="${VERSION_PARTS[2]}"
+            
+            case $bump_type in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            
+            echo "$MAJOR.$MINOR.$PATCH"
+          }
+          
+          # Ler versão do package.json
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "[INFO] Versão do package.json: $PACKAGE_VERSION"
+          
+          # Determinar versão final
+          if [ -n "${{ inputs.version-override }}" ]; then
+            VERSION="${{ inputs.version-override }}"
+            echo "[INFO] Usando versão manual: $VERSION"
+          elif [ "${{ inputs.bump-type }}" != "none" ]; then
+            VERSION=$(bump_version "$PACKAGE_VERSION" "${{ inputs.bump-type }}")
+            echo "[INFO]  Versão incrementada (${{ inputs.bump-type }}): $VERSION"
+          else
+            VERSION="$PACKAGE_VERSION"
+            echo "[SUCESSO] Usando versão do package.json: $VERSION"
+          fi
+          
+          # Validar formato
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "[ERROR] Versão inválida: $VERSION"
+            echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
+            exit 1
+          fi
+          
+          echo "[INFO] Versão final: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      
+      - name: Atualizar package.json (se necessário)
+        if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
+        working-directory: ./api
+        run: |
+          echo "[INFO] Atualizando package.json para versão ${{ steps.version.outputs.version }}"
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração no package.json"
       
       - name: Gerar Prisma Client
         working-directory: ./api
@@ -112,6 +178,12 @@ jobs:
       
       - name: Build do projeto
         working-directory: ./api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          NODE_ENV: production
         run: pnpm build
       
       - name: Verificar build gerado
@@ -163,32 +235,6 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Gerar .env de teste
-        working-directory: ./api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
-        run: |
-          cat > .env.test << 'EOF'
-          NODE_ENV=test
-          DATABASE_URL=${DATABASE_URL}
-          MONGO_INITDB_URI=${MONGO_INITDB_URI}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          REDIS_PASSWORD=
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          SMTP_HOST=sandbox.smtp.mailtrap.io
-          SMTP_PORT=2525
-          SMTP_USER=${SMTP_USER}
-          SMTP_PASS=${SMTP_PASS}
-          API_BASE_URL=http://localhost:3000
-          EOF
-      
       - name: Gerar Prisma Client
         working-directory: ./api
         env:
@@ -197,7 +243,21 @@ jobs:
       
       - name: Executar testes unitários
         working-directory: ./api
-        run: node --env-file=.env.test -- pnpm test:unit
+        env:
+          NODE_ENV: test
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          REDIS_PASSWORD: ""
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          SMTP_HOST: sandbox.smtp.mailtrap.io
+          SMTP_PORT: 2525
+          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
+          API_BASE_URL: http://localhost:3000
+        run: pnpm test:unit
       
       - name: Upload de coverage (se disponível)
         if: always()
@@ -240,48 +300,11 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Gerar .env de teste E2E
-        working-directory: ./api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
-          INFLUX_ADMIN_TOKEN: ${{ secrets.INFLUX_ADMIN_TOKEN }}
-          INFLUX_PASSWORD: ${{ secrets.INFLUX_PASSWORD }}
-        run: |
-          cat > .env.test << EOF
-          NODE_ENV=test
-          DATABASE_URL=${DATABASE_URL}
-          MONGO_INITDB_URI=${MONGO_INITDB_URI}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          REDIS_PASSWORD=
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          KAFKA_BROKER_URL=localhost:9093
-          INFLUX_ADMIN_TOKEN=${INFLUX_ADMIN_TOKEN}
-          INFLUX_PASSWORD=${INFLUX_PASSWORD}
-          SMTP_HOST=sandbox.smtp.mailtrap.io
-          SMTP_PORT=2525
-          SMTP_USER=${SMTP_USER}
-          SMTP_PASS=${SMTP_PASS}
-          API_BASE_URL=http://localhost:3000
-          EOF
-      
-      - name: Gerar Prisma Client (primeira vez)
+      - name: Gerar Prisma Client
         working-directory: ./api
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
         run: pnpm run generate
-      
-      - name: Regenerar Prisma Client com .env.test
-        working-directory: ./api
-        run: |
-          echo "Regenerando Prisma Client com DATABASE_URL do .env.test..."
-          node --env-file=.env.test -- pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
         working-directory: ./api
@@ -327,33 +350,36 @@ jobs:
       - name: Popular banco de dados (seed)
         working-directory: ./api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-        run: pnpm run seed
-      
-      - name: 🔍 DEBUG - Verificar variáveis de ambiente
-        working-directory: ./api
-        run: |
-          echo "=== VERIFICANDO VARIÁVEIS DE AMBIENTE ==="
-          echo "DATABASE_URL (primeiros 50 caracteres):"
-          echo "$DATABASE_URL" | cut -c1-50
-          echo ""
-          echo "MONGO_INITDB_URI (primeiros 50 caracteres):"
-          echo "$MONGO_INITDB_URI" | cut -c1-50
-          echo ""
-          echo "Conteúdo do .env.test (primeiras 15 linhas):"
-          head -n 15 .env.test
-          echo ""
-          echo "=== FIM DA VERIFICAÇÃO ==="
-        env:
+          NODE_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
           MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          REDIS_PASSWORD: ""
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: pnpm run seed-big
       
       - name: Executar testes E2E
         working-directory: ./api
         env:
+          NODE_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
           MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-        run: node --env-file=.env.test -- pnpm vitest run src/__tests__/e2e
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
+          REDIS_PASSWORD: ""
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          KAFKA_BROKER_URL: localhost:9093
+          INFLUX_ADMIN_TOKEN: ${{ secrets.INFLUX_ADMIN_TOKEN }}
+          INFLUX_PASSWORD: ${{ secrets.INFLUX_PASSWORD }}
+          SMTP_HOST: sandbox.smtp.mailtrap.io
+          SMTP_PORT: 2525
+          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
+          API_BASE_URL: http://localhost:3000
+        run: pnpm vitest run src/__tests__/e2e
       
       - name: Upload de coverage E2E (se disponível)
         if: always()
@@ -387,10 +413,10 @@ jobs:
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
-    needs: [testes-unitarios, testes-e2e]
+    needs: [build, testes-unitarios, testes-e2e]
     environment: homologacao
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ needs.build.outputs.version }}
       tags: ${{ steps.meta.outputs.tags }}
     
     steps:
@@ -399,44 +425,13 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Determinar versão
-        id: version
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-            echo "Versão manual: $VERSION"
-          else
-            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-            echo "Última tag encontrada: $LAST_TAG"
-            
-            IFS='.' read -ra VERSION_PARTS <<< "${LAST_TAG#v}"
-            MAJOR="${VERSION_PARTS[0]}"
-            MINOR="${VERSION_PARTS[1]}"
-            PATCH="${VERSION_PARTS[2]}"
-            PATCH=$((PATCH + 1))
-            VERSION="$MAJOR.$MINOR.$PATCH"
-            echo "Nova versão auto-incrementada: $VERSION"
-          fi
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-      
-      - name: Validar formato da versão
-        run: |
-          if ! [[ "${{ steps.version.outputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Versão inválida: ${{ steps.version.outputs.version }}"
-            echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
-            exit 1
-          fi
-          echo "Versão válida: ${{ steps.version.outputs.version }}"
-      
       - name: Extrair metadados Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api
           tags: |
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ needs.build.outputs.version }}
             type=raw,value=latest
             type=raw,value=homolog
             type=sha,prefix=sha-
@@ -459,33 +454,6 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: DEBUG - Verificar Dockerfile
-        run: |
-          echo "=== VERIFICANDO DOCKERFILE ==="
-          pwd
-          ls -la
-          echo ""
-          echo "Conteúdo da pasta api:"
-          ls -la api/
-          echo ""
-          echo "Dockerfile na raiz?"
-          if [ -f "Dockerfile" ]; then
-            echo "SIM! Dockerfile encontrado na raiz"
-            echo "Tamanho: $(wc -c < Dockerfile) bytes"
-            echo "Primeiras 10 linhas:"
-            head -n 10 Dockerfile
-          else
-            echo "NÃO! Dockerfile NÃO encontrado na raiz"
-          fi
-          echo ""
-          echo "Dockerfile em api/?"
-          if [ -f "api/Dockerfile" ]; then
-            echo "SIM! api/Dockerfile encontrado"
-            echo "Tamanho: $(wc -c < api/Dockerfile) bytes"
-          else
-            echo "NÃO! api/Dockerfile NÃO encontrado"
-          fi
-      
       - name: Build e Push da imagem
         uses: docker/build-push-action@v6
         with:
@@ -497,7 +465,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:buildcache,mode=max
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            VERSION=${{ needs.build.outputs.version }}
             BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             GIT_COMMIT=${{ github.sha }}
       
@@ -505,7 +473,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.32.0
         with:
           scan-type: 'image'
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ steps.version.outputs.version }}
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}
           format: sarif
           output: trivy-results.sarif
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
@@ -524,13 +492,25 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
-          echo "Tag v${{ steps.version.outputs.version }} criada e enviada"
+          git tag -a "v${{ needs.build.outputs.version }}" -m "Release v${{ needs.build.outputs.version }}"
+          git push origin "v${{ needs.build.outputs.version }}"
+          echo "Tag v${{ needs.build.outputs.version }} criada e enviada"
       
       - name: Resumo da release
         run: |
-          echo "## Release v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "##Release v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "###Versão" >> $GITHUB_STEP_SUMMARY
+          echo "- **Versão do package.json**: \`${{ needs.build.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ inputs.version-override }}" ]; then
+            echo "- **Origem**: Manual override" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ inputs.bump-type }}" != "none" ]; then
+            echo "- **Origem**: Auto-incremento (${{ inputs.bump-type }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Origem**: package.json" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Imagens Docker Publicadas" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -538,7 +518,6 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Informações da Build" >> $GITHUB_STEP_SUMMARY
-          echo "- **Versão**: \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Build**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Executor**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
@@ -547,7 +526,7 @@ jobs:
           echo "### Para usar:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "# Versão específica" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Última versão" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:latest" >> $GITHUB_STEP_SUMMARY
@@ -556,7 +535,7 @@ jobs:
           if [ "${{ inputs.create-tag }}" == "true" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Tag Git criada" >> $GITHUB_STEP_SUMMARY
-            echo "Tag **v${{ steps.version.outputs.version }}** foi criada no repositório" >> $GITHUB_STEP_SUMMARY
+            echo "Tag **v${{ needs.build.outputs.version }}** foi criada no repositório" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
