@@ -125,28 +125,28 @@ jobs:
           
           # Ler versão do package.json
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          echo "[INFO] Versão do package.json: $PACKAGE_VERSION"
+          echo "Versão do package.json: $PACKAGE_VERSION"
           
           # Determinar versão final
           if [ -n "${{ inputs.version-override }}" ]; then
             VERSION="${{ inputs.version-override }}"
-            echo "[INFO] Usando versão manual: $VERSION"
+            echo "Usando versão manual: $VERSION"
           elif [ "${{ inputs.bump-type }}" != "none" ]; then
             VERSION=$(bump_version "$PACKAGE_VERSION" "${{ inputs.bump-type }}")
-            echo "[INFO]  Versão incrementada (${{ inputs.bump-type }}): $VERSION"
+            echo "Versão incrementada (${{ inputs.bump-type }}): $VERSION"
           else
             VERSION="$PACKAGE_VERSION"
-            echo "[SUCESSO] Usando versão do package.json: $VERSION"
+            echo "Usando versão do package.json: $VERSION"
           fi
           
           # Validar formato
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "[ERROR] Versão inválida: $VERSION"
+            echo "Versão inválida: $VERSION"
             echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
             exit 1
           fi
           
-          echo "[INFO] Versão final: $VERSION"
+          echo "Versão final: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       
@@ -154,7 +154,7 @@ jobs:
         if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
         working-directory: ./api
         run: |
-          echo "[INFO] Atualizando package.json para versão ${{ steps.version.outputs.version }}"
+          echo "Atualizando package.json para versão ${{ steps.version.outputs.version }}"
           npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -164,7 +164,7 @@ jobs:
       - name: Gerar Prisma Client
         working-directory: ./api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
       - name: Verificar TypeScript
@@ -178,12 +178,6 @@ jobs:
       
       - name: Build do projeto
         working-directory: ./api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          NODE_ENV: production
         run: pnpm build
       
       - name: Verificar build gerado
@@ -192,7 +186,7 @@ jobs:
           echo "Conteúdo do diretório dist:"
           ls -lah dist/
           echo "Verificando arquivo principal:"
-          test -f dist/server.js && echo "✓ server.js encontrado" || echo "✗ server.js NÃO encontrado"
+          test -f dist/server.js && echo "server.js encontrado" || echo "server.js NÃO encontrado"
       
       - name: Upload do build
         uses: actions/upload-artifact@v4
@@ -238,26 +232,12 @@ jobs:
       - name: Gerar Prisma Client
         working-directory: ./api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
       - name: Executar testes unitários
         working-directory: ./api
-        env:
-          NODE_ENV: test
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD: ""
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          SMTP_HOST: sandbox.smtp.mailtrap.io
-          SMTP_PORT: 2525
-          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
-          API_BASE_URL: http://localhost:3000
-        run: pnpm test:unit
+        run: pnpm run test:unit:ci
       
       - name: Upload de coverage (se disponível)
         if: always()
@@ -303,7 +283,7 @@ jobs:
       - name: Gerar Prisma Client
         working-directory: ./api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
@@ -328,10 +308,10 @@ jobs:
         working-directory: ./api
         run: |
           echo "Verificando PostgreSQL..."
-          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; do echo "Aguardando PostgreSQL..."; sleep 2; done' || echo "⚠️ PostgreSQL timeout"
+          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; do echo "Aguardando PostgreSQL..."; sleep 2; done' || echo "PostgreSQL timeout"
           
           echo "Verificando Redis (sem senha)..."
-          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; do echo "Aguardando Redis..."; sleep 2; done' || echo "⚠️ Redis timeout"
+          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; do echo "Aguardando Redis..."; sleep 2; done' || echo "Redis timeout"
           
           echo "Testando Redis sem autenticação..."
           docker compose -f docker-compose.test.yml exec -T redis redis-cli set test-key "test-value"
@@ -344,35 +324,16 @@ jobs:
       - name: Executar migrations
         working-directory: ./api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run migrate
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-        run: pnpm run seed
+        run: pnpm run seed-big-ci
       
       - name: Executar testes E2E
         working-directory: ./api
-        env:
-          NODE_ENV: test
-          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD: ""
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          KAFKA_BROKER_URL: localhost:9093
-          INFLUX_ADMIN_TOKEN: ${{ secrets.INFLUX_ADMIN_TOKEN }}
-          INFLUX_PASSWORD: ${{ secrets.INFLUX_PASSWORD }}
-          SMTP_HOST: sandbox.smtp.mailtrap.io
-          SMTP_PORT: 2525
-          SMTP_USER: ${{ secrets.SMTP_USER_TEST }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS_TEST }}
-          API_BASE_URL: http://localhost:3000
-        run: pnpm vitest run src/__tests__/e2e
+        run: pnpm run test:e2e
       
       - name: Upload de coverage E2E (se disponível)
         if: always()
@@ -491,9 +452,9 @@ jobs:
       
       - name: Resumo da release
         run: |
-          echo "##Release v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Release v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "###Versão" >> $GITHUB_STEP_SUMMARY
+          echo "### Versão" >> $GITHUB_STEP_SUMMARY
           echo "- **Versão do package.json**: \`${{ needs.build.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "${{ inputs.version-override }}" ]; then
