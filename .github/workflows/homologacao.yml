@@ -294,81 +294,132 @@ jobs:
           sudo systemctl restart docker || true
           sleep 5
       
-      - name: Subir infraestrutura completa com Docker Compose
+      - name: Liberar portas ocupadas (force kill)
+        run: |
+          echo "Matando processos nas portas necessárias..."
+          sudo fuser -k 5433/tcp 2>/dev/null || true
+          sudo fuser -k 27018/tcp 2>/dev/null || true  
+          sudo fuser -k 6379/tcp 2>/dev/null || true
+          sudo fuser -k 2181/tcp 2>/dev/null || true
+          sudo fuser -k 9093/tcp 2>/dev/null || true
+          sudo fuser -k 8086/tcp 2>/dev/null || true
+          sleep 5
+      
+      - name: Limpar TODOS os containers e recursos órfãos
         working-directory: ./api
         run: |
-          echo "Parando e removendo containers existentes com --remove-orphans..."
-          docker compose -f docker-compose.test.yml down -v --remove-orphans || true
+          echo "=== LIMPEZA COMPLETA DE RECURSOS DOCKER ==="
           
-          echo "Forçando parada explícita dos containers órfãos conhecidos..."
-          docker stop helpme-redis-test 2>/dev/null || true
-          docker stop helpme-postgres-test 2>/dev/null || true
-          docker stop helpme-mongodb-test 2>/dev/null || true
-          docker rm -f helpme-redis-test 2>/dev/null || true
-          docker rm -f helpme-postgres-test 2>/dev/null || true
-          docker rm -f helpme-mongodb-test 2>/dev/null || true
+          # 1. Parar TODOS os containers em execução
+          echo "Parando todos os containers..."
+          docker stop $(docker ps -aq) 2>/dev/null || echo "Nenhum container para parar"
           
-          echo "Forçando parada de todos os containers órfãos por filtro..."
-          docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          # 2. Remover TODOS os containers
+          echo "Removendo todos os containers..."
+          docker rm -f $(docker ps -aq) 2>/dev/null || echo "Nenhum container para remover"
           
-          docker ps -a --filter "name=mongodb_helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=mongodb_helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          # 3. Limpar recursos do projeto específico
+          echo "Limpando recursos do docker-compose..."
+          docker compose -f docker-compose.test.yml down -v --remove-orphans 2>/dev/null || true
           
-          docker ps -a --filter "name=postgresql_helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=postgresql_helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          # 4. Remover TODAS as redes customizadas
+          echo "Removendo todas as redes customizadas..."
+          docker network prune -f
           
-          docker ps -a --filter "name=redis" --filter "name=helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=redis" --filter "name=helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          # 5. Remover TODOS os volumes não usados
+          echo "Removendo volumes não utilizados..."
+          docker volume prune -f
           
-          echo "Removendo redes órfãs..."
-          docker network ls --filter "name=helpme" --format "{{.ID}}" | xargs -r docker network rm || true
-          
-          echo "Removendo volumes órfãos..."
-          docker volume ls --filter "name=helpme" --format "{{.ID}}" | xargs -r docker volume rm -f || true
-          
-          echo "Limpeza geral de containers parados..."
-          docker container prune -f || true
-          
+          # 6. Aguardar liberação das portas
           echo "Aguardando liberação completa das portas..."
-          sleep 15
+          sleep 10
           
-          echo "Verificando se portas estão livres..."
-          if netstat -tulpn 2>/dev/null | grep -E ":(5433|27018|6379)"; then
-            echo "AVISO: Portas ainda em uso!"
-            netstat -tulpn 2>/dev/null | grep -E ":(5433|27018|6379)"
-          else
-            echo "Portas liberadas com sucesso"
-          fi
+          # 7. Verificar portas
+          echo "Verificando status das portas necessárias:"
+          for port in 5433 27018 6379 2181 9093 8086; do
+            if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+              echo "[WARN] Porta $port ainda em uso!"
+              lsof -i :$port || true
+            else
+              echo "[SUCESSO] Porta $port livre"
+            fi
+          done
           
-          echo "Tentando pull das imagens (opcional)..."
-          docker compose -f docker-compose.test.yml pull --quiet || echo "Pull falhou, usando imagens em cache"
+          echo "=== LIMPEZA CONCLUÍDA ==="
+      
+      - name: Subir infraestrutura com Docker Compose
+        working-directory: ./api
+        run: |
+          echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
           
-          echo "Subindo nova infraestrutura..."
-          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans --timeout 300
+          # Pull das imagens (com retry)
+          echo "Baixando imagens Docker..."
+          for i in {1..3}; do
+            docker compose -f docker-compose.test.yml pull && break || {
+              echo "Tentativa $i de pull falhou, tentando novamente..."
+              sleep 5
+            }
+          done
           
-          echo "Aguardando serviços ficarem prontos..."
+          # Subir serviços
+          echo "Iniciando serviços..."
+          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans
+          
+          # Aguardar inicialização
+          echo "Aguardando serviços ficarem prontos (60s)..."
           sleep 60
           
-          echo "Containers em execução:"
+          # Verificar status
+          echo "Status dos containers:"
           docker compose -f docker-compose.test.yml ps
+          
+          echo "=== INFRAESTRUTURA PRONTA ==="
       
       - name: Verificar saúde dos serviços
         working-directory: ./api
         run: |
-          echo "Verificando PostgreSQL..."
-          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; do echo "Aguardando PostgreSQL..."; sleep 2; done' || echo "PostgreSQL timeout"
+          echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
           
-          echo "Verificando Redis (sem senha)..."
-          timeout 30 bash -c 'until docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; do echo "Aguardando Redis..."; sleep 2; done' || echo "Redis timeout"
+          # PostgreSQL
+          echo "Testando PostgreSQL..."
+          for i in {1..30}; do
+            if docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; then
+              echo "[SUCESSO] PostgreSQL pronto!"
+              break
+            fi
+            echo "Aguardando PostgreSQL... ($i/30)"
+            sleep 2
+          done
           
-          echo "Testando Redis sem autenticação..."
+          # Redis
+          echo "Testando Redis..."
+          for i in {1..30}; do
+            if docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; then
+              echo "[SUCESSO] Redis pronto!"
+              break
+            fi
+            echo "Aguardando Redis... ($i/30)"
+            sleep 2
+          done
+          
+          # Teste básico Redis
+          echo "Executando teste básico no Redis..."
           docker compose -f docker-compose.test.yml exec -T redis redis-cli set test-key "test-value"
           docker compose -f docker-compose.test.yml exec -T redis redis-cli get test-key
           docker compose -f docker-compose.test.yml exec -T redis redis-cli del test-key
           
-          echo "Status final dos containers:"
+          # MongoDB
+          echo "Testando MongoDB..."
+          docker compose -f docker-compose.test.yml exec -T mongodb mongosh --eval "db.runCommand({ ping: 1 })" || echo "MongoDB ainda inicializando..."
+          
+          echo "=== VERIFICAÇÃO CONCLUÍDA ==="
+          
+          # Status final
+          echo "Containers em execução:"
           docker compose -f docker-compose.test.yml ps
+          
+          echo "Portas expostas:"
+          docker compose -f docker-compose.test.yml ps --format json | jq -r '.[].Publishers[] | "\(.PublishedPort) -> \(.TargetPort)"' 2>/dev/null || docker compose -f docker-compose.test.yml ps
       
       - name: Executar migrations
         working-directory: ./api
