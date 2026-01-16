@@ -1,4 +1,5 @@
-import { describe,
+import {
+  describe,
   it,
   expect,
   vi,
@@ -8,7 +9,6 @@ import { registrarAcaoNoHistorico, buscarHistorico } from '../../services/chamad
 import { salvarHistoricoChamado, listarHistoricoChamado } from '../../repositories/chamadoAtualizacao.repository';
 import { HistoricoChamadoInput } from '../../../@types/historicoChamado';
 
-// ==== MOCK DO REPOSITÓRIO ====
 vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
   salvarHistoricoChamado: vi.fn(),
   listarHistoricoChamado: vi.fn(),
@@ -24,16 +24,15 @@ describe('ChamadoAtualizacao Service', () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-123',
-        tipo: 'STATUS',                    // ✅ CORRIGIDO: era 'acao'
+        tipo: 'STATUS',
         de: 'ABERTO',
         para: 'EM_ATENDIMENTO',
         descricao: 'Chamado movido para Em Andamento',
-        autorId: 'user-456',               // ✅ CORRIGIDO: era 'usuarioId'
-        autorNome: 'João Silva',           // ✅ ADICIONADO
-        autorEmail: 'joao@email.com',      // ✅ ADICIONADO
+        autorId: 'user-456',
+        autorNome: 'João Silva',
+        autorEmail: 'joao@email.com',
       };
 
-      // ✅ CORRIGIDO: Retornar objeto ao invés de undefined
       vi.mocked(salvarHistoricoChamado).mockResolvedValue({
         _id: 'hist-mock-1',
         ...mockHistorico,
@@ -52,13 +51,13 @@ describe('ChamadoAtualizacao Service', () => {
       // Arrange
       const mockHistorico: HistoricoChamadoInput = {
         chamadoId: 'chamado-123',
-        tipo: 'STATUS',                    // ✅ CORRIGIDO
+        tipo: 'STATUS',
         de: 'ABERTO',
         para: 'CANCELADO',
         descricao: 'Teste de erro',
-        autorId: 'user-456',               // ✅ CORRIGIDO
-        autorNome: 'Maria Santos',         // ✅ ADICIONADO
-        autorEmail: 'maria@email.com',     // ✅ ADICIONADO
+        autorId: 'user-456',
+        autorNome: 'Maria Santos',
+        autorEmail: 'maria@email.com',
       };
 
       const erro = new Error('Erro ao salvar no banco de dados');

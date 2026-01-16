@@ -196,7 +196,7 @@ jobs:
       
       - name: Executar testes unitários
         working-directory: ./api
-        run: pnpm test:unit
+        run: node --env-file=.env.test -- pnpm test:unit
       
       - name: Upload de coverage (se disponível)
         if: always()
@@ -280,7 +280,7 @@ jobs:
         working-directory: ./api
         run: |
           echo "Regenerando Prisma Client com DATABASE_URL do .env.test..."
-          pnpm exec dotenv -e .env.test -- pnpm run generate
+          node --env-file=.env.test -- pnpm run generate
       
       - name: Subir infraestrutura completa com Docker Compose
         working-directory: ./api
@@ -352,7 +352,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
           MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-        run: pnpm exec dotenv -e .env.test -- pnpm vitest run src/__tests__/e2e
+        run: node --env-file=.env.test -- pnpm vitest run src/__tests__/e2e
       
       - name: Upload de coverage E2E (se disponível)
         if: always()

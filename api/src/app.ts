@@ -22,9 +22,9 @@ if (!JWT_SECRET) {
 
 export const app: Express = express();
 
-// ========================================
+// ================
 // MIDDLEWARE
-// ========================================
+// ================
 
 app.use(express.json());
 
@@ -39,10 +39,6 @@ app.use(session({
     maxAge: 8 * 60 * 60 * 1000 // 8 horas
   }
 }));
-
-// ========================================
-// ROTAS
-// ========================================
 
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);

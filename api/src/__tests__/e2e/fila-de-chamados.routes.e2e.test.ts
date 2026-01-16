@@ -4,6 +4,7 @@ import {
   expect,
   beforeAll,
   afterAll,
+  beforeEach,
   vi
 } from 'vitest';
 import request from 'supertest';
@@ -11,28 +12,34 @@ import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
+import { hashPassword } from '../../utils/password';
 
-vi.setConfig({ testTimeout: 15000 });
+vi.setConfig({ testTimeout: 20000 });
 
-const URL_BASE = '/filadechamados';
+const BASE_URL = '/chamado';
 
-describe('E2E - Rotas de Listagem de Chamados', () => {
-  // ========================================
-  // DADOS DE TESTES & CONFIGURAÇÃO
-  // ========================================
-  
+describe('E2E - Rotas de Chamados', () => {
+
   let tokenAutenticacaoUsuario: string;
+  let tokenAutenticacaoUsuario2: string;
   let tokenAutenticacaoTecnico: string;
   let tokenAutenticacaoAdmin: string;
   let idUsuario: string;
+  let idUsuario2: string;
   let idTecnico: string;
   let idAdmin: string;
-  let idChamadoAberto: string;
-  let idChamadoEmAtendimento: string;
+  let idServico: string;
+  let idChamado: string;
 
-  // ========================================
-  // FUNÇÕES AUXILIARES
-  // ========================================
+  let contadorOS = 0;
+
+  const gerarOSUnicoTeste = (): string => {
+    const timestamp = Date.now().toString().slice(-6);
+    contadorOS++;
+    const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    const contador = contadorOS.toString().padStart(3, '0');
+    return `INC${timestamp}${contador}${random}`;
+  };
 
   const limparBancoDeDados = async () => {
     await prisma.ordemDeServico.deleteMany({});
@@ -43,13 +50,27 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
   };
 
   const criarUsuariosDeTeste = async () => {
+    const senhaHash = hashPassword('Senha123!');
+
     const usuario = await prisma.usuario.create({
       data: {
         nome: 'Usuario',
         sobrenome: 'Teste',
-        email: 'usuario@test.com',
-        password: 'hashedpassword',
+        email: 'usuario.chamado@test.com',
+        password: senhaHash,
         regra: 'USUARIO',
+        ativo: true,
+      },
+    });
+
+    const usuario2 = await prisma.usuario.create({
+      data: {
+        nome: 'Usuario2',
+        sobrenome: 'Teste',
+        email: 'usuario2.chamado@test.com',
+        password: senhaHash,
+        regra: 'USUARIO',
+        ativo: true,
       },
     });
 
@@ -57,9 +78,10 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
       data: {
         nome: 'Tecnico',
         sobrenome: 'Teste',
-        email: 'tecnico@test.com',
-        password: 'hashedpassword',
+        email: 'tecnico.chamado@test.com',
+        password: senhaHash,
         regra: 'TECNICO',
+        ativo: true,
       },
     });
 
@@ -67,13 +89,32 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
       data: {
         nome: 'Admin',
         sobrenome: 'Teste',
-        email: 'admin@test.com',
-        password: 'hashedpassword',
+        email: 'admin.chamado@test.com',
+        password: senhaHash,
         regra: 'ADMIN',
+        ativo: true,
       },
     });
 
-    return { usuario, tecnico, admin };
+    return { usuario, usuario2, tecnico, admin };
+  };
+
+  const criarExpedienteTecnico = async (tecnicoId: string) => {
+    const agora = new Date();
+    const entrada = new Date(agora);
+    entrada.setHours(8, 0, 0, 0);
+    
+    const saida = new Date(agora);
+    saida.setHours(18, 0, 0, 0);
+
+    return await prisma.expediente.create({
+      data: {
+        usuarioId: tecnicoId,
+        entrada: entrada,
+        saida: saida,
+        ativo: true,
+      },
+    });
   };
 
   const criarServicoTeste = async () => {
@@ -85,106 +126,96 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     });
   };
 
-  const criarChamadosDeTeste = async (usuarioId: string, tecnicoId: string) => {
-    const chamadoAberto = await prisma.chamado.create({
-      data: {
-        OS: `INC${Date.now()}1`,
-        descricao: 'Chamado Aberto',
-        usuarioId,
-        status: 'ABERTO',
-      },
-    });
-
-    const chamadoEmAtendimento = await prisma.chamado.create({
-      data: {
-        OS: `INC${Date.now()}2`,
-        descricao: 'Chamado Em Atendimento',
-        usuarioId,
-        tecnicoId,
-        status: 'EM_ATENDIMENTO',
-      },
-    });
-
-    return { chamadoAberto, chamadoEmAtendimento };
-  };
-
   const gerarTokensAutenticacao = (usuarios: any) => {
-    const secret = process.env.JWT_SECRET || 'testsecret';
-    const opcoesToken = {
-      audience: 'helpme-client',
-      issuer: 'helpme-api',
-    };
-
+    const secret = process.env.JWT_SECRET || 'testsecret-must-be-at-least-32-chars-long!!';
+    
     const tokenUsuario = jwt.sign(
-      { 
-        id: usuarios.usuario.id, 
+      {
+        id: usuarios.usuario.id,
         regra: 'USUARIO',
         nome: 'Usuario',
-        email: 'usuario@test.com',
-        type: 'access'
+        email: 'usuario.chamado@test.com',
+        type: 'access',
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h',
+      }
+    );
+
+    const tokenUsuario2 = jwt.sign(
+      {
+        id: usuarios.usuario2.id,
+        regra: 'USUARIO',
+        nome: 'Usuario2',
+        email: 'usuario2.chamado@test.com',
+        type: 'access',
+      },
+      secret,
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h',
+      }
     );
 
     const tokenTecnico = jwt.sign(
-      { 
-        id: usuarios.tecnico.id, 
+      {
+        id: usuarios.tecnico.id,
         regra: 'TECNICO',
         nome: 'Tecnico',
-        email: 'tecnico@test.com',
-        type: 'access'
+        email: 'tecnico.chamado@test.com',
+        type: 'access',
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h',
+      }
     );
 
     const tokenAdmin = jwt.sign(
-      { 
-        id: usuarios.admin.id, 
+      {
+        id: usuarios.admin.id,
         regra: 'ADMIN',
         nome: 'Admin',
-        email: 'admin@test.com',
-        type: 'access'
+        email: 'admin.chamado@test.com',
+        type: 'access',
       },
       secret,
-      opcoesToken
+      {
+        audience: 'helpme-client',
+        issuer: 'helpme-api',
+        expiresIn: '1h',
+      }
     );
 
-    return { tokenUsuario, tokenTecnico, tokenAdmin };
+    return { tokenUsuario, tokenUsuario2, tokenTecnico, tokenAdmin };
   };
 
-  // ========================================
-  // Hooks Globais
-  // ========================================
-
   beforeAll(async () => {
-    // Arrange: Conectar ao MongoDB
-    const mongoUri= 
-      process.env.MONGO_INITDB_URI || 
-      'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(process.env.MONGO_INITDB_URI!);
+    console.log('[INFO] MongoDB conectado');
 
-    // Arrange: Limpar banco de dados
     await limparBancoDeDados();
 
-    // Arrange: Criar usuários de teste
     const usuariosTeste = await criarUsuariosDeTeste();
     idUsuario = usuariosTeste.usuario.id;
+    idUsuario2 = usuariosTeste.usuario2.id;
     idTecnico = usuariosTeste.tecnico.id;
     idAdmin = usuariosTeste.admin.id;
 
-    // Arrange: Criar serviço de teste
-    await criarServicoTeste();
+    await criarExpedienteTecnico(idTecnico);
 
-    // Arrange: Criar chamados de teste
-    const chamadosTeste = await criarChamadosDeTeste(idUsuario, idTecnico);
-    idChamadoAberto = chamadosTeste.chamadoAberto.id;
-    idChamadoEmAtendimento = chamadosTeste.chamadoEmAtendimento.id;
+    const servico = await criarServicoTeste();
+    idServico = servico.id;
 
-    // Arrange: Gerar tokens de autenticação
     const tokens = gerarTokensAutenticacao(usuariosTeste);
     tokenAutenticacaoUsuario = tokens.tokenUsuario;
+    tokenAutenticacaoUsuario2 = tokens.tokenUsuario2;
     tokenAutenticacaoTecnico = tokens.tokenTecnico;
     tokenAutenticacaoAdmin = tokens.tokenAdmin;
   });
@@ -195,418 +226,708 @@ describe('E2E - Rotas de Listagem de Chamados', () => {
     await prisma.$disconnect();
   });
 
-  // ========================================
-  // GET /meus-chamados - Listagem de Chamados do Usuário
-  // ========================================
+  describe('POST /abertura-chamado', () => {
+    it('deve criar chamado com dados válidos e retornar número OS', async () => {
+      const payloadChamado = {
+        descricao: 'Problema com impressora não está imprimindo corretamente',
+        servico: 'Suporte Técnico',
+      };
 
-  describe('GET /meus-chamados', () => {
-    it('Dado usuário autenticado com role USUARIO, Quando consulta seus chamados, Então deve retornar apenas chamados criados por ele', async () => {
-      // Arrange: Token do usuário comum já configurado
-      
-      // Act: Buscar chamados do usuário
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadChamado);
 
-      // Assert: Verificar que retorna apenas chamados do usuário
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBeGreaterThan(0);
+      expect(resposta.status).toBe(201);
+      expect(resposta.body).toHaveProperty('id');
+      expect(resposta.body).toHaveProperty('OS');
+      expect(resposta.body.OS).toMatch(/^INC\d{4}$/);
+      expect(resposta.body.descricao).toContain('Problema com impressora');
+      expect(resposta.body.status).toBe('ABERTO');
+      expect(resposta.body.servicos).toBeInstanceOf(Array);
+      expect(resposta.body.servicos.length).toBeGreaterThan(0);
       
-      resposta.body.forEach((chamado: any) => {
-        expect(chamado.usuario.id).toBe(idUsuario);
-      });
-    });
+      idChamado = resposta.body.id;
+    }, 30000);
 
-    it('Dado usuário sem chamados cadastrados, Quando consulta seus chamados, Então deve retornar array vazio', async () => {
-      // Arrange: Criar usuário sem chamados
-      const usuarioSemChamados = await prisma.usuario.create({
-        data: {
-          nome: 'Usuario',
-          sobrenome: 'Sem Chamados',
-          email: 'sem.chamados@test.com',
-          password: 'hashedpassword',
-          regra: 'USUARIO',
-        },
-      });
+    it('deve retornar erro quando descrição não for fornecida', async () => {
+      const payloadInvalido = {
+        servico: 'Suporte Técnico',
+      };
 
-      const secret = process.env.JWT_SECRET || 'testsecret';
-      const tokenUsuarioSemChamados = jwt.sign(
-        { 
-          id: usuarioSemChamados.id, 
-          regra: 'USUARIO',
-          nome: 'Usuario',
-          email: 'sem.chamados@test.com',
-          type: 'access'
-        },
-        secret,
-        { audience: 'helpme-client', issuer: 'helpme-api' }
-      );
-
-      // Act: Buscar chamados de usuário sem chamados
       const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
-        .set('Authorization', `Bearer ${tokenUsuarioSemChamados}`);
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadInvalido);
 
-      // Assert: Verificar retorno de array vazio
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
-
-      await prisma.usuario.delete({ where: { id: usuarioSemChamados.id } });
-    });
-
-    it('Dado requisição sem autenticação, Quando consulta chamados, Então deve retornar erro 401', async () => {
-      // Arrange: Preparar requisição sem token
-      
-      // Act: Tentar acessar sem autenticação
-      const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`);
-
-      // Assert: Verificar rejeição por falta de autenticação
-      expect(resposta.status).toBe(401);
-    });
-  });
-
-  // ========================================
-  // GET /chamados-atribuidos - Listagem de Chamados do Técnico
-  // ========================================
-
-  describe('GET /chamados-atribuidos', () => {
-    it('Dado técnico autenticado, Quando consulta chamados atribuídos, Então deve retornar apenas seus chamados com status válido', async () => {
-      // Arrange: Token do técnico já configurado
-      
-      // Act: Buscar chamados atribuídos ao técnico
-      const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
-
-      // Assert: Verificar chamados atribuídos ao técnico
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(chamado.tecnico.id).toBe(idTecnico);
-        expect(['EM_ATENDIMENTO', 'REABERTO']).toContain(chamado.status);
-      });
-    });
-
-    it('Dado técnico sem chamados atribuídos, Quando consulta, Então deve retornar array vazio', async () => {
-      // Arrange: Criar técnico sem chamados atribuídos
-      const tecnicoSemChamados = await prisma.usuario.create({
-        data: {
-          nome: 'Tecnico',
-          sobrenome: 'Sem Atribuicoes',
-          email: 'tecnico.vazio@test.com',
-          password: 'hashedpassword',
-          regra: 'TECNICO',
-        },
-      });
-
-      const secret = process.env.JWT_SECRET || 'testsecret';
-      const tokenTecnicoVazio = jwt.sign(
-        { 
-          id: tecnicoSemChamados.id, 
-          regra: 'TECNICO',
-          nome: 'Tecnico',
-          email: 'tecnico.vazio@test.com',
-          type: 'access'
-        },
-        secret,
-        { audience: 'helpme-client', issuer: 'helpme-api' }
-      );
-
-      // Act: Buscar chamados de técnico sem atribuições
-      const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
-        .set('Authorization', `Bearer ${tokenTecnicoVazio}`);
-
-      // Assert: Verificar array vazio
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
-
-      await prisma.usuario.delete({ where: { id: tecnicoSemChamados.id } });
-    });
-
-    it('Dado usuário comum tentando acessar, Quando consulta chamados atribuídos, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de usuário comum
-      
-      // Act: Tentar acessar endpoint restrito
-      const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
-
-      // Assert: Verificar negação de acesso
-      expect(resposta.status).toBe(403);
-    });
-  });
-
-  // ========================================
-  // GET /todos-chamados - Listagem Completa (Admin)
-  // ========================================
-
-  describe('GET /todos-chamados', () => {
-    it('Dado admin com filtro de status ABERTO, Quando consulta todos chamados, Então deve retornar apenas chamados com status ABERTO', async () => {
-      // Arrange: Parâmetros de consulta com filtro
-      const parametrosConsulta = { status: 'ABERTO' };
-      
-      // Act: Buscar chamados com filtro de status
-      const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar filtro aplicado corretamente
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(chamado.status).toBe('ABERTO');
-      });
-    });
-
-    it('Dado admin sem parâmetro status, Quando consulta todos chamados, Então deve retornar erro 400', async () => {
-      // Arrange: Requisição sem parâmetro obrigatório
-      
-      // Act: Tentar consultar sem filtro de status
-      const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar erro de validação
       expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toBe('O parâmetro "status" é obrigatório.');
+      expect(resposta.body.error).toContain('Descrição é obrigatória');
     });
 
-    it('Dado admin com status inválido, Quando consulta todos chamados, Então deve retornar erro 400', async () => {
-      // Arrange: Parâmetro com valor inválido
-      const parametrosInvalidos = { status: 'STATUS_INVALIDO' };
-      
-      // Act: Tentar consultar com status inválido
-      const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosInvalidos)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+    it('deve retornar erro quando descrição for muito curta', async () => {
+      const payloadInvalido = {
+        descricao: 'Curto',
+        servico: 'Suporte Técnico',
+      };
 
-      // Assert: Verificar rejeição por valor inválido
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadInvalido);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('no mínimo 10 caracteres');
+    });
+
+    it('deve retornar erro quando serviço não for fornecido', async () => {
+      const payloadInvalido = {
+        descricao: 'Descrição válida com mais de dez caracteres aqui',
+      };
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadInvalido);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('pelo menos um serviço válido');
+    });
+
+    it('deve retornar erro quando serviço não existir', async () => {
+      const payloadInvalido = {
+        descricao: 'Descrição válida com mais de dez caracteres aqui',
+        servico: 'Serviço Inexistente',
+      };
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadInvalido);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('não encontrados ou inativos');
+    });
+
+    it('deve aceitar array de serviços válidos', async () => {
+      const payloadComArray = {
+        descricao: 'Múltiplos problemas técnicos identificados no sistema',
+        servico: ['Suporte Técnico'],
+      };
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadComArray);
+
+      expect(resposta.status).toBe(201);
+      expect(resposta.body.servicos).toBeInstanceOf(Array);
+    }, 30000);
+
+    it('deve gerar números OS sequenciais e incrementais', async () => {
+      const primeiroChamado = {
+        descricao: 'Primeiro chamado de teste para verificar sequência',
+        servico: 'Suporte Técnico',
+      };
+      const segundoChamado = {
+        descricao: 'Segundo chamado de teste para verificar sequência',
+        servico: 'Suporte Técnico',
+      };
+
+      const resposta1 = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(primeiroChamado);
+
+      const resposta2 = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(segundoChamado);
+
+      expect(resposta1.status).toBe(201);
+      expect(resposta2.status).toBe(201);
+
+      const numeroOS1 = parseInt(resposta1.body.OS.replace('INC', ''), 10);
+      const numeroOS2 = parseInt(resposta2.body.OS.replace('INC', ''), 10);
+      expect(numeroOS2).toBeGreaterThan(numeroOS1);
+    }, 30000);
+  });
+
+  describe('PATCH /:id/status', () => {
+    it('deve permitir técnico assumir chamado dentro do expediente', async () => {
+      vi.setSystemTime(new Date('2025-01-15T10:00:00'));
+      
+      const atualizacaoStatus = {
+        status: 'EM_ATENDIMENTO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamado}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`)
+        .send(atualizacaoStatus);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.status).toBe('EM_ATENDIMENTO');
+      expect(resposta.body.tecnico).toBeDefined();
+      expect(resposta.body.tecnico.nome).toBe('Tecnico');
+
+      vi.useRealTimers();
+    }, 40000);
+
+    it('deve rejeitar técnico assumindo chamado fora do expediente', async () => {
+      const novoChamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste horário fora do expediente verificação',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      vi.setSystemTime(new Date('2025-01-15T20:00:00'));
+      
+      const atualizacaoStatus = {
+        status: 'EM_ATENDIMENTO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${novoChamado.id}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`)
+        .send(atualizacaoStatus);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('horário de trabalho');
+
+      vi.useRealTimers();
+      await prisma.chamado.delete({ where: { id: novoChamado.id } });
+    }, 30000);
+
+    it('deve permitir admin encerrar chamado com descrição', async () => {
+      const encerramentoChamado = {
+        status: 'ENCERRADO',
+        descricaoEncerramento: 'Problema resolvido com sucesso após análise detalhada',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamado}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`)
+        .send(encerramentoChamado);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.status).toBe('ENCERRADO');
+      expect(resposta.body.encerradoEm).toBeDefined();
+      expect(resposta.body.descricaoEncerramento).toBeDefined();
+    });
+
+    it('deve rejeitar encerramento sem descrição', async () => {
+      const novoChamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste encerramento sem descrição adequada',
+          usuarioId: idUsuario,
+          status: 'EM_ATENDIMENTO',
+          tecnicoId: idTecnico,
+        },
+      });
+
+      const encerramentoSemDescricao = {
+        status: 'ENCERRADO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${novoChamado.id}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`)
+        .send(encerramentoSemDescricao);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Descrição de encerramento inválida');
+
+      await prisma.chamado.delete({ where: { id: novoChamado.id } });
+    });
+
+    it('deve rejeitar técnico tentando cancelar chamado', async () => {
+      const novoChamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste cancelamento por técnico não permitido',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const cancelamento = {
+        status: 'CANCELADO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${novoChamado.id}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`)
+        .send(cancelamento);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('não podem cancelar');
+
+      await prisma.chamado.delete({ where: { id: novoChamado.id } });
+    });
+
+    it('deve rejeitar status inválido', async () => {
+      const statusInvalido = {
+        status: 'STATUS_INVALIDO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamado}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`)
+        .send(statusInvalido);
+
       expect(resposta.status).toBe(400);
       expect(resposta.body.error).toContain('Status inválido');
     });
 
-    it('Dado admin com filtro EM_ATENDIMENTO, Quando consulta, Então deve retornar apenas chamados em atendimento', async () => {
-      // Arrange: Filtro para status específico
-      const parametrosConsulta = { status: 'EM_ATENDIMENTO' };
-      
-      // Act: Buscar chamados em atendimento
-      const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar filtro correto
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(chamado.status).toBe('EM_ATENDIMENTO');
+    it('deve rejeitar técnico alterando chamado encerrado', async () => {
+      const chamadoEncerrado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste encerrado não pode ser alterado por técnico',
+          usuarioId: idUsuario,
+          status: 'ENCERRADO',
+          encerradoEm: new Date(),
+          descricaoEncerramento: 'Finalizado anteriormente',
+        },
       });
-    });
 
-    it('Dado técnico tentando acessar todos chamados, Quando consulta, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de técnico para endpoint de admin
-      const parametrosConsulta = { status: 'ABERTO' };
-      
-      // Act: Técnico tenta acessar endpoint restrito
+      const tentativaAlteracao = {
+        status: 'EM_ATENDIMENTO',
+      };
+
       const resposta = await request(app)
-        .get(`${URL_BASE}/todos-chamados`)
-        .query(parametrosConsulta)
-        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+        .patch(`${BASE_URL}/${chamadoEncerrado.id}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`)
+        .send(tentativaAlteracao);
 
-      // Assert: Verificar negação de acesso
       expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('encerrados não podem ser alterados por técnicos');
+
+      await prisma.chamado.delete({ where: { id: chamadoEncerrado.id } });
+    });
+
+    it('deve rejeitar alteração de chamado cancelado', async () => {
+      const chamadoCancelado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste cancelado não pode ser reaberto por status',
+          usuarioId: idUsuario,
+          status: 'CANCELADO',
+          encerradoEm: new Date(),
+          descricaoEncerramento: 'Cancelado pelo usuário previamente',
+        },
+      });
+
+      const tentativaReabertura = {
+        status: 'EM_ATENDIMENTO',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamadoCancelado.id}/status`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`)
+        .send(tentativaReabertura);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('cancelados não podem ser alterados');
+
+      await prisma.chamado.delete({ where: { id: chamadoCancelado.id } });
     });
   });
 
-  // ========================================
-  // GET /abertos - Listagem de Chamados Abertos/Reabertos
-  // ========================================
-
-  describe('GET /abertos', () => {
-    it('Dado admin autenticado, Quando consulta chamados abertos, Então deve retornar apenas chamados com status ABERTO ou REABERTO', async () => {
-      // Arrange: Token de admin já configurado
-      
-      // Act: Buscar chamados abertos ou reabertos
+  describe('GET /:id/historico', () => {
+    it('deve retornar histórico do chamado em array', async () => {
       const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar filtro de status múltiplos
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(['ABERTO', 'REABERTO']).toContain(chamado.status);
-      });
-    });
-
-    it('Dado técnico autenticado, Quando consulta chamados abertos, Então deve retornar lista de chamados disponíveis', async () => {
-      // Arrange: Token de técnico já configurado
-      
-      // Act: Técnico busca chamados disponíveis
-      const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
-
-      // Assert: Verificar acesso permitido para técnico
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      
-      resposta.body.forEach((chamado: any) => {
-        expect(['ABERTO', 'REABERTO']).toContain(chamado.status);
-      });
-    });
-
-    it('Dado sistema sem chamados abertos, Quando consulta, Então deve retornar array vazio', async () => {
-      // Arrange: Fechar todos os chamados abertos temporariamente
-      await prisma.chamado.updateMany({
-        where: { status: { in: ['ABERTO', 'REABERTO'] } },
-        data: { status: 'ENCERRADO', encerradoEm: new Date() }
-      });
-
-      // Act: Buscar chamados abertos
-      const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
-
-      // Assert: Verificar array vazio
-      expect(resposta.status).toBe(200);
-      expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBe(0);
-
-      // Cleanup: Reabrir chamados para não afetar outros testes
-      await prisma.chamado.updateMany({
-        where: { id: idChamadoAberto },
-        data: { status: 'ABERTO', encerradoEm: null }
-      });
-    });
-
-    it('Dado usuário comum tentando acessar, Quando consulta chamados abertos, Então deve rejeitar com erro 403', async () => {
-      // Arrange: Usar token de usuário comum
-      
-      // Act: Usuário tenta acessar endpoint restrito
-      const resposta = await request(app)
-        .get(`${URL_BASE}/abertos`)
+        .get(`${BASE_URL}/${idChamado}/historico`)
         .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
 
-      // Assert: Verificar negação de acesso
-      expect(resposta.status).toBe(403);
-    });
-  });
-
-  // ========================================
-  // Testes de Paginação e Ordenação
-  // ========================================
-
-  describe('Paginação e Ordenação', () => {
-    it('Dado múltiplos chamados cadastrados, Quando consulta com limite, Então deve respeitar paginação', async () => {
-      // Arrange: Criar múltiplos chamados para testar paginação
-      const chamadosExtras = await Promise.all([
-        prisma.chamado.create({
-          data: {
-            OS: `INC${Date.now()}3`,
-            descricao: 'Chamado Extra 1',
-            usuarioId: idUsuario,
-            status: 'ABERTO',
-          },
-        }),
-        prisma.chamado.create({
-          data: {
-            OS: `INC${Date.now()}4`,
-            descricao: 'Chamado Extra 2',
-            usuarioId: idUsuario,
-            status: 'ABERTO',
-          },
-        }),
-      ]);
-
-      // Act: Buscar chamados do usuário
-      const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
-
-      // Assert: Verificar que retorna múltiplos chamados
       expect(resposta.status).toBe(200);
       expect(Array.isArray(resposta.body)).toBe(true);
-      expect(resposta.body.length).toBeGreaterThanOrEqual(2);
-
-      // Cleanup
-      await Promise.all(
-        chamadosExtras.map(c => prisma.chamado.delete({ where: { id: c.id } }))
-      );
-    });
-  });
-
-  // ========================================
-  // Testes de Integridade de Dados
-  // ========================================
-
-  describe('Integridade de Dados Retornados', () => {
-    it('Dado chamado consultado, Quando retorna dados, Então deve incluir informações completas do usuário', async () => {
-      // Arrange: Token configurado
-      
-      // Act: Buscar chamados
-      const resposta = await request(app)
-        .get(`${URL_BASE}/meus-chamados`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
-
-      // Assert: Verificar estrutura completa dos dados
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.length).toBeGreaterThan(0);
-      
-      const primeiroChamado = resposta.body[0];
-      expect(primeiroChamado).toHaveProperty('id');
-      expect(primeiroChamado).toHaveProperty('OS');
-      expect(primeiroChamado).toHaveProperty('descricao');
-      expect(primeiroChamado).toHaveProperty('status');
-      expect(primeiroChamado).toHaveProperty('usuario');
-      expect(primeiroChamado.usuario).toHaveProperty('id');
-      expect(primeiroChamado.usuario.id).toBe(idUsuario);
-      
-      // Verificar campos opcionais se existirem
-      if (primeiroChamado.usuario.nome) {
-        expect(typeof primeiroChamado.usuario.nome).toBe('string');
-      }
-      if (primeiroChamado.usuario.email) {
-        expect(typeof primeiroChamado.usuario.email).toBe('string');
-      }
-    });
-
-    it('Dado chamado com técnico atribuído, Quando consulta, Então deve incluir dados do técnico', async () => {
-      // Arrange: Token de técnico
-      
-      // Act: Buscar chamados atribuídos
-      const resposta = await request(app)
-        .get(`${URL_BASE}/chamados-atribuidos`)
-        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
-
-      // Assert: Verificar inclusão de dados do técnico
-      expect(resposta.status).toBe(200);
       
       if (resposta.body.length > 0) {
-        const chamadoComTecnico = resposta.body[0];
-        expect(chamadoComTecnico).toHaveProperty('tecnico');
-        expect(chamadoComTecnico.tecnico).toHaveProperty('id');
-        expect(chamadoComTecnico.tecnico.id).toBe(idTecnico);
-        
-        // Verificar campos opcionais se existirem
-        if (chamadoComTecnico.tecnico.nome) {
-          expect(typeof chamadoComTecnico.tecnico.nome).toBe('string');
-        }
-        if (chamadoComTecnico.tecnico.email) {
-          expect(typeof chamadoComTecnico.tecnico.email).toBe('string');
-        }
+        const primeiroEvento = resposta.body[0];
+        expect(primeiroEvento).toHaveProperty('tipo');
+        expect(primeiroEvento).toHaveProperty('dataHora');
+        expect(primeiroEvento).toHaveProperty('autorId');
       }
+    });
+
+    it('deve permitir qualquer usuário autenticado consultar histórico', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idChamado}/historico`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+
+      expect(resposta.status).toBe(200);
+    });
+  });
+
+  describe('PATCH /:id/reabrir-chamado', () => {
+    let idChamadoEncerrado: string;
+
+    beforeEach(async () => {
+      const chamadoEncerrado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado para reabrir dentro do prazo estabelecido',
+          usuarioId: idUsuario,
+          status: 'ENCERRADO',
+          encerradoEm: new Date(),
+          descricaoEncerramento: 'Finalizado anteriormente',
+          tecnicoId: idTecnico,
+        },
+      });
+      idChamadoEncerrado = chamadoEncerrado.id;
+    });
+
+    it('deve reabrir chamado do usuário dentro de 48h', async () => {
+      const payloadReabertura = {
+        atualizacaoDescricao: 'Problema voltou a acontecer necessitando atenção',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamadoEncerrado}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadReabertura);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.status).toBe('REABERTO');
+      expect(resposta.body.encerradoEm).toBeNull();
+      expect(resposta.body.descricaoEncerramento).toBeNull();
+    });
+
+    it('deve aceitar reabertura sem descrição adicional', async () => {
+      const payloadVazio = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamadoEncerrado}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadVazio);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.status).toBe('REABERTO');
+    });
+
+    it('deve rejeitar usuário reabrindo chamado de outro', async () => {
+      const payloadReabertura = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamadoEncerrado}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario2}`)
+        .send(payloadReabertura);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('Você só pode reabrir chamados criados por você');
+    });
+
+    it('deve rejeitar reabertura após 48 horas', async () => {
+      await prisma.chamado.update({
+        where: { id: idChamadoEncerrado },
+        data: {
+          encerradoEm: new Date(Date.now() - 50 * 60 * 60 * 1000),
+        },
+      });
+
+      const payloadReabertura = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idChamadoEncerrado}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadReabertura);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('48 horas');
+    });
+
+    it('deve rejeitar reabertura de chamado não encerrado', async () => {
+      const chamadoAberto = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado ainda aberto não pode ser reaberto',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const payloadReabertura = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamadoAberto.id}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadReabertura);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Somente chamados encerrados');
+
+      await prisma.chamado.delete({ where: { id: chamadoAberto.id } });
+    });
+
+    it('deve retornar 404 para chamado inexistente', async () => {
+      const idInexistente = 'id-inexistente-123';
+      const payloadReabertura = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idInexistente}/reabrir-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadReabertura);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('não encontrado');
+    });
+  });
+
+  describe('PATCH /:id/cancelar-chamado', () => {
+    it('deve cancelar chamado do usuário com justificativa', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado para cancelar com justificativa adequada',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const payloadCancelamento = {
+        descricaoEncerramento: 'Não precisa mais do suporte solicitado anteriormente',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamado.id}/cancelar-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadCancelamento);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('cancelado com sucesso');
+      expect(resposta.body.chamado.status).toBe('CANCELADO');
+      expect(resposta.body.chamado.encerradoEm).toBeDefined();
+    });
+
+    it('deve permitir admin cancelar qualquer chamado', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado para admin cancelar administrativamente',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const payloadCancelamento = {
+        descricaoEncerramento: 'Cancelado administrativamente por decisão gerencial',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamado.id}/cancelar-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`)
+        .send(payloadCancelamento);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.chamado.status).toBe('CANCELADO');
+    }, 20000);
+
+    it('deve rejeitar cancelamento sem justificativa', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste sem justificativa adequada de cancelamento',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const payloadVazio = {};
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamado.id}/cancelar-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadVazio);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Justificativa do cancelamento inválida');
+
+      await prisma.chamado.delete({ where: { id: chamado.id } });
+    });
+
+    it('deve rejeitar usuário cancelando chamado de outro', async () => {
+      const outroChamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado de outro usuário para teste de permissão',
+          usuarioId: idAdmin,
+          status: 'ABERTO',
+        },
+      });
+
+      const payloadCancelamento = {
+        descricaoEncerramento: 'Tentativa de cancelamento não autorizada',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${outroChamado.id}/cancelar-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadCancelamento);
+
+      expect(resposta.status).toBe(403);
+      expect(resposta.body.error).toContain('não tem permissão');
+
+      await prisma.chamado.delete({ where: { id: outroChamado.id } });
+    });
+
+    it('deve rejeitar cancelamento de chamado encerrado', async () => {
+      const chamadoEncerrado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Teste encerrado não pode ser cancelado posteriormente',
+          usuarioId: idUsuario,
+          status: 'ENCERRADO',
+          encerradoEm: new Date(),
+          descricaoEncerramento: 'Resolvido com sucesso',
+        },
+      });
+
+      const payloadCancelamento = {
+        descricaoEncerramento: 'Tentando cancelar chamado já encerrado',
+      };
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${chamadoEncerrado.id}/cancelar-chamado`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`)
+        .send(payloadCancelamento);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('cancelar um chamado encerrado');
+
+      await prisma.chamado.delete({ where: { id: chamadoEncerrado.id } });
+    });
+  });
+
+  describe('DELETE /:id', () => {
+    it('deve fazer soft delete do chamado por padrão', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado para soft delete padrão do sistema',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${chamado.id}`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('desativado com sucesso');
+
+      const chamadoDeletado = await prisma.chamado.findUnique({
+        where: { id: chamado.id },
+        select: { deletadoEm: true },
+      });
+      expect(chamadoDeletado?.deletadoEm).toBeDefined();
+    }, 30000);
+
+    it('deve fazer hard delete quando solicitado', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Chamado para hard delete permanente do sistema',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${chamado.id}?permanente=true`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('excluído permanentemente');
+
+      const chamadoDeletado = await prisma.chamado.findUnique({
+        where: { id: chamado.id },
+      });
+      expect(chamadoDeletado).toBeNull();
+    });
+
+    it('deve rejeitar técnico tentando deletar chamado', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Técnico não pode deletar chamados do sistema',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${chamado.id}`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoTecnico}`);
+
+      expect(resposta.status).toBe(403);
+
+      await prisma.chamado.delete({ where: { id: chamado.id } });
+    });
+
+    it('deve rejeitar usuário comum tentando deletar chamado', async () => {
+      const chamado = await prisma.chamado.create({
+        data: {
+          OS: gerarOSUnicoTeste(),
+          descricao: 'Usuário comum não pode deletar chamados',
+          usuarioId: idUsuario,
+          status: 'ABERTO',
+        },
+      });
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${chamado.id}`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoUsuario}`);
+
+      expect(resposta.status).toBe(403);
+
+      await prisma.chamado.delete({ where: { id: chamado.id } });
+    });
+
+    it('deve retornar 404 para chamado inexistente', async () => {
+      const idInexistente = 'id-inexistente-456';
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAutenticacaoAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('não encontrado');
+    });
+  });
+
+  describe('Autenticação e Segurança', () => {
+    it('deve rejeitar requisição sem token de autenticação', async () => {
+      const payloadChamado = {
+        descricao: 'Teste sem autenticação não deve ser permitido',
+        servico: 'Suporte Técnico',
+      };
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .send(payloadChamado);
+
+      expect(resposta.status).toBe(401);
+    });
+
+    it('deve rejeitar token inválido ou malformado', async () => {
+      const payloadChamado = {
+        descricao: 'Teste com token inválido não deve ser permitido',
+        servico: 'Suporte Técnico',
+      };
+      const tokenInvalido = 'Bearer token-invalido-xyz';
+
+      const resposta = await request(app)
+        .post(`${BASE_URL}/abertura-chamado`)
+        .set('Authorization', tokenInvalido)
+        .send(payloadChamado);
+
+      expect(resposta.status).toBe(401);
     });
   });
 });

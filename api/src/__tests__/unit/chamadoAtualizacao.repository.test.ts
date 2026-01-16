@@ -11,20 +11,12 @@ import {
 } from '../../repositories/chamadoAtualizacao.repository';
 import ChamadoAtualizacao from '../../models/chamadoAtualizacao.model';
 
-// ========================================
-// MOCK DO MODELO MONGOOSE
-// ========================================
-
 vi.mock('../../models/chamadoAtualizacao.model', () => ({
   default: {
     create: vi.fn(),
     find: vi.fn(),
   },
 }));
-
-// ========================================
-// FIXTURES DE TESTE
-// ========================================
 
 const dadosHistoricoEntrada = {
   chamadoId: 'abc',
@@ -49,9 +41,6 @@ const listaHistoricos = [
   }
 ];
 
-// ========================================
-// SETUP E TEARDOWN
-// ========================================
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,14 +51,10 @@ beforeEach(() => {
   vi.mocked(ChamadoAtualizacao.find).mockReturnValue({ sort: mockSort } as any);
 });
 
-// ========================================
-// SUITES DE TESTES
-// ========================================
 
 describe('salvarHistoricoChamado', () => {
-  it('Deve retornar o histórico criado quando dados válidos forem fornecidos', async () => {
+  it('deve retornar o histórico criado quando dados válidos forem fornecidos', async () => {
     // Arrange
-    // dadosHistoricoEntrada já configurado
     
     // Act
     const resultado = await salvarHistoricoChamado(dadosHistoricoEntrada);
@@ -80,10 +65,9 @@ describe('salvarHistoricoChamado', () => {
     expect(resultado).toEqual(historicoSalvo);
   });
 
-  it('Deve chamar o método create com todos os campos corretos do histórico', async () => {
+  it('deve chamar o método create com todos os campos corretos do histórico', async () => {
     // Arrange
-    // dadosHistoricoEntrada já configurado
-    
+
     // Act
     await salvarHistoricoChamado(dadosHistoricoEntrada);
     
@@ -102,7 +86,7 @@ describe('salvarHistoricoChamado', () => {
     );
   });
 
-  it('Deve propagar o erro quando ocorrer falha na criação do histórico', async () => {
+  it('deve propagar o erro quando ocorrer falha na criação do histórico', async () => {
     // Arrange
     const erroConexao = new Error('Database connection failed');
     vi.mocked(ChamadoAtualizacao.create).mockRejectedValueOnce(erroConexao);
@@ -116,7 +100,7 @@ describe('salvarHistoricoChamado', () => {
 });
 
 describe('listarHistoricoChamado', () => {
-  it('Deve retornar lista de históricos ordenados quando chamado ID válido for fornecido', async () => {
+  it('deve retornar lista de históricos ordenados quando chamado ID válido for fornecido', async () => {
     // Arrange
     const chamadoId = 'abc';
     
@@ -129,7 +113,7 @@ describe('listarHistoricoChamado', () => {
     expect(resultado).toEqual(listaHistoricos);
   });
 
-  it('Deve buscar históricos usando o ID correto do chamado', async () => {
+  it('deve buscar históricos usando o ID correto do chamado', async () => {
     // Arrange
     const chamadoIdEspecifico = 'chamado-123';
     
@@ -142,7 +126,7 @@ describe('listarHistoricoChamado', () => {
     });
   });
 
-  it('Deve ordenar os resultados por dataHora em ordem crescente', async () => {
+  it('deve ordenar os resultados por dataHora em ordem crescente', async () => {
     // Arrange
     const chamadoId = 'abc';
     const mockSort = vi.fn().mockResolvedValue(listaHistoricos);
@@ -155,7 +139,7 @@ describe('listarHistoricoChamado', () => {
     expect(mockSort).toHaveBeenCalledWith({ dataHora: 1 });
   });
 
-  it('Deve retornar lista vazia quando não existir histórico para o chamado', async () => {
+  it('deve retornar lista vazia quando não existir histórico para o chamado', async () => {
     // Arrange
     const chamadoSemHistorico = 'chamado-sem-historico';
     const mockSort = vi.fn().mockResolvedValue([]);
@@ -169,7 +153,7 @@ describe('listarHistoricoChamado', () => {
     expect(resultado).toHaveLength(0);
   });
 
-  it('Deve propagar o erro quando ocorrer falha na busca do histórico', async () => {
+  it('deve propagar o erro quando ocorrer falha na busca do histórico', async () => {
     // Arrange
     const erroConsulta = new Error('Database query failed');
     const mockSort = vi.fn().mockRejectedValue(erroConsulta);

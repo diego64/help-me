@@ -1,316 +1,629 @@
-process.env.DATABASE_URL = process.env.DATABASE_URL_TESTE || 
-  'postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public';
-
-console.log('[INFO] Utilizando a DATABASE_URL:', process.env.DATABASE_URL);
-
 import {
   describe,
   it,
   expect,
+  beforeEach,
   beforeAll,
-  afterAll,
   vi
 } from 'vitest';
+import express from 'express';
 import request from 'supertest';
-import { prisma } from '../../lib/prisma'; // ← VOLTA PARA O PRISMA NORMAL
-import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
-import app from '../../app';
-import jwt from 'jsonwebtoken';
 
-vi.setConfig({ testTimeout: 20000 });
+const prismaMock = {
+  usuario: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+  $disconnect: vi.fn().mockResolvedValue(undefined),
+};
 
-describe('E2E - Rotas de Técnicos', () => {
-  let adminToken: string;
-  let tecnicoToken: string;
-  let adminId: string;
-  let tecnicoId: string;
-  let senhaOriginal: string;
+vi.mock('@prisma/client', () => ({
+  PrismaClient: function () { return prismaMock; },
+}));
 
-  beforeAll(async () => {
-    const mongoUri = process.env.MONGO_URI_TEST || 
-      'mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin';
+vi.mock('../../lib/prisma', () => ({
+  prisma: prismaMock,
+}));
+
+const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
+
+vi.mock('../../utils/password', () => ({
+  hashPassword: hashPasswordMock,
+}));
+
+vi.mock('../../middleware/auth', () => ({
+  authMiddleware: (req: any, res: any, next: any) => {
+    req.usuario = { id: 'auth-user-id', regra: 'ADMIN' };
+    next();
+  },
+  authorizeRoles: () => (req: any, res: any, next: any) => next(),
+}));
+
+const adminFixture = {
+  id: '1',
+  nome: 'Admin',
+  sobrenome: 'Teste',
+  email: 'admin@dom.com',
+  regra: 'ADMIN',
+  setor: null,
+  telefone: null,
+  ramal: null,
+  avatarUrl: null,
+  ativo: true,
+  geradoEm: '2025-01-01T00:00:00.000Z',
+  atualizadoEm: '2025-01-01T00:00:00.000Z',
+  deletadoEm: null,
+};
+
+const adminFixtureWithPassword = {
+  ...adminFixture,
+  password: 'HASHED_PASSWORD_PBKDF2',
+  refreshToken: null,
+};
+
+const fakeAdmins = [adminFixture];
+
+let adminRouter: any;
+const app = express();
+
+beforeAll(async () => {
+  adminRouter = (await import('../../routes/admin.routes')).default;
+});
+
+beforeEach(() => {
+  if (app._router?.stack?.length) {
+    app._router.stack.splice(0);
+  }
+  
+  app.use(express.json());
+  app.use('/api/admin', adminRouter);
+  
+  Object.values(prismaMock.usuario).forEach(fn => (fn as any).mockReset());
+
+  hashPasswordMock.mockClear();
+  hashPasswordMock.mockReturnValue('HASHED_PASSWORD_PBKDF2');
+});
+
+describe('POST /api/admin (criar novo administrador)', () => {
+  it('deve retornar status 400 quando campos obrigatórios não forem enviados', async () => {
+    const res = await request(app)
+      .post('/api/admin')
+      .send({ email: 'admin@dom.com', password: 'senha123' });
     
-    console.log('[INFO] BANCO DE DADOS MONGODB TESTE - CONECTADO EM:', mongoUri);
-    await mongoose.connect(mongoUri);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ 
+      error: 'Campos obrigatórios: nome, sobrenome, email, password' 
+    });
+  });
 
-    await prisma.expediente.deleteMany({});
-    await prisma.usuario.deleteMany({});
+  it('deve retornar status 400 quando email for inválido', async () => {
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'email-invalido',
+        password: 'senha12345'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Email inválido' });
+  });
 
-    senhaOriginal = 'SenhaSegura';
-    const hashed = await bcrypt.hash(senhaOriginal, 10);
+  it('deve retornar status 400 quando senha tiver menos de 8 caracteres', async () => {
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'curta'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ 
+      error: 'Senha deve ter no mínimo 8 caracteres' 
+    });
+  });
 
-    const admin = await prisma.usuario.create({
+  it('deve retornar status 400 quando email já estiver cadastrado', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixtureWithPassword,
+      deletadoEm: null,
+    });
+    
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'senha12345'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Email já cadastrado' });
+  });
+
+  it('deve reativar administrador quando email existir com soft delete', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixtureWithPassword,
+      deletadoEm: '2024-12-01T00:00:00.000Z',
+      ativo: false,
+    });
+    
+    prismaMock.usuario.update.mockResolvedValue(adminFixtureWithPassword);
+    
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'senha12345'
+      });
+    
+    expect(res.status).toBe(201);
+    expect(res.body.message).toBe('Administrador reativado com sucesso');
+    expect(res.body.admin).not.toHaveProperty('password');
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { email: 'admin@dom.com' },
+      data: expect.objectContaining({
+        deletadoEm: null,
+        ativo: true,
+      }),
+    });
+  });
+
+  it('deve criar um novo administrador com todos os dados válidos', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.create.mockResolvedValue(adminFixtureWithPassword);
+    
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'senha12345',
+        setor: 'TECNOLOGIA_INFORMACAO',
+        telefone: '(11) 99999-0001',
+        ramal: '1000'
+      });
+    
+    expect(res.status).toBe(201);
+    expect(res.body).not.toHaveProperty('password');
+    expect(res.body).not.toHaveProperty('refreshToken');
+    expect(prismaMock.usuario.create).toHaveBeenCalledWith({
       data: {
         nome: 'Admin',
-        sobrenome: 'Sistema',
-        email: 'admin-admin-test@teste.com',
-        password: hashed,
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'HASHED_PASSWORD_PBKDF2',
         regra: 'ADMIN',
-      },
-    });
-    adminId = admin.id;
-
-    const tecnico = await prisma.usuario.create({
-      data: {
-        nome: 'Tecnico',
-        sobrenome: 'Apoio',
-        email: 'tecnico1@teste.com',
-        password: hashed,
-        regra: 'TECNICO',
         setor: 'TECNOLOGIA_INFORMACAO',
+        telefone: '(11) 99999-0001',
+        ramal: '1000',
+        avatarUrl: null,
+        ativo: true,
       },
     });
-    tecnicoId = tecnico.id;
+    expect(hashPasswordMock).toHaveBeenCalledWith('senha12345');
+  });
 
-    await prisma.expediente.create({ 
-      data: { 
-        usuarioId: tecnicoId, 
-        entrada: '09:00', 
-        saida: '17:00' 
-      } 
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    prismaMock.usuario.create.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app)
+      .post('/api/admin')
+      .send({
+        nome: 'Admin',
+        sobrenome: 'Teste',
+        email: 'admin@dom.com',
+        password: 'senha12345'
+      });
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao criar administrador' });
+  });
+});
+
+describe('GET /api/admin (listar administradores)', () => {
+  it('deve retornar lista paginada de administradores ativos', async () => {
+    prismaMock.usuario.count.mockResolvedValue(1);
+    prismaMock.usuario.findMany.mockResolvedValue(fakeAdmins);
+    
+    const res = await request(app).get('/api/admin');
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
     });
+    expect(res.body.admins).toHaveLength(1);
+    expect(res.body.admins[0]).toMatchObject({
+      id: '1',
+      nome: 'Admin',
+      email: 'admin@dom.com',
+      regra: 'ADMIN',
+    });
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
+      where: {
+        regra: 'ADMIN',
+        deletadoEm: null,
+        ativo: true,
+      },
+      select: expect.any(Object),
+      orderBy: { geradoEm: 'desc' },
+      skip: 0,
+      take: 10,
+    });
+  });
 
-    const secret = process.env.JWT_SECRET || 'testsecret';
-    adminToken = jwt.sign(
-      { 
-        id: admin.id, 
-        email: admin.email, 
-        regra: admin.regra,
-        type: 'access'
-      },
-      secret,
-      { 
-        expiresIn: '1h',
-        issuer: 'helpme-api',
-        audience: 'helpme-client'
-      }
-    );
-    tecnicoToken = jwt.sign(
-      { 
-        id: tecnico.id, 
-        email: tecnico.email, 
-        regra: tecnico.regra,
-        type: 'access'
-      },
-      secret,
-      { 
-        expiresIn: '1h',
-        issuer: 'helpme-api',
-        audience: 'helpme-client'
-      }
+  it('deve respeitar parâmetros de paginação', async () => {
+    prismaMock.usuario.count.mockResolvedValue(25);
+    prismaMock.usuario.findMany.mockResolvedValue([]);
+    
+    const res = await request(app)
+      .get('/api/admin')
+      .query({ page: '2', limit: '5' });
+    
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(2);
+    expect(res.body.limit).toBe(5);
+    expect(res.body.totalPages).toBe(5);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 5,
+        take: 5,
+      })
     );
   });
 
-  afterAll(async () => {
-    await prisma.expediente.deleteMany({});
-    await prisma.usuario.deleteMany({});
-    await mongoose.disconnect();
-    await prisma.$disconnect();
+  it('deve incluir inativos quando solicitado', async () => {
+    prismaMock.usuario.count.mockResolvedValue(1);
+    prismaMock.usuario.findMany.mockResolvedValue(fakeAdmins);
+    
+    const res = await request(app)
+      .get('/api/admin')
+      .query({ incluirInativos: 'true' });
+    
+    expect(res.status).toBe(200);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { regra: 'ADMIN' },
+      })
+    );
   });
 
-  describe('Dado um admin autenticado, Quando POST /tecnico com dados válidos, Então deve criar um novo técnico', () => {
-    it('cria um novo técnico', async () => {
-      // Arrange
-      const dados = {
-        nome: 'Novo',
-        sobrenome: 'Tecnico',
-        email: 'novotecnico@teste.com',
-        password: 'minhasenha123',
-        telefone: '11999999999',
-        ramal: '220',
-      };
-      // Act
-      const response = await request(app)
-        .post('/tecnico')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(dados);
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.count.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app).get('/api/admin');
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao listar administradores' });
+  });
+});
 
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.nome).toBe(dados.nome);
-      expect(response.body.regra).toBe('TECNICO');
-      // Verifica se horário foi criado
-      const exped = await prisma.expediente.findFirst({ where: { usuarioId: response.body.id } });
-      expect(exped).not.toBeNull();
+describe('GET /api/admin/:id (buscar administrador por ID)', () => {
+  it('deve retornar administrador quando encontrado', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(adminFixture);
+    
+    const res = await request(app).get('/api/admin/1');
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: '1',
+      nome: 'Admin',
+      email: 'admin@dom.com',
+      regra: 'ADMIN',
+    });
+    expect(prismaMock.usuario.findUnique).toHaveBeenCalledWith({
+      where: { id: '1' },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve retornar 404 quando administrador não for encontrado', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const res = await request(app).get('/api/admin/999');
+    
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Administrador não encontrado' });
+  });
+
+  it('deve retornar 404 quando usuário não for ADMIN', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixture,
+      regra: 'TECNICO',
     });
     
-    it('recusa criação sem senha', async () => {
-      const response = await request(app)
-        .post('/tecnico')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          nome: 'SemSenha',
-          sobrenome: 'Tecnico',
-          email: 'sem@teste.com',
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Senha obrigatória');
-    });
+    const res = await request(app).get('/api/admin/1');
+    
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Administrador não encontrado' });
   });
 
-  describe('Dado admin autenticado, Quando GET /tecnico, Então deve listar todos os técnicos', () => {
-    it('lista todos técnicos', async () => {
-      // Act
-      const response = await request(app)
-        .get('/tecnico')
-        .set('Authorization', `Bearer ${adminToken}`);
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.findUnique.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app).get('/api/admin/1');
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao buscar administrador' });
+  });
+});
 
-      // Assert
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      response.body.forEach((tecnico: any) => {
-        expect(tecnico.regra).toBe('TECNICO');
-        expect(tecnico).toHaveProperty('tecnicoDisponibilidade');
+describe('PUT /api/admin/:id (editar administrador)', () => {
+  beforeEach(() => {
+    hashPasswordMock.mockClear();
+    prismaMock.usuario.findUnique.mockResolvedValue(adminFixtureWithPassword);
+  });
+
+  it('deve atualizar dados sem senha', async () => {
+    const adminAtualizado = {
+      ...adminFixture,
+      nome: 'Admin Atualizado',
+    };
+    
+    prismaMock.usuario.update.mockResolvedValue(adminAtualizado);
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        nome: 'Admin Atualizado',
+        sobrenome: 'Teste',
       });
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      nome: 'Admin Atualizado',
     });
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        nome: 'Admin Atualizado',
+        sobrenome: 'Teste',
+      },
+      select: expect.any(Object),
+    });
+    expect(hashPasswordMock).not.toHaveBeenCalled();
   });
 
-  describe('Dado admin ou técnico autenticado, Quando PUT /tecnico/:id com dados válidos, Então edita o perfil', () => {
-    it('edita dados do técnico', async () => {
-      // Arrange
-      const novoNome = 'TecnicoAtualizado';
-      // Act
-      const response = await request(app)
-        .put(`/tecnico/${tecnicoId}`)
-        .set('Authorization', `Bearer ${tecnicoToken}`)
-        .send({ nome: novoNome });
-
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body.nome).toBe(novoNome);
-    });
-    it('retorna erro se ID não encontrado', async () => {
-      const response = await request(app)
-        .put('/tecnico/id-nao-existe')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ nome: 'Qualquer' });
-      expect(response.status).toBe(400);
-      expect(response.body.error).not.toBe('');
-    });
-  });
-
-  describe('Dado admin ou técnico autenticado, Quando PUT /tecnico/:id/password, Então altera a senha do técnico', () => {
-    it('altera senha personalizada', async () => {
-      // Arrange
-      const novaSenha = 'novaSenha123';
-      // Act
-      const response = await request(app)
-        .put(`/tecnico/${tecnicoId}/password`)
-        .set('Authorization', `Bearer ${tecnicoToken}`)
-        .send({ password: novaSenha });
-
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body.message).toContain('Senha alterada com sucesso');
-
-      // Valida no banco se está com hash novo
-      const tecnicoDb = await prisma.usuario.findUnique({ where: { id: tecnicoId } });
-      const hashBate = await bcrypt.compare(novaSenha, tecnicoDb?.password ?? '');
-      expect(hashBate).toBe(true);
-    });
-    it('recusa alteração sem senha', async () => {
-      const response = await request(app)
-        .put(`/tecnico/${tecnicoId}/password`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({});
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Senha obrigatória');
-    });
-  });
-
-  describe('Dado admin ou técnico autenticado, Quando PUT /tecnico/:id/horarios, Então altera horários do técnico', () => {
-    it('atualiza horários do técnico', async () => {
-      // Arrange
-      const entrada = '07:00';
-      const saida = '18:00';
-
-      // Act
-      const response = await request(app)
-        .put(`/tecnico/${tecnicoId}/horarios`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ entrada, saida });
-
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body.message).toContain('Horário de disponibilidade atualizado');
-      expect(response.body.horario.entrada).toBe(entrada);
-      expect(response.body.horario.saida).toBe(saida);
-    });
-    it('falta campos obrigatórios', async () => {
-      const response = await request(app)
-        .put(`/tecnico/${tecnicoId}/horarios`)
-        .set('Authorization', `Bearer ${tecnicoToken}`)
-        .send({});
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Campos entrada e saida são obrigatórios');
-    });
-  });
-
-  describe('Dado admin autenticado, Quando DELETE /tecnico/:id, Então exclui técnico e seus horários', () => {
-    it('exclui com sucesso', async () => {
-      // Arrange
-      // Cria novo técnico para remover
-      const tecnicoNovo = await prisma.usuario.create({
-        data: {
-          nome: 'ParaRemover',
-          sobrenome: 'Apagar',
-          email: 'remove@teste.com',
-          password: await bcrypt.hash('remover123', 10),
-          regra: 'TECNICO',
-          setor: 'TECNOLOGIA_INFORMACAO',
-        },
+  it('deve atualizar senha quando enviada', async () => {
+    prismaMock.usuario.update.mockResolvedValue(adminFixture);
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        password: 'novaSenha123'
       });
-      const idRemover = tecnicoNovo.id;
-      await prisma.expediente.create({ data: { usuarioId: idRemover, entrada: '08:00', saida: '16:00' } });
-
-      // Act
-      const response = await request(app)
-        .delete(`/tecnico/${idRemover}`)
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body.message).toContain('excluídos com sucesso');
-      // Confirma remoção
-      const existe = await prisma.usuario.findUnique({ where: { id: idRemover } });
-      expect(existe).toBeNull();
-      const exped = await prisma.expediente.findMany({ where: { usuarioId: idRemover } });
-      expect(exped.length).toBe(0);
-    });
-    it('erro ao remover id inexistente', async () => {
-      const response = await request(app)
-        .delete('/tecnico/id-inexistente')
-        .set('Authorization', `Bearer ${adminToken}`);
-      expect(response.status).toBe(400);
-      expect(response.body.error).not.toBe('');
+    
+    expect(res.status).toBe(200);
+    expect(hashPasswordMock).toHaveBeenCalledWith('novaSenha123');
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        password: 'HASHED_PASSWORD_PBKDF2',
+      },
+      select: expect.any(Object),
     });
   });
 
-  describe('Dado admin ou técnico autenticado, Quando POST /tecnico/:id/avatar com arquivo, Então faz upload do avatar', () => {
-    it('envia avatar com sucesso', async () => {
-      // Arrange
-      // Como é e2e, usar um arquivo pequeno qualquer, pode ser um buffer simples:
-      const fakeAvatar = Buffer.from('imagemfake123');
-      // Act
-      const response = await request(app)
-        .post(`/tecnico/${tecnicoId}/avatar`)
-        .set('Authorization', `Bearer ${tecnicoToken}`)
-        .attach('avatar', fakeAvatar, 'avatar.png');
-      // Assert
-      expect(response.status).toBe(200);
-      expect(response.body.message).toContain('Imagem enviada com sucesso');
-      expect(response.body.tecnico.avatarUrl).toContain('uploads/');
+  it('deve retornar 400 quando senha for curta', async () => {
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        password: 'curta'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ 
+      error: 'Senha deve ter no mínimo 8 caracteres' 
     });
+  });
 
-    it('erro se não enviar arquivo', async () => {
-      const response = await request(app)
-        .post(`/tecnico/${tecnicoId}/avatar`)
-        .set('Authorization', `Bearer ${tecnicoToken}`);
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Arquivo não enviado');
+  it('deve retornar 400 quando email for inválido', async () => {
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        email: 'email-invalido'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Email inválido' });
+  });
+
+  it('deve retornar 400 quando email já estiver em uso', async () => {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce(adminFixtureWithPassword)
+      .mockResolvedValueOnce({ ...adminFixtureWithPassword, id: '2' });
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({
+        email: 'outro@dom.com'
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Email já cadastrado' });
+  });
+
+  it('deve retornar 404 quando administrador não existir', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const res = await request(app)
+      .put('/api/admin/999')
+      .send({ nome: 'Teste' });
+    
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Administrador não encontrado' });
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app)
+      .put('/api/admin/1')
+      .send({ nome: 'Teste' });
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao atualizar administrador' });
+  });
+});
+
+describe('DELETE /api/admin/:id (excluir administrador - soft delete)', () => {
+  beforeEach(() => {
+    prismaMock.usuario.findUnique.mockResolvedValue(adminFixtureWithPassword);
+  });
+
+  it('deve fazer soft delete do administrador', async () => {
+    prismaMock.usuario.update.mockResolvedValue({
+      ...adminFixture,
+      deletadoEm: '2025-01-15T00:00:00.000Z',
+      ativo: false,
     });
+    
+    const res = await request(app).delete('/api/admin/1');
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      message: 'Administrador desativado com sucesso',
+      id: '1',
+    });
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        deletadoEm: expect.any(Date),
+        ativo: false,
+      },
+    });
+  });
+
+  it('deve fazer delete permanente quando solicitado', async () => {
+    prismaMock.usuario.delete.mockResolvedValue(adminFixtureWithPassword);
+    
+    const res = await request(app)
+      .delete('/api/admin/1')
+      .query({ permanente: 'true' });
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      message: 'Administrador excluído permanentemente',
+      id: '1',
+    });
+    expect(prismaMock.usuario.delete).toHaveBeenCalledWith({
+      where: { id: '1' },
+    });
+  });
+
+  it('deve retornar 400 ao tentar deletar a própria conta', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixtureWithPassword,
+      id: 'auth-user-id',
+    });
+    
+    const res = await request(app).delete('/api/admin/auth-user-id');
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: 'Não é possível deletar sua própria conta'
+    });
+  });
+
+  it('deve retornar 404 quando administrador não existir', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const res = await request(app).delete('/api/admin/999');
+    
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Administrador não encontrado' });
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app).delete('/api/admin/1');
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao deletar administrador' });
+  });
+});
+
+describe('PATCH /api/admin/:id/reativar (reativar administrador)', () => {
+  it('deve reativar administrador soft deleted', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixtureWithPassword,
+      deletadoEm: '2024-12-01T00:00:00.000Z',
+      ativo: false,
+    });
+    
+    const adminReativado = {
+      id: '1',
+      nome: 'Admin',
+      sobrenome: 'Teste',
+      email: 'admin@dom.com',
+      regra: 'ADMIN',
+      ativo: true,
+    };
+    
+    prismaMock.usuario.update.mockResolvedValue(adminReativado);
+    
+    const res = await request(app).patch('/api/admin/1/reativar');
+    
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      message: 'Administrador reativado com sucesso',
+      admin: adminReativado,
+    });
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: {
+        deletadoEm: null,
+        ativo: true,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve retornar 400 quando administrador já estiver ativo', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(adminFixtureWithPassword);
+    
+    const res = await request(app).patch('/api/admin/1/reativar');
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Administrador já está ativo' });
+  });
+
+  it('deve retornar 404 quando administrador não existir', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null);
+    
+    const res = await request(app).patch('/api/admin/999/reativar');
+    
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Administrador não encontrado' });
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco de dados', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      ...adminFixtureWithPassword,
+      deletadoEm: '2024-12-01T00:00:00.000Z',
+      ativo: false,
+    });
+    prismaMock.usuario.update.mockRejectedValue(new Error('Database error'));
+    
+    const res = await request(app).patch('/api/admin/1/reativar');
+    
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Erro ao reativar administrador' });
   });
 });

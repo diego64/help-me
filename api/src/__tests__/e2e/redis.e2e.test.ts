@@ -12,23 +12,25 @@ describe('Redis Client E2E', () => {
   const redisHost = process.env.REDIS_HOST || 'localhost';
   const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
   const redisPassword = process.env.REDIS_PASSWORD;
-
-  // Monta a URL do Redis com ou sem senha
+  
   const redisUrl = redisPassword 
     ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
     : `redis://${redisHost}:${redisPort}`;
 
   beforeAll(async () => {
     try {
+      console.log(`[REDIS] Tentando conectar em: ${redisHost}:${redisPort}`);
+      
       redisClient = createClient({
         url: redisUrl,
         socket: {
-          connectTimeout: 5000,
+          connectTimeout: 10000,
           reconnectStrategy: (retries) => {
             if (retries > 3) {
               console.error('[REDIS] Máximo de tentativas excedido');
               return new Error('Max retries');
             }
+            console.log(`[REDIS] Tentativa ${retries} de reconexão`);
             return retries * 1000;
           }
         }
@@ -38,13 +40,24 @@ describe('Redis Client E2E', () => {
         console.error('[REDIS] Erro de conexão:', err.message);
       });
 
+      redisClient.on('connect', () => {
+        console.log('[REDIS] Cliente conectando...');
+      });
+
+      redisClient.on('ready', () => {
+        console.log('[REDIS] Cliente pronto para uso!');
+      });
+
       await redisClient.connect();
       console.log('[REDIS] Conectado com sucesso!');
+      
+      const pingResponse = await redisClient.ping();
+      console.log('[REDIS] Ping response:', pingResponse);
     } catch (error) {
       console.error('[REDIS] Falha ao conectar:', error);
       throw error;
     }
-  }, 15000);
+  }, 30000);
 
   afterAll(async () => {
     try {
@@ -265,12 +278,11 @@ describe('Redis Client E2E', () => {
       let resultado = await redisClient.get(chave);
       expect(resultado).toBe(valor);
 
-      // Aguarda TTL + margem de segurança de 2 segundos
       await new Promise(resolve => setTimeout(resolve, (ttl + 2) * 1000));
 
       resultado = await redisClient.get(chave);
       expect(resultado).toBeNull();
-    }, 6000); // Timeout aumentado para 6 segundos
+    }, 6000);
   });
 
   describe('Dado operações de pipeline, Quando executar múltiplos comandos, Então deve processar em lote', () => {

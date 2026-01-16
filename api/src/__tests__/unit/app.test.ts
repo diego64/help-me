@@ -7,10 +7,6 @@ import {
   vi
 } from 'vitest';
 
-// ========================================
-// CONFIGURAÇÃO DOS MOCKS
-// ========================================
-
 vi.mock('express-session', () => ({
   default: vi.fn(() => (req: any, res: any, next: any) => next()),
 }));
@@ -38,10 +34,6 @@ vi.mock('../../../src/routes/chamado.routes', () => ({ default: criarMockMiddlew
 vi.mock('../../../src/routes/fila-de-chamados.routes', () => ({ default: criarMockMiddlewareRota() }));
 vi.mock('../../../src/routes/envio-email-teste.routes', () => ({ default: criarMockMiddlewareRota() }));
 
-// ========================================
-// FUNÇÕES AUXILIARES
-// ========================================
-
 const importarModuloApp = async () => await import('../../app');
 
 const definirJwtSecret = (secret: string | undefined) => {
@@ -56,14 +48,7 @@ const limparAmbiente = () => {
   delete process.env.JWT_SECRET;
 };
 
-// ========================================
-// SUÍTE DE TESTES
-// ========================================
-
 describe('Configuração da Aplicação', () => {
-  // ========================================
-  // PREPARAÇÃO E LIMPEZA
-  // ========================================
   
   beforeEach(() => {
     vi.resetModules();
@@ -72,10 +57,6 @@ describe('Configuração da Aplicação', () => {
   afterEach(() => {
     limparAmbiente();
   });
-
-  // ========================================
-  // TESTES DE SEGURANÇA
-  // ========================================
 
   describe('Configuração de Segurança', () => {
     it('deve lançar erro quando JWT_SECRET não está definido - DADO que JWT_SECRET está ausente QUANDO app inicializa ENTÃO deve lançar erro de configuração', async () => {
@@ -92,10 +73,6 @@ describe('Configuração da Aplicação', () => {
       await expect(importarModuloApp()).rejects.toThrow(mensagemErroEsperada);
     });
   });
-
-  // ========================================
-  // TESTES DE INICIALIZAÇÃO
-  // ========================================
 
   describe('Inicialização da Aplicação', () => {
     it('deve inicializar com sucesso quando JWT_SECRET está definido - DADO que JWT_SECRET é válido QUANDO app inicializa ENTÃO deve retornar app Express configurado', async () => {
@@ -134,10 +111,6 @@ describe('Configuração da Aplicação', () => {
     });
   });
 
-  // ========================================
-  // TESTES DE ESTRUTURA DO EXPRESS
-  // ========================================
-
   describe('Estrutura da Aplicação Express', () => {
     beforeEach(() => {
       definirJwtSecret('test-jwt-secret');
@@ -147,7 +120,6 @@ describe('Configuração da Aplicação', () => {
       const moduloApp = await importarModuloApp();
       const appExpress = moduloApp.default;
 
-      // Assert (Verificação): Verifica presença de todos os métodos HTTP principais
       const metodosNecessarios = ['use', 'get', 'post', 'put', 'delete', 'patch', 'listen', 'set'];
       
       metodosNecessarios.forEach(metodo => {
@@ -159,7 +131,6 @@ describe('Configuração da Aplicação', () => {
     it('deve exportar app como exportação padrão - DADO que módulo app QUANDO importado ENTÃO exportação padrão é a aplicação Express', async () => {
       const moduloApp = await importarModuloApp();
 
-      // Assert (Verificação): Verifica estrutura de exportação
       expect(moduloApp.default).toBeDefined();
       expect(moduloApp.default).toBe(moduloApp.default);
       expect(typeof moduloApp.default).toBe('function');

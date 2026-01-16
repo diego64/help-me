@@ -9,430 +9,829 @@ import {
 import express from 'express';
 import request from 'supertest';
 
-const servicoMock = {
+const servicoBase = {
   id: 'serv1',
-  nome: 'Email',
-  descricao: 'Envio de e-mails automáticos',
+  nome: 'Suporte Técnico',
+  descricao: 'Suporte técnico geral',
   ativo: true,
+  geradoEm: '2025-01-01T00:00:00.000Z',
+  atualizadoEm: '2025-01-01T00:00:00.000Z',
+  deletadoEm: null,
 };
 
 const prismaMock = {
   servico: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
+    count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
   },
 };
 
-let Regra = 'ADMIN';
+let usuarioRegra = 'ADMIN';
+
 vi.mock('@prisma/client', () => ({
-  PrismaClient: function () { return prismaMock; }
+  PrismaClient: function () {
+    return prismaMock;
+  },
 }));
 
-vi.mock('../../lib/prisma.ts', () => ({
+vi.mock('../../lib/prisma', () => ({
   prisma: prismaMock,
 }));
 
 vi.mock('../../middleware/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
-    req.usuario = { id: 'uid', regra: Regra };
+    req.usuario = { id: 'uid1', regra: usuarioRegra };
     next();
   },
-  authorizeRoles: (...roles: string[]) => (req: any, res: any, next: any) =>
-    roles.includes(req.usuario.regra) ? next() : res.status(403).json({ error: 'Forbidden' }),
+  authorizeRoles:
+    (...roles: string[]) =>
+    (req: any, res: any, next: any) =>
+      roles.includes(req.usuario.regra)
+        ? next()
+        : res.status(403).json({ error: 'Forbidden' }),
 }));
 
 let router: any;
+
 beforeAll(async () => {
   router = (await import('../../routes/servico.routes')).default;
-});
+}, 20000);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Regra = 'ADMIN';
+  usuarioRegra = 'ADMIN';
+  
+  prismaMock.servico.findUnique.mockReset();
+  prismaMock.servico.findMany.mockReset();
+  prismaMock.servico.count.mockReset();
+  prismaMock.servico.create.mockReset();
+  prismaMock.servico.update.mockReset();
+  prismaMock.servico.delete.mockReset();
 });
 
-function getApp() {
+function criarApp() {
   const app = express();
   app.use(express.json());
-  app.use(router);
+  app.use('/servicos', router);
   return app;
 }
 
-describe('POST / (criação de serviço)', () => {
-  it('deve retornar status 201 e criar um novo serviço quando receber dados válidos e o nome não existir no banco', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    prismaMock.servico.create.mockResolvedValueOnce(servicoMock);
-    const res = await request(getApp()).post('/').send(servicoMock);
-    expect(res.status).toBe(201);
-    expect(res.body.nome).toBe('Email');
+describe('POST /servicos (criação de serviço)', () => {
+  it('deve retornar status 201 e criar serviço com dados válidos', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+    prismaMock.servico.create.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Suporte Técnico', descricao: 'Suporte técnico geral' });
+
+    expect(resposta.status).toBe(201);
+    expect(resposta.body.nome).toBe('Suporte Técnico');
+    expect(prismaMock.servico.create).toHaveBeenCalledWith({
+      data: {
+        nome: 'Suporte Técnico',
+        descricao: 'Suporte técnico geral',
+      },
+      select: expect.any(Object),
+    });
   });
 
-  it('deve retornar status 400 com mensagem de erro quando o campo "nome" não for enviado na requisição', async () => {
-    const res = await request(getApp()).post('/').send({ descricao: 'Qualquer' });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('nome do serviço');
+  it('deve retornar status 400 quando nome não for enviado', async () => {
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ descricao: 'Descrição' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Nome é obrigatório');
   });
 
-  it('deve retornar status 409 com mensagem de conflito quando já existir um serviço com o mesmo nome', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    const res = await request(getApp()).post('/').send(servicoMock);
-    expect(res.status).toBe(409);
-    expect(res.body.error).toContain('Já existe um serviço');
+  it('deve retornar status 400 quando nome for menor que 3 caracteres', async () => {
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'AB' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no mínimo 3 caracteres');
   });
 
-  it('deve retornar status 400 quando ocorrer um erro inesperado durante a criação no banco de dados', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    prismaMock.servico.create.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).post('/').send(servicoMock);
-    expect(res.status).toBe(400);
+  it('deve retornar status 400 quando nome for maior que 100 caracteres', async () => {
+    const nomeGrande = 'A'.repeat(101);
+    
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: nomeGrande });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no máximo 100 caracteres');
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir a permissão ADMIN', async () => {
-    Regra = 'USUARIO';
-    const res = await request(getApp()).post('/').send(servicoMock);
-    expect(res.status).toBe(403);
+  it('deve retornar status 400 quando descrição for maior que 500 caracteres', async () => {
+    const descricaoGrande = 'A'.repeat(501);
+    
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Serviço', descricao: descricaoGrande });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no máximo 500 caracteres');
   });
 
-  it('deve retornar status 400 quando nome for string vazia', async () => {
-    const res = await request(getApp()).post('/').send({ nome: '', descricao: 'Qualquer' });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('nome do serviço');
+  it('deve retornar status 409 quando já existir serviço com mesmo nome ativo', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: null,
+    });
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Suporte Técnico' });
+
+    expect(resposta.status).toBe(409);
+    expect(resposta.body.error).toContain('Já existe um serviço com esse nome');
   });
 
-  it('deve retornar status 400 quando nome for apenas espaços em branco', async () => {
-    const res = await request(getApp()).post('/').send({ nome: '   ', descricao: 'Qualquer' });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('nome do serviço');
+  it('deve retornar status 409 quando existir serviço deletado com mesmo nome', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: new Date(),
+    });
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Suporte Técnico' });
+
+    expect(resposta.status).toBe(409);
+    expect(resposta.body.error).toContain('serviço deletado com esse nome');
+    expect(resposta.body.servicoId).toBe('serv1');
+  });
+
+  it('deve fazer trim do nome antes de criar', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+    prismaMock.servico.create.mockResolvedValue(servicoBase);
+
+    await request(criarApp())
+      .post('/servicos')
+      .send({ nome: '  Suporte Técnico  ' });
+
+    expect(prismaMock.servico.create).toHaveBeenCalledWith({
+      data: {
+        nome: 'Suporte Técnico',
+        descricao: null,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve criar serviço sem descrição quando não fornecida', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+    prismaMock.servico.create.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Suporte Técnico' });
+
+    expect(resposta.status).toBe(201);
+    expect(prismaMock.servico.create).toHaveBeenCalledWith({
+      data: {
+        nome: 'Suporte Técnico',
+        descricao: null,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Serviço' });
+
+    expect(resposta.status).toBe(403);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+    prismaMock.servico.create.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp())
+      .post('/servicos')
+      .send({ nome: 'Serviço' });
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao criar serviço');
   });
 });
 
-describe('GET / (listar serviços)', () => {
-  it('deve retornar status 200 e listar apenas os serviços ativos quando não especificar parâmetros adicionais', async () => {
-    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock]);
-    const res = await request(getApp()).get('/');
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body[0].ativo).toBe(true);
+describe('GET /servicos (listagem de serviços)', () => {
+  it('deve retornar status 200 com lista paginada de serviços ativos', async () => {
+    prismaMock.servico.count.mockResolvedValue(1);
+    prismaMock.servico.findMany.mockResolvedValue([servicoBase]);
+
+    const resposta = await request(criarApp()).get('/servicos');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.data).toHaveLength(1);
+    expect(resposta.body.pagination).toMatchObject({
+      page: 1,
+      limit: 20,
+      total: 1,
+      totalPages: 1,
+      hasNext: false,
+      hasPrev: false,
+    });
   });
 
-  it('deve retornar status 200 e incluir serviços inativos na listagem quando o parâmetro "incluirInativos=true" for enviado', async () => {
-    const mockInativo = { ...servicoMock, id: 'serv2', ativo: false };
-    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock, mockInativo]);
-    const res = await request(getApp()).get('/?incluirInativos=true');
-    expect(res.status).toBe(200);
-    expect(res.body.find((s: { ativo: any; }) => !s.ativo)).toBeDefined();
+  it('deve filtrar apenas serviços ativos por padrão', async () => {
+    prismaMock.servico.count.mockResolvedValue(1);
+    prismaMock.servico.findMany.mockResolvedValue([servicoBase]);
+
+    await request(criarApp()).get('/servicos');
+
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
+      where: { ativo: true, deletadoEm: null },
+      select: expect.any(Object),
+      orderBy: { nome: 'asc' },
+      skip: 0,
+      take: 20,
+    });
   });
 
-  it('deve retornar status 500 quando ocorrer uma falha na consulta ao banco de dados (findMany)', async () => {
-    prismaMock.servico.findMany.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).get('/');
-    expect(res.status).toBe(500);
+  it('deve incluir serviços inativos quando solicitado', async () => {
+    prismaMock.servico.count.mockResolvedValue(2);
+    prismaMock.servico.findMany.mockResolvedValue([
+      servicoBase,
+      { ...servicoBase, id: 'serv2', ativo: false },
+    ]);
+
+    await request(criarApp()).get('/servicos?incluirInativos=true');
+
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
+      where: { deletadoEm: null },
+      select: expect.any(Object),
+      orderBy: { nome: 'asc' },
+      skip: 0,
+      take: 20,
+    });
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir permissão ADMIN ou USUARIO', async () => {
-    Regra = 'TECNICO';
-    const res = await request(getApp()).get('/');
-    expect(res.status).toBe(403);
-  });
+  it('deve incluir serviços deletados quando solicitado', async () => {
+    prismaMock.servico.count.mockResolvedValue(1);
+    prismaMock.servico.findMany.mockResolvedValue([
+      { ...servicoBase, deletadoEm: new Date() },
+    ]);
 
-  it('deve cobrir o branch alternativo quando incluirInativos não é "true"', async () => {
-    prismaMock.servico.findMany.mockResolvedValueOnce([servicoMock]);
-    const res = await request(getApp()).get('/?incluirInativos=false');
-    expect(res.status).toBe(200);
+    await request(criarApp()).get('/servicos?incluirDeletados=true');
+
     expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
       where: { ativo: true },
-      orderBy: { nome: 'asc' }
+      select: expect.any(Object),
+      orderBy: { nome: 'asc' },
+      skip: 0,
+      take: 20,
     });
+  });
+
+  it('deve buscar por nome ou descrição quando fornecido termo de busca', async () => {
+    prismaMock.servico.count.mockResolvedValue(1);
+    prismaMock.servico.findMany.mockResolvedValue([servicoBase]);
+
+    await request(criarApp()).get('/servicos?busca=Suporte');
+
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith({
+      where: {
+        ativo: true,
+        deletadoEm: null,
+        OR: [
+          { nome: { contains: 'Suporte', mode: 'insensitive' } },
+          { descricao: { contains: 'Suporte', mode: 'insensitive' } },
+        ],
+      },
+      select: expect.any(Object),
+      orderBy: { nome: 'asc' },
+      skip: 0,
+      take: 20,
+    });
+  });
+
+  it('deve aplicar paginação corretamente', async () => {
+    prismaMock.servico.count.mockResolvedValue(50);
+    prismaMock.servico.findMany.mockResolvedValue([servicoBase]);
+
+    const resposta = await request(criarApp()).get('/servicos?page=2&limit=10');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.pagination).toMatchObject({
+      page: 2,
+      limit: 10,
+      total: 50,
+      totalPages: 5,
+      hasNext: true,
+      hasPrev: true,
+    });
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 10,
+        take: 10,
+      })
+    );
+  });
+
+  it('deve limitar paginação ao máximo de 100 itens', async () => {
+    prismaMock.servico.count.mockResolvedValue(200);
+    prismaMock.servico.findMany.mockResolvedValue([servicoBase]);
+
+    await request(criarApp()).get('/servicos?limit=200');
+
+    expect(prismaMock.servico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100,
+      })
+    );
+  });
+
+  it('deve permitir acesso para USUARIO', async () => {
+    usuarioRegra = 'USUARIO';
+    prismaMock.servico.count.mockResolvedValue(0);
+    prismaMock.servico.findMany.mockResolvedValue([]);
+
+    const resposta = await request(criarApp()).get('/servicos');
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve permitir acesso para TECNICO', async () => {
+    usuarioRegra = 'TECNICO';
+    prismaMock.servico.count.mockResolvedValue(0);
+    prismaMock.servico.findMany.mockResolvedValue([]);
+
+    const resposta = await request(criarApp()).get('/servicos');
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.count.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).get('/servicos');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao listar serviços');
   });
 });
 
-describe('GET /:id (buscar serviço por id)', () => {
-  it('deve retornar status 200 e os dados do serviço quando buscar por um ID existente', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    const res = await request(getApp()).get('/serv1');
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe('serv1');
+describe('GET /servicos/:id (buscar serviço específico)', () => {
+  it('deve retornar status 200 com dados do serviço quando encontrado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      _count: { chamados: 5 },
+    });
+
+    const resposta = await request(criarApp()).get('/servicos/serv1');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.id).toBe('serv1');
+    expect(resposta.body.nome).toBe('Suporte Técnico');
   });
 
-  it('deve retornar status 404 com mensagem de erro quando buscar por um ID que não existe no banco', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    const res = await request(getApp()).get('/serv2');
-    expect(res.status).toBe(404);
-    expect(res.body.error).toContain('Serviço não encontrado');
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp()).get('/servicos/serv999');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
   });
 
-  it('deve retornar status 400 quando ocorrer um erro inesperado durante a busca no banco (findUnique)', async () => {
-    prismaMock.servico.findUnique.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).get('/serv1');
-    expect(res.status).toBe(400);
+  it('deve permitir acesso para USUARIO', async () => {
+    usuarioRegra = 'USUARIO';
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).get('/servicos/serv1');
+
+    expect(resposta.status).toBe(200);
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir permissão ADMIN ou USUARIO', async () => {
-    Regra = 'TECNICO';
-    const res = await request(getApp()).get('/serv1');
-    expect(res.status).toBe(403);
+  it('deve permitir acesso para TECNICO', async () => {
+    usuarioRegra = 'TECNICO';
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).get('/servicos/serv1');
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).get('/servicos/serv1');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao buscar serviço');
   });
 });
 
-describe('PUT /:id (editar serviço)', () => {
-  it('deve retornar status 200 e os dados atualizados quando editar um serviço existente com sucesso', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Email Corrigido' });
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Email Corrigido' });
-    expect(res.status).toBe(200);
-    expect(res.body.nome).toBe('Email Corrigido');
+describe('PUT /servicos/:id (edição de serviço)', () => {
+  it('deve retornar status 200 e atualizar serviço com sucesso', async () => {
+    prismaMock.servico.findUnique
+      .mockResolvedValueOnce(servicoBase)
+      .mockResolvedValueOnce(null);
+    prismaMock.servico.update.mockResolvedValue({
+      ...servicoBase,
+      nome: 'Novo Nome',
+    });
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Novo Nome' });
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.nome).toBe('Novo Nome');
   });
 
-  it('deve retornar status 404 com mensagem de erro quando tentar editar um serviço que não existe', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo' });
-    expect(res.status).toBe(404);
-    expect(res.body.error).toContain('Serviço não encontrado');
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv999')
+      .send({ nome: 'Novo Nome' });
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
   });
 
-  it('deve retornar status 400 quando ocorrer uma falha durante a atualização no banco de dados (update)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo' });
-    expect(res.status).toBe(400);
+  it('deve retornar status 400 quando tentar editar serviço deletado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: new Date(),
+    });
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Novo Nome' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Não é possível editar um serviço deletado');
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir a permissão ADMIN', async () => {
-    Regra = 'USUARIO';
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo' });
-    expect(res.status).toBe(403);
+  it('deve retornar status 400 quando nome for inválido', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'AB' });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('no mínimo 3 caracteres');
   });
 
-  // -------------------------------------------------------------------------
-  // TESTES PARA COBERTURA 100% - Linha 90 (branches de nome e descricao)
-  // -------------------------------------------------------------------------
+  it('deve retornar status 409 quando novo nome já existir em outro serviço', async () => {
+    prismaMock.servico.findUnique
+      .mockResolvedValueOnce(servicoBase)
+      .mockResolvedValueOnce({ ...servicoBase, id: 'serv2' });
 
-  it('deve manter a descrição original quando descricao não for enviada (undefined - linha 90)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Novo Nome' });
-    
-    // Enviar apenas nome, sem descricao
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo Nome' });
-    
-    expect(res.status).toBe(200);
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Nome Existente' });
+
+    expect(resposta.status).toBe(409);
+    expect(resposta.body.error).toContain('Já existe outro serviço com esse nome');
+  });
+
+  it('deve permitir manter o mesmo nome ao editar', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+    prismaMock.servico.update.mockResolvedValue({
+      ...servicoBase,
+      descricao: 'Nova Descrição',
+    });
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Suporte Técnico', descricao: 'Nova Descrição' });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it('deve atualizar apenas descrição quando nome não for fornecido', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+    prismaMock.servico.update.mockResolvedValue({
+      ...servicoBase,
+      descricao: 'Nova Descrição',
+    });
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ descricao: 'Nova Descrição' });
+
+    expect(resposta.status).toBe(200);
     expect(prismaMock.servico.update).toHaveBeenCalledWith({
       where: { id: 'serv1' },
-      data: {
-        nome: 'Novo Nome',
-        descricao: servicoMock.descricao, // Deve usar a descrição original
-      },
+      data: { descricao: 'Nova Descrição' },
+      select: expect.any(Object),
     });
   });
 
-  it('deve manter a descrição original quando descricao for null (linha 90)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Novo Nome' });
-    
-    // Enviar descricao como null explicitamente
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Novo Nome', descricao: null });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: 'Novo Nome',
-        descricao: servicoMock.descricao, // null ?? servico.descricao = servico.descricao
-      },
-    });
+  it('deve retornar serviço inalterado quando nenhum dado for fornecido', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({});
+
+    expect(resposta.status).toBe(200);
+    expect(prismaMock.servico.update).not.toHaveBeenCalled();
   });
 
-  it('deve atualizar a descrição quando descricao for enviada como string vazia (linha 90)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, descricao: '' });
-    
-    // Enviar descricao como string vazia (não é null/undefined, então usa o valor)
-    const res = await request(getApp()).put('/serv1').send({ nome: 'Email', descricao: '' });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: 'Email',
-        descricao: '', // String vazia é um valor válido para ??
-      },
-    });
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Novo Nome' });
+
+    expect(resposta.status).toBe(403);
   });
 
-  it('deve manter o nome original quando nome não for enviado (undefined)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, descricao: 'Nova Descricao' });
-    
-    // Enviar apenas descricao, sem nome
-    const res = await request(getApp()).put('/serv1').send({ descricao: 'Nova Descricao' });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: servicoMock.nome, // Deve usar o nome original
-        descricao: 'Nova Descricao',
-      },
-    });
-  });
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+    prismaMock.servico.update.mockRejectedValue(new Error('Database error'));
 
-  it('deve manter o nome original quando nome for string vazia após trim', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce(servicoMock);
-    
-    // Enviar nome como string vazia ou apenas espaços
-    const res = await request(getApp()).put('/serv1').send({ nome: '   ', descricao: 'Desc' });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: servicoMock.nome, // '' || servico.nome = servico.nome
-        descricao: 'Desc',
-      },
-    });
-  });
+    const resposta = await request(criarApp())
+      .put('/servicos/serv1')
+      .send({ nome: 'Novo Nome' });
 
-  it('deve atualizar ambos nome e descricao quando enviados com valores válidos', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ 
-      ...servicoMock, 
-      nome: 'Novo Nome', 
-      descricao: 'Nova Descricao' 
-    });
-    
-    const res = await request(getApp()).put('/serv1').send({ 
-      nome: 'Novo Nome', 
-      descricao: 'Nova Descricao' 
-    });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: 'Novo Nome',
-        descricao: 'Nova Descricao',
-      },
-    });
-  });
-
-  it('deve fazer trim do nome quando enviado com espaços nas extremidades', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, nome: 'Nome Com Espacos' });
-    
-    const res = await request(getApp()).put('/serv1').send({ nome: '  Nome Com Espacos  ' });
-    
-    expect(res.status).toBe(200);
-    expect(prismaMock.servico.update).toHaveBeenCalledWith({
-      where: { id: 'serv1' },
-      data: {
-        nome: 'Nome Com Espacos',
-        descricao: servicoMock.descricao,
-      },
-    });
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao atualizar serviço');
   });
 });
 
-describe('DELETE /:id/desativar (soft delete)', () => {
-  it('deve retornar status 200 e mensagem de sucesso quando desativar um serviço ativo', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockResolvedValueOnce({ ...servicoMock, ativo: false });
-    const res = await request(getApp()).delete('/serv1/desativar');
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('desativado');
+describe('PATCH /servicos/:id/desativar (desativação)', () => {
+  it('deve retornar status 200 e desativar serviço com sucesso', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+    prismaMock.servico.update.mockResolvedValue({
+      ...servicoBase,
+      ativo: false,
+    });
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/desativar');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('desativado com sucesso');
   });
 
-  it('deve retornar status 404 quando tentar desativar um serviço que não existe no banco', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    const res = await request(getApp()).delete('/serv2/desativar');
-    expect(res.status).toBe(404);
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv999/desativar');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
   });
 
-  it('deve retornar status 400 com mensagem de erro quando tentar desativar um serviço que já está desativado', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce({ ...servicoMock, ativo: false });
-    const res = await request(getApp()).delete('/serv1/desativar');
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('já está desativado');
+  it('deve retornar status 400 quando serviço já estiver desativado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      ativo: false,
+    });
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/desativar');
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('já está desativado');
   });
 
-  it('deve retornar status 400 quando ocorrer um erro durante a atualização do status no banco (update)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.update.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).delete('/serv1/desativar');
-    expect(res.status).toBe(400);
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/desativar');
+
+    expect(resposta.status).toBe(403);
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir a permissão ADMIN', async () => {
-    Regra = 'USUARIO';
-    const res = await request(getApp()).delete('/serv1/desativar');
-    expect(res.status).toBe(403);
-  });
-});
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+    prismaMock.servico.update.mockRejectedValue(new Error('Database error'));
 
-describe('PATCH /:id/reativar (reativar serviço)', () => {
-  it('deve retornar status 200 e reativar o serviço quando ele estiver desativado', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce({ ...servicoMock, ativo: false });
-    prismaMock.servico.update.mockResolvedValueOnce(servicoMock);
-    const res = await request(getApp()).patch('/serv1/reativar');
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('reativado');
-    expect(res.body.servico.ativo).toBe(true);
-  });
+    const resposta = await request(criarApp()).patch('/servicos/serv1/desativar');
 
-  it('deve retornar status 404 quando tentar reativar um serviço que não existe no banco', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    const res = await request(getApp()).patch('/serv2/reativar');
-    expect(res.status).toBe(404);
-  });
-
-  it('deve retornar status 400 com mensagem de erro quando tentar reativar um serviço que já está ativo', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    const res = await request(getApp()).patch('/serv1/reativar');
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('já está ativo');
-  });
-
-  it('deve retornar status 400 quando ocorrer um erro durante a reativação no banco de dados (update)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce({ ...servicoMock, ativo: false });
-    prismaMock.servico.update.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).patch('/serv1/reativar');
-    expect(res.status).toBe(400);
-  });
-
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir a permissão ADMIN', async () => {
-    Regra = 'USUARIO';
-    const res = await request(getApp()).patch('/serv1/reativar');
-    expect(res.status).toBe(403);
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao desativar serviço');
   });
 });
 
-describe('DELETE /:id/excluir (hard delete)', () => {
-  it('deve retornar status 200 e remover permanentemente o serviço do banco quando executar exclusão definitiva', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.delete.mockResolvedValueOnce({});
-    const res = await request(getApp()).delete('/serv1/excluir');
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('removido permanentemente');
+describe('PATCH /servicos/:id/reativar (reativação)', () => {
+  it('deve retornar status 200 e reativar serviço com sucesso', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      ativo: false,
+    });
+    prismaMock.servico.update.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/reativar');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('reativado com sucesso');
+    expect(resposta.body.servico.ativo).toBe(true);
   });
 
-  it('deve retornar status 404 quando tentar excluir permanentemente um serviço que não existe', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(null);
-    const res = await request(getApp()).delete('/serv2/excluir');
-    expect(res.status).toBe(404);
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv999/reativar');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
   });
 
-  it('deve retornar status 400 quando ocorrer um erro durante a exclusão permanente no banco (delete)', async () => {
-    prismaMock.servico.findUnique.mockResolvedValueOnce(servicoMock);
-    prismaMock.servico.delete.mockRejectedValueOnce(new Error('fail'));
-    const res = await request(getApp()).delete('/serv1/excluir');
-    expect(res.status).toBe(400);
+  it('deve retornar status 400 quando serviço estiver deletado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      ativo: false,
+      deletadoEm: new Date(),
+    });
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/reativar');
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('Não é possível reativar um serviço deletado');
   });
 
-  it('deve retornar status 403 e negar acesso quando o usuário não possuir a permissão ADMIN', async () => {
-    Regra = 'USUARIO';
-    const res = await request(getApp()).delete('/serv1/excluir');
-    expect(res.status).toBe(403);
+  it('deve retornar status 400 quando serviço já estiver ativo', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/reativar');
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('já está ativo');
+  });
+
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/reativar');
+
+    expect(resposta.status).toBe(403);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      ativo: false,
+    });
+    prismaMock.servico.update.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/reativar');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao reativar serviço');
+  });
+});
+
+describe('DELETE /servicos/:id (deleção)', () => {
+  it('deve retornar status 200 e fazer soft delete por padrão', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      _count: { chamados: 0 },
+    });
+    prismaMock.servico.update.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: new Date(),
+    });
+
+    const resposta = await request(criarApp()).delete('/servicos/serv1');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('deletado com sucesso');
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        deletadoEm: expect.any(Date),
+        ativo: false,
+      },
+    });
+  });
+
+  it('deve retornar status 200 e fazer hard delete quando solicitado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      _count: { chamados: 0 },
+    });
+    prismaMock.servico.delete.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).delete('/servicos/serv1?permanente=true');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('removido permanentemente');
+    expect(prismaMock.servico.delete).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+    });
+  });
+
+  it('deve retornar status 400 quando tentar hard delete com chamados vinculados', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      _count: { chamados: 5 },
+    });
+
+    const resposta = await request(criarApp()).delete('/servicos/serv1?permanente=true');
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('5 chamados vinculados');
+  });
+
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp()).delete('/servicos/serv999');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
+  });
+
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp()).delete('/servicos/serv1');
+
+    expect(resposta.status).toBe(403);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      _count: { chamados: 0 },
+    });
+    prismaMock.servico.update.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).delete('/servicos/serv1');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao deletar serviço');
+  });
+});
+
+describe('PATCH /servicos/:id/restaurar (restauração)', () => {
+  it('deve retornar status 200 e restaurar serviço deletado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: new Date(),
+    });
+    prismaMock.servico.update.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/restaurar');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.message).toContain('restaurado com sucesso');
+    expect(prismaMock.servico.update).toHaveBeenCalledWith({
+      where: { id: 'serv1' },
+      data: {
+        deletadoEm: null,
+        ativo: true,
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('deve retornar status 404 quando serviço não existir', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(null);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv999/restaurar');
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.error).toContain('Serviço não encontrado');
+  });
+
+  it('deve retornar status 400 quando serviço não estiver deletado', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue(servicoBase);
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/restaurar');
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.error).toContain('não está deletado');
+  });
+
+  it('deve retornar status 403 quando usuário não for ADMIN', async () => {
+    usuarioRegra = 'USUARIO';
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/restaurar');
+
+    expect(resposta.status).toBe(403);
+  });
+
+  it('deve retornar status 500 quando ocorrer erro no banco', async () => {
+    prismaMock.servico.findUnique.mockResolvedValue({
+      ...servicoBase,
+      deletadoEm: new Date(),
+    });
+    prismaMock.servico.update.mockRejectedValue(new Error('Database error'));
+
+    const resposta = await request(criarApp()).patch('/servicos/serv1/restaurar');
+
+    expect(resposta.status).toBe(500);
+    expect(resposta.body.error).toContain('Erro ao restaurar serviço');
   });
 });

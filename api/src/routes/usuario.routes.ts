@@ -1,16 +1,191 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { Setor } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import { Setor, Regra } from '@prisma/client';
+import { hashPassword } from '../utils/password';
 import multer from 'multer';
+import path from 'path';
 import {
   authMiddleware,
   authorizeRoles,
   AuthRequest
 } from '../middleware/auth';
-import { cacheSet, cacheGet } from '../services/redisClient';
+import {
+  cacheSet,
+  cacheGet,
+  cacheDel
+} from '../services/redisClient';
 
 export const router: Router = Router();
+
+const MIN_PASSWORD_LENGTH = 8;
+const MIN_NOME_LENGTH = 2;
+const MAX_NOME_LENGTH = 100;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+const CACHE_TTL = 60;
+const CACHE_KEY_PREFIX = 'usuarios:';
+
+const UPLOAD_DIR = 'uploads/avatars';
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+interface PaginationParams {
+  page: number;
+  limit: number;
+  skip: number;
+}
+
+interface ListagemResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+  },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido. Use: JPEG, PNG ou WEBP'));
+    }
+  },
+});
+
+function validarEmail(email: string): { valido: boolean; erro?: string } {
+  if (!email || typeof email !== 'string') {
+    return { valido: false, erro: 'Email é obrigatório' };
+  }
+
+  if (!EMAIL_REGEX.test(email)) {
+    return { valido: false, erro: 'Email inválido' };
+  }
+
+  return { valido: true };
+}
+
+function validarSenha(password: string): { valida: boolean; erro?: string } {
+  if (!password || typeof password !== 'string') {
+    return { valida: false, erro: 'Senha é obrigatória' };
+  }
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return {
+      valida: false,
+      erro: `Senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres`,
+    };
+  }
+
+  return { valida: true };
+}
+
+function validarNome(nome: string, campo: string): { valido: boolean; erro?: string } {
+  if (!nome || typeof nome !== 'string') {
+    return { valido: false, erro: `${campo} é obrigatório` };
+  }
+
+  const nomeLimpo = nome.trim();
+
+  if (nomeLimpo.length < MIN_NOME_LENGTH) {
+    return {
+      valido: false,
+      erro: `${campo} deve ter no mínimo ${MIN_NOME_LENGTH} caracteres`,
+    };
+  }
+
+  if (nomeLimpo.length > MAX_NOME_LENGTH) {
+    return {
+      valido: false,
+      erro: `${campo} deve ter no máximo ${MAX_NOME_LENGTH} caracteres`,
+    };
+  }
+
+  return { valido: true };
+}
+
+async function invalidarCacheListagem() {
+  try {
+    await cacheDel(`${CACHE_KEY_PREFIX}list`);
+  } catch (err) {
+    console.error('[CACHE INVALIDATION ERROR]', err);
+  }
+}
+
+function getPaginationParams(query: any): PaginationParams {
+  const page = Math.max(1, parseInt(query.page) || DEFAULT_PAGE);
+  const limit = Math.min(
+    MAX_LIMIT,
+    Math.max(1, parseInt(query.limit) || DEFAULT_LIMIT)
+  );
+  const skip = (page - 1) * limit;
+
+  return { page, limit, skip };
+}
+
+function createPaginatedResponse<T>(
+  data: T[],
+  total: number,
+  page: number,
+  limit: number
+): ListagemResponse<T> {
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    },
+  };
+}
+
+const USUARIO_SELECT = {
+  id: true,
+  nome: true,
+  sobrenome: true,
+  email: true,
+  telefone: true,
+  ramal: true,
+  setor: true,
+  avatarUrl: true,
+  ativo: true,
+  regra: true,
+  geradoEm: true,
+  atualizadoEm: true,
+  deletadoEm: true,
+  _count: {
+    select: {
+      chamadoOS: {
+        where: { deletadoEm: null },
+      },
+    },
+  },
+} as const;
 
 /**
  * @swagger
@@ -19,36 +194,12 @@ export const router: Router = Router();
  *   description: Gerenciamento de usuários do sistema
  */
 
-// ====================================================
-// CONFIGURAÇÃO DE UPLOAD DE IMAGEM DO AVATAR
-// ====================================================
-
-const upload = multer({ dest: 'uploads/' });
-
-// ====================================================
-// DADOS NECESSARIOS PARA CRIAÇÃO DO USUARIO
-// ====================================================
-
-interface usuarioInput {
-  nome: string;
-  sobrenome: string;
-  email: string;
-  password?: string;
-  telefone?: string;
-  ramal?: string;
-  setor: Setor;
-}
-
-// ====================================================
-// CRIAÇÃO DO PERFIL USUARIO
-// ====================================================
-
 /**
  * @swagger
  * /api/usuarios:
  *   post:
  *     summary: Cria um novo usuário
- *     description: Cadastra um usuário no sistema com perfil USUARIO. A senha é obrigatória e será criptografada antes de ser armazenada. Requer autenticação e perfil ADMIN.
+ *     description: Cadastra um usuário no sistema com perfil USUARIO. Requer autenticação e perfil ADMIN.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
@@ -67,163 +218,303 @@ interface usuarioInput {
  *             properties:
  *               nome:
  *                 type: string
- *                 description: Nome do usuário
+ *                 minLength: 2
+ *                 maxLength: 100
  *               sobrenome:
  *                 type: string
- *                 description: Sobrenome do usuário
+ *                 minLength: 2
+ *                 maxLength: 100
  *               email:
  *                 type: string
  *                 format: email
- *                 description: Email do usuário
  *               password:
  *                 type: string
  *                 format: password
- *                 description: Senha do usuário
+ *                 minLength: 8
  *               telefone:
  *                 type: string
- *                 description: Telefone do usuário (opcional)
  *               ramal:
  *                 type: string
- *                 description: Ramal do usuário (opcional)
  *               setor:
  *                 type: string
- *                 enum: [TECNOLOGIA_INFORMACAO, RECURSOS_HUMANOS, FINANCEIRO, OPERACIONAL, COMERCIAL, ADMINISTRATIVO]
- *                 description: Setor do usuário
+ *                 enum: [ADMINISTRACAO, ALMOXARIFADO, CALL_CENTER, COMERCIAL, DEPARTAMENTO_PESSOAL, FINANCEIRO, JURIDICO, LOGISTICA, MARKETING, QUALIDADE, RECURSOS_HUMANOS, TECNOLOGIA_INFORMACAO]
  *     responses:
  *       201:
  *         description: Usuário criado com sucesso
  *       400:
- *         description: Dados inválidos ou senha não fornecida
+ *         description: Validação falhou
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN)
+ *         description: Sem permissão
+ *       409:
+ *         description: Email já cadastrado
+ *       500:
+ *         description: Erro ao criar usuário
  */
-router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req, res) => {
+router.post(
+  '/',
+  authMiddleware,
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { nome, sobrenome, email, password, telefone, ramal, setor } = req.body as usuarioInput;
+      const { nome, sobrenome, email, password, telefone, ramal, setor } = req.body;
 
-      if (!password) return res.status(400).json({ error: 'Senha obrigatória.' });
+      const validacaoNome = validarNome(nome, 'Nome');
+      if (!validacaoNome.valido) {
+        return res.status(400).json({ error: validacaoNome.erro });
+      }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const validacaoSobrenome = validarNome(sobrenome, 'Sobrenome');
+      if (!validacaoSobrenome.valido) {
+        return res.status(400).json({ error: validacaoSobrenome.erro });
+      }
+
+      const validacaoEmail = validarEmail(email);
+      if (!validacaoEmail.valido) {
+        return res.status(400).json({ error: validacaoEmail.erro });
+      }
+
+      const validacaoSenha = validarSenha(password);
+      if (!validacaoSenha.valida) {
+        return res.status(400).json({ error: validacaoSenha.erro });
+      }
+
+      if (!setor || !Object.values(Setor).includes(setor)) {
+        return res.status(400).json({
+          error: 'Setor inválido',
+          setoresValidos: Object.values(Setor),
+        });
+      }
+
+      const emailExistente = await prisma.usuario.findUnique({
+        where: { email: email.toLowerCase() },
+        select: { id: true, deletadoEm: true },
+      });
+
+      if (emailExistente) {
+        if (emailExistente.deletadoEm) {
+          return res.status(409).json({
+            error: 'Já existe um usuário deletado com este email',
+          });
+        }
+        return res.status(409).json({
+          error: 'Email já cadastrado',
+        });
+      }
+
+      const hashedPassword = hashPassword(password);
 
       const usuario = await prisma.usuario.create({
         data: {
-          nome,
-          sobrenome,
-          email,
+          nome: nome.trim(),
+          sobrenome: sobrenome.trim(),
+          email: email.toLowerCase(),
           password: hashedPassword,
-          telefone,
-          ramal,
+          telefone: telefone?.trim() || null,
+          ramal: ramal?.trim() || null,
           setor,
-          regra: 'USUARIO',
+          regra: Regra.USUARIO,
         },
+        select: USUARIO_SELECT,
       });
 
-      return res.status(201).json(usuario);
+      await invalidarCacheListagem();
+
+      console.log('[USUARIO CREATED]', { id: usuario.id, email: usuario.email });
+
+      res.status(201).json(usuario);
     } catch (err: any) {
-      return res.status(400).json({ error: err.message });
+      console.error('[USUARIO CREATE ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao criar usuário',
+      });
     }
   }
 );
-
-// ====================================================
-// LISTAGEM DE TODOS OS USUARIOS
-// ====================================================
 
 /**
  * @swagger
  * /api/usuarios:
  *   get:
  *     summary: Lista todos os usuários
- *     description: Retorna todos os usuários com perfil USUARIO cadastrados no sistema. Utiliza cache Redis com TTL de 60 segundos para otimizar performance. Requer autenticação e perfil ADMIN.
+ *     description: Retorna todos os usuários com perfil USUARIO. Utiliza cache Redis e paginação. Requer autenticação e perfil ADMIN.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - in: query
+ *         name: incluirInativos
+ *         schema:
+ *           type: boolean
+ *       - in: query
+ *         name: incluirDeletados
+ *         schema:
+ *           type: boolean
+ *       - in: query
+ *         name: setor
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: busca
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Lista de usuários retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                     format: uuid
- *                   nome:
- *                     type: string
- *                   sobrenome:
- *                     type: string
- *                   email:
- *                     type: string
- *                   telefone:
- *                     type: string
- *                     nullable: true
- *                   ramal:
- *                     type: string
- *                     nullable: true
- *                   setor:
- *                     type: string
- *                   avatarUrl:
- *                     type: string
- *                     nullable: true
- *                   geradoEm:
- *                     type: string
- *                     format: date-time
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN)
+ *         description: Sem permissão
  *       500:
  *         description: Erro ao listar usuários
  */
-router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
+router.get(
+  '/',
+  authMiddleware,
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
     try {
-      const cacheKey = 'usuarios:list:admin';
+      const { page, limit, skip } = getPaginationParams(req.query);
+      const { incluirInativos, incluirDeletados, setor, busca } = req.query;
+
+      const cacheKey = `${CACHE_KEY_PREFIX}list:${page}:${limit}:${incluirInativos}:${incluirDeletados}:${setor}:${busca}`;
+
       const cached = await cacheGet(cacheKey);
       if (cached) {
-        return res.json(JSON.parse(cached)); // Retorno acelerado do cache
+        return res.json(JSON.parse(cached));
       }
 
-      // Consulta ao banco apenas se o cache não existe
-      const usuarios = await prisma.usuario.findMany({
-        where: { regra: 'USUARIO' },
-        select: {
-          id: true,
-          nome: true,
-          sobrenome: true,
-          email: true,
-          telefone: true,
-          ramal: true,
-          setor: true,
-          avatarUrl: true,
-          geradoEm: true,
-        },
-      });
+      const where: any = {
+        regra: Regra.USUARIO,
+      };
 
-      // Salva resultado no cache por 60 segundos (pode ajustar o TTL)
-      await cacheSet(cacheKey, JSON.stringify(usuarios), 60);
+      if (incluirInativos !== 'true') {
+        where.ativo = true;
+      }
 
-      res.json(usuarios);
+      if (incluirDeletados !== 'true') {
+        where.deletadoEm = null;
+      }
+
+      if (setor) {
+        where.setor = setor as Setor;
+      }
+
+      if (busca && typeof busca === 'string') {
+        where.OR = [
+          { nome: { contains: busca, mode: 'insensitive' } },
+          { sobrenome: { contains: busca, mode: 'insensitive' } },
+          { email: { contains: busca, mode: 'insensitive' } },
+        ];
+      }
+
+      const [total, usuarios] = await Promise.all([
+        prisma.usuario.count({ where }),
+        prisma.usuario.findMany({
+          where,
+          select: USUARIO_SELECT,
+          orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      const response = createPaginatedResponse(usuarios, total, page, limit);
+
+      await cacheSet(cacheKey, JSON.stringify(response), CACHE_TTL);
+
+      res.json(response);
     } catch (err: any) {
-      res.status(500).json({ error: 'Erro ao listar usuários.' });
+      console.error('[USUARIO LIST ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao listar usuários',
+      });
     }
   }
 );
 
-// ====================================================
-// BUSCA PELO USUARIO ATRAVÉS DO EMAIL
-// ====================================================
+/**
+ * @swagger
+ * /api/usuarios/{id}:
+ *   get:
+ *     summary: Busca um usuário por ID
+ *     description: Retorna os detalhes de um usuário específico. Requer autenticação e perfil ADMIN.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usuário encontrado
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao buscar usuário
+ */
+router.get(
+  '/:id',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'USUARIO'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+        return res.status(403).json({
+          error: 'Você só pode visualizar seu próprio perfil',
+        });
+      }
+
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: USUARIO_SELECT,
+      });
+
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      res.json(usuario);
+    } catch (err: any) {
+      console.error('[USUARIO GET ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao buscar usuário',
+      });
+    }
+  }
+);
 
 /**
  * @swagger
  * /api/usuarios/email:
  *   post:
  *     summary: Busca um usuário por email
- *     description: Localiza um usuário específico através do endereço de email. Retorna informações completas do usuário (exceto senha). Requer autenticação e perfil ADMIN.
+ *     description: Localiza um usuário através do email. Requer autenticação e perfil ADMIN.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
@@ -239,97 +530,60 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest
  *               email:
  *                 type: string
  *                 format: email
- *                 description: Email do usuário a ser buscado
  *     responses:
  *       200:
  *         description: Usuário encontrado
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                   format: uuid
- *                 nome:
- *                   type: string
- *                 sobrenome:
- *                   type: string
- *                 email:
- *                   type: string
- *                 telefone:
- *                   type: string
- *                   nullable: true
- *                 ramal:
- *                   type: string
- *                   nullable: true
- *                 setor:
- *                   type: string
- *                 regra:
- *                   type: string
- *                 avatarUrl:
- *                   type: string
- *                   nullable: true
- *                 geradoEm:
- *                   type: string
- *                   format: date-time
  *       400:
- *         description: Email não fornecido ou inválido
+ *         description: Email não fornecido
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN)
+ *         description: Sem permissão
  *       404:
  *         description: Usuário não encontrado
  *       500:
  *         description: Erro ao buscar usuário
  */
-router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res) => {
-  try {
-    const { email } = req.body;
+router.post(
+  '/email',
+  authMiddleware,
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { email } = req.body;
 
-      if (!email || typeof email !== 'string') {
-        return res.status(400).json({ error: 'E-mail é obrigatório e deve ser uma string.' });
+      const validacao = validarEmail(email);
+      if (!validacao.valido) {
+        return res.status(400).json({ error: validacao.erro });
       }
 
       const usuario = await prisma.usuario.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          nome: true,
-          sobrenome: true,
-          email: true,
-          telefone: true,
-          ramal: true,
-          setor: true,
-          regra: true,
-          avatarUrl: true,
-          geradoEm: true,
-        },
+        where: { email: email.toLowerCase() },
+        select: USUARIO_SELECT,
       });
 
       if (!usuario) {
-        return res.status(404).json({ error: 'Usuário não encontrado.' });
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
       }
 
       res.json(usuario);
     } catch (err: any) {
-      console.error('Erro ao buscar usuário por e-mail:', err);
-      res.status(500).json({ error: 'Erro ao buscar usuário.' });
+      console.error('[USUARIO EMAIL ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao buscar usuário',
+      });
     }
   }
 );
-
-// ====================================================
-// EDIÇÃO DO PERFIL DO USUARIO
-// ====================================================
 
 /**
  * @swagger
  * /api/usuarios/{id}:
  *   put:
  *     summary: Atualiza os dados de um usuário
- *     description: Permite editar informações cadastrais do usuário (nome, sobrenome, email, telefone, ramal e setor). Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     description: Permite editar informações cadastrais. Requer autenticação e perfil ADMIN ou o próprio USUARIO.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
@@ -339,8 +593,6 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: ID do usuário a ser atualizado
  *     requestBody:
  *       content:
  *         application/json:
@@ -353,50 +605,152 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
  *                 type: string
  *               email:
  *                 type: string
- *                 format: email
  *               telefone:
  *                 type: string
  *               ramal:
  *                 type: string
  *               setor:
  *                 type: string
- *                 enum: [TECNOLOGIA_INFORMACAO, RECURSOS_HUMANOS, FINANCEIRO, OPERACIONAL, COMERCIAL, ADMINISTRATIVO]
  *     responses:
  *       200:
  *         description: Usuário atualizado com sucesso
  *       400:
- *         description: Erro de validação
+ *         description: Validação falhou
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       409:
+ *         description: Email já em uso
+ *       500:
+ *         description: Erro ao atualizar usuário
  */
-router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const { nome, sobrenome, email, telefone, ramal, setor } = req.body as Partial<usuarioInput>;
+router.put(
+  '/:id',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'USUARIO'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { nome, sobrenome, email, telefone, ramal, setor } = req.body;
 
-    const usuario = await prisma.usuario.update({
-      where: { id },
-      data: { nome, sobrenome, email, telefone, ramal, setor },
-    });
+      if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+        return res.status(403).json({
+          error: 'Você só pode editar seu próprio perfil',
+        });
+      }
 
-    res.json(usuario);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          regra: true,
+          email: true,
+          deletadoEm: true,
+        },
+      });
+
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      if (usuario.deletadoEm) {
+        return res.status(400).json({
+          error: 'Não é possível editar um usuário deletado',
+        });
+      }
+
+      const dataToUpdate: any = {};
+
+      if (nome !== undefined) {
+        const validacao = validarNome(nome, 'Nome');
+        if (!validacao.valido) {
+          return res.status(400).json({ error: validacao.erro });
+        }
+        dataToUpdate.nome = nome.trim();
+      }
+
+      if (sobrenome !== undefined) {
+        const validacao = validarNome(sobrenome, 'Sobrenome');
+        if (!validacao.valido) {
+          return res.status(400).json({ error: validacao.erro });
+        }
+        dataToUpdate.sobrenome = sobrenome.trim();
+      }
+
+      if (email !== undefined) {
+        const validacao = validarEmail(email);
+        if (!validacao.valido) {
+          return res.status(400).json({ error: validacao.erro });
+        }
+
+        const emailLower = email.toLowerCase();
+
+        if (emailLower !== usuario.email) {
+          const emailExistente = await prisma.usuario.findUnique({
+            where: { email: emailLower },
+          });
+
+          if (emailExistente && emailExistente.id !== id) {
+            return res.status(409).json({
+              error: 'Email já está em uso',
+            });
+          }
+
+          dataToUpdate.email = emailLower;
+        }
+      }
+
+      if (telefone !== undefined) {
+        dataToUpdate.telefone = telefone?.trim() || null;
+      }
+
+      if (ramal !== undefined) {
+        dataToUpdate.ramal = ramal?.trim() || null;
+      }
+
+      if (setor !== undefined && req.usuario!.regra === Regra.ADMIN) {
+        dataToUpdate.setor = setor as Setor;
+      }
+
+      if (Object.keys(dataToUpdate).length === 0) {
+        const current = await prisma.usuario.findUnique({
+          where: { id },
+          select: USUARIO_SELECT,
+        });
+        return res.json(current);
+      }
+
+      const updated = await prisma.usuario.update({
+        where: { id },
+        data: dataToUpdate,
+        select: USUARIO_SELECT,
+      });
+
+      await invalidarCacheListagem();
+
+      console.log('[USUARIO UPDATED]', { id, email: updated.email });
+
+      res.json(updated);
+    } catch (err: any) {
+      console.error('[USUARIO UPDATE ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao atualizar usuário',
+      });
+    }
   }
-});
-
-// ====================================================
-// ALTERAÇÃO DE SENHA
-// ====================================================
+);
 
 /**
  * @swagger
  * /api/usuarios/{id}/senha:
  *   put:
  *     summary: Altera a senha de um usuário
- *     description: Permite redefinir a senha de um usuário. A senha é criptografada antes de ser armazenada. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     description: Permite redefinir a senha. Requer autenticação e perfil ADMIN ou o próprio USUARIO.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
@@ -406,8 +760,6 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: ID do usuário
  *     requestBody:
  *       required: true
  *       content:
@@ -420,91 +772,79 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
  *               password:
  *                 type: string
  *                 format: password
- *                 description: Nova senha
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Senha alterada com sucesso
  *       400:
- *         description: Senha não fornecida ou erro de validação
+ *         description: Validação falhou
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao alterar senha
  */
-router.put('/:id/senha', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const { password } = req.body as { password: string };
+router.put(
+  '/:id/senha',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'USUARIO'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
 
-    if (!password) return res.status(400).json({ error: 'A nova senha é obrigatória.' });
+      if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+        return res.status(403).json({
+          error: 'Você só pode alterar sua própria senha',
+        });
+      }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+      const validacao = validarSenha(password);
+      if (!validacao.valida) {
+        return res.status(400).json({ error: validacao.erro });
+      }
 
-    await prisma.usuario.update({
-      where: { id },
-      data: { password: hashedPassword },
-    });
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: { id: true, regra: true },
+      });
 
-    res.json({ message: 'Senha alterada com sucesso.' });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      const hashedPassword = hashPassword(password);
+
+      await prisma.usuario.update({
+        where: { id },
+        data: { password: hashedPassword },
+      });
+
+      console.log('[USUARIO PASSWORD UPDATED]', { id });
+
+      res.json({
+        message: 'Senha alterada com sucesso',
+      });
+    } catch (err: any) {
+      console.error('[USUARIO PASSWORD ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao alterar senha',
+      });
+    }
   }
-});
-
-// ====================================================
-// EXCLUSÃO DA CONTA DO USUARIO 
-// ====================================================
-
-/**
- * @swagger
- * /api/usuarios/{id}:
- *   delete:
- *     summary: Exclui um usuário
- *     description: Remove permanentemente o usuário e todos os chamados associados do sistema. Esta ação é irreversível. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
- *     tags: [Usuários]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: ID do usuário a ser excluído
- *     responses:
- *       200:
- *         description: Usuário e chamados associados excluídos com sucesso
- *       400:
- *         description: Erro ao excluir usuário
- *       401:
- *         description: Não autenticado
- *       403:
- *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
- */
-router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.chamado.deleteMany({ where: { usuarioId: id } });
-    await prisma.usuario.delete({ where: { id } });
-
-    res.json({ message: 'Usuário e chamados associados foram excluídos com sucesso.' });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// ====================================================
-// ENVIO DA FOTO DE PERFIL DO USUARIO 
-// ====================================================
+);
 
 /**
  * @swagger
  * /api/usuarios/{id}/avatar:
  *   post:
- *     summary: Faz upload da foto de perfil do usuário
- *     description: Permite enviar uma imagem de avatar/foto de perfil para o usuário. O arquivo é salvo no servidor e o caminho é armazenado no banco de dados. Requer autenticação e perfil ADMIN ou USUARIO (próprio).
+ *     summary: Faz upload da foto de perfil
+ *     description: Permite enviar avatar (JPEG, PNG, WEBP, max 5MB). Requer autenticação e perfil ADMIN ou o próprio USUARIO.
  *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
@@ -514,8 +854,6 @@ router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async 
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: ID do usuário
  *     requestBody:
  *       required: true
  *       content:
@@ -528,33 +866,282 @@ router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async 
  *               avatar:
  *                 type: string
  *                 format: binary
- *                 description: Arquivo de imagem do avatar
  *     responses:
  *       200:
- *         description: Imagem de perfil atualizada com sucesso
+ *         description: Avatar enviado com sucesso
  *       400:
- *         description: Arquivo não enviado ou erro no upload
+ *         description: Arquivo inválido
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão (requer perfil ADMIN ou USUARIO próprio)
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao fazer upload
  */
-router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), upload.single('avatar'), async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  const file = req.file;
+router.post(
+  '/:id/avatar',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'USUARIO'),
+  upload.single('avatar'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const file = req.file;
 
-  if (!file) return res.status(400).json({ error: 'Arquivo não enviado.' });
+      if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+        return res.status(403).json({
+          error: 'Você só pode fazer upload do seu próprio avatar',
+        });
+      }
 
-  try {
-    const usuario = await prisma.usuario.update({
-      where: { id },
-      data: { avatarUrl: file.path },
-    });
+      if (!file) {
+        return res.status(400).json({
+          error: 'Arquivo não enviado',
+        });
+      }
 
-    res.json({ message: 'Imagem de perfil atualizada com sucesso.', usuario });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: { id: true, regra: true },
+      });
+
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      const updated = await prisma.usuario.update({
+        where: { id },
+        data: { avatarUrl: `/uploads/avatars/${file.filename}` },
+        select: {
+          id: true,
+          avatarUrl: true,
+        },
+      });
+
+      await invalidarCacheListagem();
+
+      console.log('[USUARIO AVATAR UPLOADED]', {
+        id,
+        file: file.filename,
+      });
+
+      res.json({
+        message: 'Avatar enviado com sucesso',
+        avatarUrl: updated.avatarUrl,
+      });
+    } catch (err: any) {
+      console.error('[USUARIO AVATAR ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao fazer upload do avatar',
+      });
+    }
   }
-});
+);
+
+/**
+ * @swagger
+ * /api/usuarios/{id}:
+ *   delete:
+ *     summary: Deleta um usuário (soft delete)
+ *     description: Marca o usuário como deletado. Requer autenticação e perfil ADMIN ou o próprio USUARIO.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: permanente
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: Usuário deletado com sucesso
+ *       400:
+ *         description: Usuário tem chamados vinculados
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao deletar usuário
+ */
+router.delete(
+  '/:id',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'USUARIO'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const permanente = req.query.permanente === 'true';
+
+      if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+        return res.status(403).json({
+          error: 'Você só pode deletar sua própria conta',
+        });
+      }
+
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          regra: true,
+          email: true,
+          deletadoEm: true,
+          _count: {
+            select: {
+              chamadoOS: {
+                where: { deletadoEm: null },
+              },
+            },
+          },
+        },
+      });
+
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      if (permanente) {
+        if (usuario._count.chamadoOS > 0) {
+          return res.status(400).json({
+            error: `Não é possível deletar permanentemente. Existem ${usuario._count.chamadoOS} chamados vinculados.`,
+          });
+        }
+
+        await prisma.usuario.delete({
+          where: { id },
+        });
+
+        console.log('[USUARIO DELETED PERMANENTLY]', { id, email: usuario.email });
+
+        await invalidarCacheListagem();
+
+        return res.json({
+          message: 'Usuário removido permanentemente',
+          id,
+        });
+      }
+
+      await prisma.usuario.update({
+        where: { id },
+        data: {
+          deletadoEm: new Date(),
+          ativo: false,
+        },
+      });
+
+      await invalidarCacheListagem();
+
+      console.log('[USUARIO SOFT DELETED]', { id, email: usuario.email });
+
+      res.json({
+        message: 'Usuário deletado com sucesso',
+        id,
+      });
+    } catch (err: any) {
+      console.error('[USUARIO DELETE ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao deletar usuário',
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/usuarios/{id}/restaurar:
+ *   patch:
+ *     summary: Restaura um usuário deletado
+ *     description: Remove a marcação de deleção. Requer autenticação e perfil ADMIN.
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usuário restaurado com sucesso
+ *       400:
+ *         description: Usuário não está deletado
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao restaurar usuário
+ */
+router.patch(
+  '/:id/restaurar',
+  authMiddleware,
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          regra: true,
+          email: true,
+          deletadoEm: true,
+        },
+      });
+
+      if (!usuario || usuario.regra !== Regra.USUARIO) {
+        return res.status(404).json({
+          error: 'Usuário não encontrado',
+        });
+      }
+
+      if (!usuario.deletadoEm) {
+        return res.status(400).json({
+          error: 'Usuário não está deletado',
+        });
+      }
+
+      const restaurado = await prisma.usuario.update({
+        where: { id },
+        data: {
+          deletadoEm: null,
+          ativo: true,
+        },
+        select: USUARIO_SELECT,
+      });
+
+      await invalidarCacheListagem();
+
+      console.log('[USUARIO RESTORED]', { id, email: usuario.email });
+
+      res.json({
+        message: 'Usuário restaurado com sucesso',
+        usuario: restaurado,
+      });
+    } catch (err: any) {
+      console.error('[USUARIO RESTORE ERROR]', err);
+      res.status(500).json({
+        error: 'Erro ao restaurar usuário',
+      });
+    }
+  }
+);
 
 export default router;

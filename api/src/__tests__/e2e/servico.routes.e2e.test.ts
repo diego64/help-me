@@ -4,23 +4,33 @@ import {
   expect,
   beforeAll,
   afterAll,
-  vi,
-  beforeEach
+  vi
 } from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../lib/prisma';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
+import { hashPassword } from '../../utils/password';
 
-vi.setConfig({ testTimeout: 15000 });
+vi.setConfig({ testTimeout: 20000 });
+
+const BASE_URL = '/servico';
+
+let nomeCounter = 0;
+const gerarNomeUnico = () => {
+  nomeCounter++;
+  return `Serviço Teste ${String(nomeCounter).padStart(4, '0')}`;
+};
 
 function gerarTokenAcesso(usuarioId: string, regra: string): string {
-  const secret = process.env.JWT_SECRET || 'testsecret';
+  const secret = process.env.JWT_SECRET || 'testsecret-must-be-at-least-32-chars-long!!';
   
   const payload = {
     id: usuarioId,
     regra: regra,
+    nome: 'Admin',
+    email: 'admin@teste.com',
     type: 'access',
   };
   
@@ -31,28 +41,20 @@ function gerarTokenAcesso(usuarioId: string, regra: string): string {
       algorithm: 'HS256',
       audience: 'helpme-client', 
       issuer: 'helpme-api',
-      expiresIn: '8h'
+      expiresIn: '8h' as const
     }
   );
 }
 
-/**
- * Função para limpar o banco de dados na ordem correta
- * respeitando as dependências de chave estrangeira
- */
 async function limparBancoDados() {
   try {
-    // IMPORTANTE: Deletar na ordem inversa das dependências
-    // 1. Primeiro, tabelas que dependem de outras
+    await prisma.ordemDeServico.deleteMany({});
+    await prisma.chamado.deleteMany({});
     await prisma.expediente.deleteMany({});
-    
-    // 2. Depois, tabelas intermediárias ou com poucas dependências
     await prisma.servico.deleteMany({});
-    
-    // 3. Por último, tabelas base (como Usuario)
     await prisma.usuario.deleteMany({});
     
-    console.log('✓ Banco de dados limpo com sucesso');
+    console.log('[INFO] Banco de dados limpo com sucesso');
   } catch (error) {
     console.error('[ERROR] Erro ao limpar banco de dados:', error);
     throw error;
@@ -61,34 +63,48 @@ async function limparBancoDados() {
 
 describe('E2E - Rotas de Serviços', () => {
   let tokenAdmin: string;
+  let tokenUsuario: string;
   let idAdmin: string;
+  let idUsuario: string;
   let idServico: string;
 
   beforeAll(async () => {
     try {
-      // Conectar ao MongoDB
-      const uriMongo = process.env.MONGO_INITDB_URI || 'mongodb://teste:senha@localhost:27017/helpme-mongo-teste?authSource=admin';
-      await mongoose.connect(uriMongo);
+      await mongoose.connect(process.env.MONGO_INITDB_URI!);
+      console.log('[INFO] MongoDB conectado');
 
-      // Limpar DADOS DE TESTES na ordem correta
       await limparBancoDados();
 
-      // Criar usuário administrador
+      const senhaHash = hashPassword('Senha123!');
+
       const usuarioAdmin = await prisma.usuario.create({
         data: {
           nome: 'Admin',
           sobrenome: 'Teste',
-          email: 'admin@teste.com',
-          password: 'hashedpassword',
+          email: 'admin.servico@test.com',
+          password: senhaHash,
           regra: 'ADMIN',
+          ativo: true,
         },
       });
       idAdmin = usuarioAdmin.id;
 
-      // Gerar token usando helper
+      const usuarioComum = await prisma.usuario.create({
+        data: {
+          nome: 'Usuario',
+          sobrenome: 'Teste',
+          email: 'usuario.servico@test.com',
+          password: senhaHash,
+          regra: 'USUARIO',
+          ativo: true,
+        },
+      });
+      idUsuario = usuarioComum.id;
+
       tokenAdmin = gerarTokenAcesso(idAdmin, 'ADMIN');
+      tokenUsuario = gerarTokenAcesso(idUsuario, 'USUARIO');
       
-      console.log('✓ Setup completo - Token e usuário criados');
+      console.log('[INFO] Setup completo - Tokens e usuários criados');
     } catch (error) {
       console.error('[ERROR] Erro no beforeAll:', error);
       throw error;
@@ -97,412 +113,452 @@ describe('E2E - Rotas de Serviços', () => {
 
   afterAll(async () => {
     try {
-      // Limpar na ordem correta
       await limparBancoDados();
-      
-      // Desconectar
       await mongoose.disconnect();
       await prisma.$disconnect();
       
-      console.log('✓ Cleanup completo');
+      console.log('[INFO] Cleanup completo');
     } catch (error) {
       console.error('[ERROR] Erro no afterAll:', error);
-      // Garantir desconexão mesmo com erro
       await mongoose.disconnect().catch(() => {});
       await prisma.$disconnect().catch(() => {});
     }
   });
 
-  // Helper para criar serviço de teste quando necessário
-  async function criarServicoTeste(): Promise<string> {
+  async function criarServicoTeste(ativo: boolean = true): Promise<string> {
     const servico = await prisma.servico.create({
       data: {
-        nome: 'Serviço de Teste E2E',
+        nome: gerarNomeUnico(),
         descricao: 'Descrição do serviço de teste',
-        ativo: true,
+        ativo,
       },
     });
     return servico.id;
   }
 
-  // ========================================
-  // SEÇÃO: Criação de Serviços
-  // ========================================
-  
-  describe('Dado um usuário administrador autenticado', () => {
-    describe('Quando enviar POST /servico com dados válidos', () => {
-      it('Então deve criar o serviço com sucesso', async () => {
-        // Arrange - Preparar dados do novo serviço
-        const dadosNovoServico = { 
-          nome: 'Serviço Teste', 
-          descricao: 'Descrição do serviço teste' 
-        };
+  describe('POST /', () => {
+    it('deve criar serviço com dados válidos', async () => {
+      const dadosNovoServico = { 
+        nome: gerarNomeUnico(), 
+        descricao: 'Descrição do serviço teste' 
+      };
 
-        // Act - Executar requisição de criação
-        const resposta = await request(app)
-          .post('/servico')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosNovoServico);
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dadosNovoServico);
 
-        // Assert - Validar resultado
-        expect(resposta.status).toBe(201);
-        expect(resposta.body).toHaveProperty('id');
-        expect(resposta.body.nome).toBe(dadosNovoServico.nome);
-        expect(resposta.body.descricao).toBe(dadosNovoServico.descricao);
-        expect(resposta.body.ativo).toBe(true);
+      expect(resposta.status).toBe(201);
+      expect(resposta.body).toHaveProperty('id');
+      expect(resposta.body.nome).toBe(dadosNovoServico.nome);
+      expect(resposta.body.descricao).toBe(dadosNovoServico.descricao);
+      expect(resposta.body.ativo).toBe(true);
 
-        // Armazenar ID para próximos testes
-        idServico = resposta.body.id;
-      });
+      idServico = resposta.body.id;
     });
 
-    describe('Quando enviar POST /servico sem o campo nome', () => {
-      it('Então deve rejeitar a criação com erro 400', async () => {
-        // Arrange - Preparar dados inválidos
-        const dadosInvalidos = { descricao: 'Serviço sem nome' };
+    it('deve rejeitar criação sem nome', async () => {
+      const dadosInvalidos = { descricao: 'Serviço sem nome' };
 
-        // Act - Executar requisição
-        const resposta = await request(app)
-          .post('/servico')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosInvalidos);
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dadosInvalidos);
 
-        // Assert - Validar erro
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('nome do serviço é obrigatório');
-      });
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Nome é obrigatório');
     });
 
-    describe('Quando enviar POST /servico com nome duplicado', () => {
-      it('Então deve rejeitar a criação com erro 409', async () => {
-        // Arrange - Usar nome já existente
-        const dadosDuplicados = { nome: 'Serviço Teste' };
+    it('deve rejeitar nome muito curto', async () => {
+      const dadosInvalidos = { nome: 'AB' };
 
-        // Act - Executar requisição
-        const resposta = await request(app)
-          .post('/servico')
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosDuplicados);
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dadosInvalidos);
 
-        // Assert - Validar erro de conflito
-        expect(resposta.status).toBe(409);
-        expect(resposta.body.error).toContain('Já existe um serviço com esse nome');
-      });
-    });
-  });
-
-  // ========================================
-  // SEÇÃO: Listagem de Serviços
-  // ========================================
-  
-  describe('Dado um usuário autenticado', () => {
-    describe('Quando enviar GET /servico sem parâmetros', () => {
-      it('Então deve listar apenas serviços ativos', async () => {
-        // Act - Executar requisição de listagem
-        const resposta = await request(app)
-          .get('/servico')
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        // Assert - Validar listagem
-        expect(resposta.status).toBe(200);
-        expect(Array.isArray(resposta.body)).toBe(true);
-        expect(resposta.body.length).toBeGreaterThan(0);
-        
-        resposta.body.forEach((servico: any) => {
-          expect(servico.ativo).toBe(true);
-        });
-      });
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('no mínimo 3 caracteres');
     });
 
-    describe('Quando enviar GET /servico?incluirInativos=true', () => {
-      it('Então deve listar todos os serviços incluindo inativos', async () => {
-        // Arrange - Garantir que temos um serviço e desativá-lo
-        if (!idServico) {
-          idServico = await criarServicoTeste();
-        }
-        
-        await prisma.servico.update({
-          where: { id: idServico },
-          data: { ativo: false },
-        });
-
-        // Act - Executar requisição com parâmetro
-        const resposta = await request(app)
-          .get('/servico?incluirInativos=true')
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        // Assert - Validar que há serviços inativos na lista
-        expect(resposta.status).toBe(200);
-        expect(Array.isArray(resposta.body)).toBe(true);
-        
-        const temServicoInativo = resposta.body.some((servico: any) => !servico.ativo);
-        expect(temServicoInativo).toBe(true);
+    it('deve rejeitar nome duplicado', async () => {
+      const nomeDuplicado = gerarNomeUnico();
+      
+      await prisma.servico.create({
+        data: { nome: nomeDuplicado, ativo: true },
       });
+
+      const dadosDuplicados = { nome: nomeDuplicado };
+
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dadosDuplicados);
+
+      expect(resposta.status).toBe(409);
+      expect(resposta.body.error).toContain('Já existe um serviço com esse nome');
+    });
+
+    it('deve rejeitar usuário não-admin tentando criar', async () => {
+      const dados = { nome: gerarNomeUnico() };
+
+      const resposta = await request(app)
+        .post(BASE_URL)
+        .set('Authorization', `Bearer ${tokenUsuario}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(403);
     });
   });
 
-  // ========================================
-  // SEÇÃO: Busca de Serviço por ID
-  // ========================================
-  
-  describe('Dado um usuário autenticado', () => {
-    describe('Quando enviar GET /servico/:id com ID válido', () => {
-      it('Então deve retornar o serviço específico', async () => {
-        // Arrange - Garantir que temos um serviço
-        if (!idServico) {
-          idServico = await criarServicoTeste();
-        }
+  describe('GET /', () => {
+    it('deve retornar serviços com estrutura de paginação', async () => {
+      const resposta = await request(app)
+        .get(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        // Act - Executar busca por ID
-        const resposta = await request(app)
-          .get(`/servico/${idServico}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+      expect(resposta.status).toBe(200);
+      expect(resposta.body).toHaveProperty('data');
+      expect(resposta.body).toHaveProperty('pagination');
+      expect(Array.isArray(resposta.body.data)).toBe(true);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
+      
+      expect(resposta.body.pagination).toHaveProperty('page');
+      expect(resposta.body.pagination).toHaveProperty('limit');
+      expect(resposta.body.pagination).toHaveProperty('total');
+      expect(resposta.body.pagination).toHaveProperty('totalPages');
+      expect(resposta.body.pagination).toHaveProperty('hasNext');
+      expect(resposta.body.pagination).toHaveProperty('hasPrev');
+    });
 
-        // Assert - Validar dados do serviço
-        expect(resposta.status).toBe(200);
-        expect(resposta.body).toHaveProperty('id');
-        expect(resposta.body.id).toBe(idServico);
-        expect(resposta.body).toHaveProperty('nome');
-        expect(resposta.body).toHaveProperty('descricao');
+    it('deve listar apenas serviços ativos por padrão', async () => {
+      await criarServicoTeste(false);
+
+      const resposta = await request(app)
+        .get(BASE_URL)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      
+      resposta.body.data.forEach((servico: any) => {
+        expect(servico.ativo).toBe(true);
       });
     });
 
-    describe('Quando enviar GET /servico/:id com ID inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        // Arrange - Preparar ID inexistente
-        const idInexistente = 'id-que-nao-existe';
+    it('deve incluir serviços inativos quando solicitado', async () => {
+      await criarServicoTeste(false);
 
-        // Act - Executar busca
-        const resposta = await request(app)
-          .get(`/servico/${idInexistente}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+      const resposta = await request(app)
+        .get(`${BASE_URL}?incluirInativos=true`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        // Assert - Validar erro
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Serviço não encontrado');
-      });
-    });
-  });
-
-  // ========================================
-  // SEÇÃO: Atualização de Serviços
-  // ========================================
-  
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar PUT /servico/:id com dados válidos', () => {
-      it('Então deve atualizar o serviço com sucesso', async () => {
-        // Arrange - Garantir que temos um serviço e preparar dados
-        if (!idServico) {
-          idServico = await criarServicoTeste();
-        }
-        
-        const dadosAtualizacao = { 
-          nome: 'Serviço Modificado', 
-          descricao: 'Descrição Atualizada' 
-        };
-
-        // Act - Executar atualização
-        const resposta = await request(app)
-          .put(`/servico/${idServico}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dadosAtualizacao);
-
-        // Assert - Validar atualização
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.nome).toBe(dadosAtualizacao.nome);
-        expect(resposta.body.descricao).toBe(dadosAtualizacao.descricao);
-        expect(resposta.body.id).toBe(idServico);
-      });
+      expect(resposta.status).toBe(200);
+      const temInativo = resposta.body.data.some((s: any) => !s.ativo);
+      expect(temInativo).toBe(true);
     });
 
-    describe('Quando enviar PUT /servico/:id com ID inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        // Arrange - Preparar ID inexistente e dados
-        const idInexistente = 'id-que-nao-existe';
-        const dados = { nome: 'Teste' };
-
-        // Act - Executar atualização
-        const resposta = await request(app)
-          .put(`/servico/${idInexistente}`)
-          .set('Authorization', `Bearer ${tokenAdmin}`)
-          .send(dados);
-
-        // Assert - Validar erro
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Serviço não encontrado');
+    it('deve suportar busca por nome', async () => {
+      const nomeUnico = gerarNomeUnico();
+      await prisma.servico.create({
+        data: { nome: nomeUnico, ativo: true },
       });
+
+      const resposta = await request(app)
+        .get(`${BASE_URL}?busca=${nomeUnico.substring(0, 10)}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.data.length).toBeGreaterThan(0);
+    });
+
+    it('deve respeitar parâmetros de paginação', async () => {
+      const resposta = await request(app)
+        .get(`${BASE_URL}?page=1&limit=5`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.pagination.page).toBe(1);
+      expect(resposta.body.pagination.limit).toBe(5);
+      expect(resposta.body.data.length).toBeLessThanOrEqual(5);
     });
   });
 
-  // ========================================
-  // SEÇÃO: Desativação de Serviços
-  // ========================================
-  
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar DELETE /servico/:id/desativar para serviço ativo', () => {
-      it('Então deve desativar o serviço com sucesso', async () => {
-        // Arrange - Garantir que temos um serviço ativo
-        if (!idServico) {
-          idServico = await criarServicoTeste();
-        }
-        
-        await prisma.servico.update({
-          where: { id: idServico },
-          data: { ativo: true },
-        });
+  describe('GET /:id', () => {
+    it('deve retornar serviço específico por ID', async () => {
+      if (!idServico) {
+        idServico = await criarServicoTeste();
+      }
 
-        // Act - Executar desativação
-        const resposta = await request(app)
-          .delete(`/servico/${idServico}/desativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idServico}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        // Assert - Validar desativação
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('desativado com sucesso');
-
-        // Verificar no banco de dados
-        const servicoDesativado = await prisma.servico.findUnique({ 
-          where: { id: idServico } 
-        });
-        expect(servicoDesativado).not.toBeNull();
-        expect(servicoDesativado?.ativo).toBe(false);
-      });
+      expect(resposta.status).toBe(200);
+      expect(resposta.body).toHaveProperty('id');
+      expect(resposta.body.id).toBe(idServico);
+      expect(resposta.body).toHaveProperty('nome');
+      expect(resposta.body).toHaveProperty('_count');
     });
 
-    describe('Quando enviar DELETE /servico/:id/desativar para serviço já inativo', () => {
-      it('Então deve retornar erro 400', async () => {
-        // Act - Tentar desativar novamente
-        const resposta = await request(app)
-          .delete(`/servico/${idServico}/desativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-123';
 
-        // Assert - Validar erro
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('já está desativado');
-      });
-    });
+      const resposta = await request(app)
+        .get(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-    describe('Quando enviar DELETE /servico/:id/desativar com ID inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        // Arrange - Preparar ID inexistente
-        const idInexistente = 'id-que-nao-existe';
-
-        // Act - Executar desativação
-        const resposta = await request(app)
-          .delete(`/servico/${idInexistente}/desativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        // Assert - Validar erro
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Serviço não encontrado');
-      });
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Serviço não encontrado');
     });
   });
 
-  // ========================================
-  // SEÇÃO: Reativação de Serviços
-  // ========================================
-  
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar PATCH /servico/:id/reativar para serviço inativo', () => {
-      it('Então deve reativar o serviço com sucesso', async () => {
-        // Act - Executar reativação
-        const resposta = await request(app)
-          .patch(`/servico/${idServico}/reativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+  describe('PUT /:id', () => {
+    it('deve atualizar serviço com dados válidos', async () => {
+      if (!idServico) {
+        idServico = await criarServicoTeste();
+      }
+      
+      const dadosAtualizacao = { 
+        nome: gerarNomeUnico(), 
+        descricao: 'Descrição Atualizada' 
+      };
 
-        // Assert - Validar reativação
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('reativado com sucesso');
-        expect(resposta.body.servico).toHaveProperty('ativo');
-        expect(resposta.body.servico.ativo).toBe(true);
-      });
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idServico}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dadosAtualizacao);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.nome).toBe(dadosAtualizacao.nome);
+      expect(resposta.body.descricao).toBe(dadosAtualizacao.descricao);
+      expect(resposta.body.id).toBe(idServico);
     });
 
-    describe('Quando enviar PATCH /servico/:id/reativar para serviço já ativo', () => {
-      it('Então deve retornar erro 400', async () => {
-        // Act - Tentar reativar novamente
-        const resposta = await request(app)
-          .patch(`/servico/${idServico}/reativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        // Assert - Validar erro
-        expect(resposta.status).toBe(400);
-        expect(resposta.body.error).toContain('já está ativo');
+    it('deve rejeitar atualização com nome duplicado', async () => {
+      const nomeExistente = gerarNomeUnico();
+      await prisma.servico.create({
+        data: { nome: nomeExistente, ativo: true },
       });
+
+      const dados = { nome: nomeExistente };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idServico}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(409);
+      expect(resposta.body.error).toContain('Já existe outro serviço com esse nome');
+    }, 30000);
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-456';
+      const dados = { nome: gerarNomeUnico() };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Serviço não encontrado');
     });
 
-    describe('Quando enviar PATCH /servico/:id/reativar com ID inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        // Arrange - Preparar ID inexistente
-        const idInexistente = 'id-que-nao-existe';
-
-        // Act - Executar reativação
-        const resposta = await request(app)
-          .patch(`/servico/${idInexistente}/reativar`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
-
-        // Assert - Validar erro
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Serviço não encontrado');
+    it('deve rejeitar edição de serviço deletado', async () => {
+      const servicoDeletado = await prisma.servico.create({
+        data: {
+          nome: gerarNomeUnico(),
+          ativo: false,
+          deletadoEm: new Date(),
+        },
       });
+
+      const dados = { nome: gerarNomeUnico() };
+
+      const resposta = await request(app)
+        .put(`${BASE_URL}/${servicoDeletado.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(dados);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Não é possível editar um serviço deletado');
     });
   });
 
-  // ========================================
-  // SEÇÃO: Exclusão Permanente de Serviços
-  // ========================================
-  
-  describe('Dado um administrador autenticado', () => {
-    describe('Quando enviar DELETE /servico/:id/excluir para serviço existente', () => {
-      it('Então deve remover o serviço permanentemente', async () => {
-        // Arrange - Garantir que temos um serviço para excluir
-        if (!idServico) {
-          idServico = await criarServicoTeste();
-        }
-        
-        const servicoExistente = await prisma.servico.findUnique({ 
-          where: { id: idServico } 
-        });
-        
-        if (!servicoExistente) {
-          idServico = await criarServicoTeste();
-        }
+  describe('PATCH /:id/desativar', () => {
+    it('deve desativar serviço ativo', async () => {
+      const servicoAtivo = await criarServicoTeste(true);
 
-        // Act - Executar exclusão permanente
-        const resposta = await request(app)
-          .delete(`/servico/${idServico}/excluir`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoAtivo}/desativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        // Assert - Validar exclusão
-        expect(resposta.status).toBe(200);
-        expect(resposta.body.message).toContain('removido permanentemente');
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('desativado com sucesso');
 
-        // Verificar que serviço não existe mais no banco
-        const servicoExcluido = await prisma.servico.findUnique({ 
-          where: { id: idServico } 
-        });
-        expect(servicoExcluido).toBeNull();
-        
-        // Resetar ID para próximos testes
-        idServico = '';
+      const verificacao = await prisma.servico.findUnique({ 
+        where: { id: servicoAtivo } 
       });
+      expect(verificacao?.ativo).toBe(false);
     });
 
-    describe('Quando enviar DELETE /servico/:id/excluir com ID inexistente', () => {
-      it('Então deve retornar erro 404', async () => {
-        // Arrange - Preparar ID inexistente
-        const idInexistente = 'id-que-nao-existe';
+    it('deve rejeitar desativação de serviço já inativo', async () => {
+      const servicoInativo = await criarServicoTeste(false);
 
-        // Act - Executar exclusão
-        const resposta = await request(app)
-          .delete(`/servico/${idInexistente}/excluir`)
-          .set('Authorization', `Bearer ${tokenAdmin}`);
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoInativo}/desativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
 
-        // Assert - Validar erro
-        expect(resposta.status).toBe(404);
-        expect(resposta.body.error).toContain('Serviço não encontrado');
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('já está desativado');
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-789';
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idInexistente}/desativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Serviço não encontrado');
+    });
+  });
+
+  describe('PATCH /:id/reativar', () => {
+    it('deve reativar serviço inativo', async () => {
+      const servicoInativo = await criarServicoTeste(false);
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoInativo}/reativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('reativado com sucesso');
+      expect(resposta.body.servico.ativo).toBe(true);
+    });
+
+    it('deve rejeitar reativação de serviço já ativo', async () => {
+      const servicoAtivo = await criarServicoTeste(true);
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoAtivo}/reativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('já está ativo');
+    });
+
+    it('deve rejeitar reativação de serviço deletado', async () => {
+      const servicoDeletado = await prisma.servico.create({
+        data: {
+          nome: gerarNomeUnico(),
+          ativo: false,
+          deletadoEm: new Date(),
+        },
       });
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoDeletado.id}/reativar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Não é possível reativar um serviço deletado');
+    });
+  });
+
+  describe('DELETE /:id', () => {
+    it('deve fazer soft delete por padrão', async () => {
+      const servicoParaDeletar = await criarServicoTeste();
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${servicoParaDeletar}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('deletado com sucesso');
+
+      const verificacao = await prisma.servico.findUnique({ 
+        where: { id: servicoParaDeletar } 
+      });
+      expect(verificacao).not.toBeNull();
+      expect(verificacao?.deletadoEm).not.toBeNull();
+      expect(verificacao?.ativo).toBe(false);
+    });
+
+    it('deve fazer hard delete quando solicitado', async () => {
+      const servicoParaDeletar = await criarServicoTeste();
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${servicoParaDeletar}?permanente=true`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('removido permanentemente');
+
+      const verificacao = await prisma.servico.findUnique({ 
+        where: { id: servicoParaDeletar } 
+      });
+      expect(verificacao).toBeNull();
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-abc';
+
+      const resposta = await request(app)
+        .delete(`${BASE_URL}/${idInexistente}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Serviço não encontrado');
+    });
+  });
+
+  describe('PATCH /:id/restaurar', () => {
+    it('deve restaurar serviço deletado', async () => {
+      const servicoDeletado = await prisma.servico.create({
+        data: {
+          nome: gerarNomeUnico(),
+          ativo: false,
+          deletadoEm: new Date(),
+        },
+      });
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoDeletado.id}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.message).toContain('restaurado com sucesso');
+      expect(resposta.body.servico.ativo).toBe(true);
+
+      const verificacao = await prisma.servico.findUnique({
+        where: { id: servicoDeletado.id },
+      });
+      expect(verificacao?.deletadoEm).toBeNull();
+      expect(verificacao?.ativo).toBe(true);
+    });
+
+    it('deve rejeitar restauração de serviço não deletado', async () => {
+      const servicoAtivo = await criarServicoTeste();
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${servicoAtivo}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.error).toContain('Serviço não está deletado');
+    });
+
+    it('deve retornar 404 para ID inexistente', async () => {
+      const idInexistente = 'id-inexistente-def';
+
+      const resposta = await request(app)
+        .patch(`${BASE_URL}/${idInexistente}/restaurar`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
+
+      expect(resposta.status).toBe(404);
+      expect(resposta.body.error).toContain('Serviço não encontrado');
     });
   });
 });

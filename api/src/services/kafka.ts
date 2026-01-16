@@ -19,12 +19,10 @@ export const customLogCreator = () => (entry: LogEntry) => {
   }
 };
 
-// ===== VARIÁVEIS PRIVADAS QUE SERÃO INICIALIZADAS SOB DEMANDA ====
 let kafkaInstance: Kafka | null = null;
 let producerInstance: Producer | null = null;
 let isConnected = false;
 
-// ==== CONFIGURAÇÃO DO KAFKA (EXPOSTA PARA TESTES) ====
 export interface KafkaConfig {
   clientId: string;
   brokers: string[];
@@ -44,7 +42,6 @@ function getKafkaInstance(): Kafka {
   const brokerUrl = process.env.KAFKA_BROKER_URL;
   if (!brokerUrl) throw new Error('KAFKA_BROKER_URL não definida!');
 
-  // ==== ARMAZENA CONFIG PARA TESTES ====
   kafkaConfig = {
     clientId: 'helpdesk-api',
     brokers: [brokerUrl],
@@ -127,7 +124,6 @@ export async function conectarKafkaProducer(): Promise<void> {
     isConnected = false;
     console.warn('[Kafka][Producer] Falha ao conectar ao Kafka - funcionando sem Kafka');
     console.warn('[Kafka][Producer] Certifique-se de que o Kafka está rodando em:', process.env.KAFKA_BROKER_URL);
-    // Não lança erro para permitir que a aplicação continue sem Kafka
   }
 }
 
@@ -147,9 +143,6 @@ export async function desconectarKafkaProducer(): Promise<void> {
   isConnected = false;
 }
 
-/**
- * ENVIA UMA MENSAGEM PARA O KAFKA (COM FALLBACK SE NÃO CONECTADO)
- */
 export async function sendMessage(topic: string, messages: any[]): Promise<void> {
   if (!isConnected) {
     console.warn(`[Kafka][Producer] Kafka não conectado - mensagem não enviada para o tópico "${topic}"`);
