@@ -363,69 +363,138 @@ jobs:
           docker volume ls
           
           echo ""
-          echo "Tentando remover compose órfão..."
-          docker compose -f docker-compose.test.yml down -v --remove-orphans 2>/dev/null || echo "Nenhum compose para remover"
+          echo "Removendo QUALQUER container relacionado..."
+          docker ps -aq --filter "name=helpme" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=postgres" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=mongodb" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=redis" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=kafka" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=zookeeper" | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=influxdb" | xargs -r docker rm -f 2>/dev/null || true
           
-          sleep 5
+          echo ""
+          echo "Tentando remover compose órfão COM flag --remove-orphans..."
+          docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 5 2>/dev/null || echo "Nenhum compose para remover"
+          
+          echo ""
+          echo "Removendo TODAS as redes órfãs..."
+          docker network prune -f 2>/dev/null || true
+          
+          echo ""
+          echo "Removendo TODOS os volumes órfãos..."
+          docker volume prune -f 2>/dev/null || true
+          
+          sleep 10
+          
+          echo ""
+          echo "Verificação final:"
+          echo "Containers restantes: $(docker ps -aq | wc -l)"
+          
+          if [ "$(docker ps -aq | wc -l)" -gt 0 ]; then
+            echo "[WARN] Ainda há containers! Removendo TODOS..."
+            docker ps -aq | xargs -r docker rm -f
+            sleep 5
+          fi
           
           echo "=== AMBIENTE VERIFICADO ==="
+      
+      - name: Remover containers órfãos conhecidos do GitHub Actions
+        run: |
+          echo "=== REMOVENDO CONTAINERS ÓRFÃOS CONHECIDOS ==="
+          
+          # Lista de containers órfãos que aparecem nos logs
+          ORPHAN_CONTAINERS=(
+            "helpme-redis-test"
+            "helpme-postgres-test"
+            "helpme-mongodb-test"
+            "helpme-zookeeper-test"
+            "helpme-kafka-test"
+            "helpme-influxdb-test"
+            "postgresql_helpme_teste"
+            "mongodb_helpme_teste"
+            "redis"
+            "postgres"
+            "mongodb"
+          )
+          
+          for container in "${ORPHAN_CONTAINERS[@]}"; do
+            if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+              echo "Removendo container órfão: $container"
+              docker rm -f "$container" 2>/dev/null || true
+            fi
+          done
+          
+          echo ""
+          echo "Containers restantes após remoção:"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}" || echo "Nenhum container"
+          
+          echo "=== REMOÇÃO CONCLUÍDA ==="
       
       - name: Subir infraestrutura com Docker Compose
         working-directory: ./api
         run: |
           echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
           
-          EXISTING_CONTAINERS=$(docker ps -aq 2>/dev/null | wc -l)
-          if [ "$EXISTING_CONTAINERS" -gt 0 ]; then
-            echo "[WARN] Ainda existem $EXISTING_CONTAINERS containers!"
+          # Verificação de segurança final
+          EXISTING=$(docker ps -aq | wc -l)
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "[ERROR] Ainda existem $EXISTING containers após limpeza!"
             docker ps -a
-            echo "Forçando remoção..."
+            echo "Removendo forçadamente..."
+            docker ps -aq | xargs -r docker stop -t 1
             docker ps -aq | xargs -r docker rm -f
             sleep 5
           fi
           
-          echo "[SUCESSO] Ambiente limpo!"
+          echo "[SUCESSO] Ambiente completamente limpo!"
           
           echo "Baixando imagens..."
-          for i in {1..3}; do
-            if docker compose -f docker-compose.test.yml pull --quiet; then
-              echo "[SUCESSO] Pull concluído"
-              break
-            else
-              echo "[WARN] Tentativa $i falhou..."
-              sleep 5
-            fi
-          done
+          docker compose -f docker-compose.test.yml pull --quiet || echo "Pull com avisos, continuando..."
           
-          echo "Subindo containers com portas dinâmicas..."
-          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans
+          echo ""
+          echo "Subindo containers com --remove-orphans EXPLÍCITO..."
+          # CRÍTICO: usar --remove-orphans aqui para Docker Compose remover órfãos automaticamente
+          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans --renew-anon-volumes
           
-          echo "Aguardando 10s para containers iniciarem..."
-          sleep 10
+          echo ""
+          echo "Aguardando 15s para containers iniciarem..."
+          sleep 15
           
-          echo "Descobrindo portas dinâmicas..."
-          POSTGRES_PORT=$(docker compose -f docker-compose.test.yml port postgres 5432 2>/dev/null | cut -d: -f2)
-          MONGODB_PORT=$(docker compose -f docker-compose.test.yml port mongodb 27017 2>/dev/null | cut -d: -f2)
-          REDIS_PORT=$(docker compose -f docker-compose.test.yml port redis 6379 2>/dev/null | cut -d: -f2)
-          KAFKA_PORT=$(docker compose -f docker-compose.test.yml port kafka 9092 2>/dev/null | cut -d: -f2)
-          
-          echo "Portas atribuídas:"
-          echo "  PostgreSQL: localhost:$POSTGRES_PORT"
-          echo "  MongoDB: localhost:$MONGODB_PORT"
-          echo "  Redis: localhost:$REDIS_PORT"
-          echo "  Kafka: localhost:$KAFKA_PORT"
-          
-          echo "POSTGRES_PORT=$POSTGRES_PORT" >> $GITHUB_ENV
-          echo "MONGODB_PORT=$MONGODB_PORT" >> $GITHUB_ENV
-          echo "REDIS_PORT=$REDIS_PORT" >> $GITHUB_ENV
-          echo "KAFKA_PORT=$KAFKA_PORT" >> $GITHUB_ENV
-          
-          echo "Aguardando serviços ficarem prontos (60s)..."
-          sleep 60
-          
-          echo "Status dos containers:"
+          echo ""
+          echo "Status após subir:"
           docker compose -f docker-compose.test.yml ps -a
           
+          echo ""
+          if command -v jq &> /dev/null; then
+            echo "Descobrindo portas dinâmicas..."
+            POSTGRES_PORT=$(docker compose -f docker-compose.test.yml port postgres 5432 2>/dev/null | cut -d: -f2 || echo "5432")
+            MONGODB_PORT=$(docker compose -f docker-compose.test.yml port mongodb 27017 2>/dev/null | cut -d: -f2 || echo "27017")
+            REDIS_PORT=$(docker compose -f docker-compose.test.yml port redis 6379 2>/dev/null | cut -d: -f2 || echo "6379")
+            KAFKA_PORT=$(docker compose -f docker-compose.test.yml port kafka 9092 2>/dev/null | cut -d: -f2 || echo "9092")
+            
+            echo "Portas atribuídas:"
+            echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+            echo "  MongoDB: localhost:$MONGODB_PORT"
+            echo "  Redis: localhost:$REDIS_PORT"
+            echo "  Kafka: localhost:$KAFKA_PORT"
+            
+            echo "POSTGRES_PORT=$POSTGRES_PORT" >> $GITHUB_ENV
+            echo "MONGODB_PORT=$MONGODB_PORT" >> $GITHUB_ENV
+            echo "REDIS_PORT=$REDIS_PORT" >> $GITHUB_ENV
+            echo "KAFKA_PORT=$KAFKA_PORT" >> $GITHUB_ENV
+          else
+            echo "jq não disponível, usando portas padrão..."
+            echo "POSTGRES_PORT=5432" >> $GITHUB_ENV
+            echo "MONGODB_PORT=27017" >> $GITHUB_ENV
+            echo "REDIS_PORT=6379" >> $GITHUB_ENV
+            echo "KAFKA_PORT=9092" >> $GITHUB_ENV
+          fi
+          
+          echo ""
+          echo "Aguardando mais 45s para serviços ficarem prontos..."
+          sleep 45
+          
+          echo ""
           echo "=== INFRAESTRUTURA PRONTA ==="
       
       - name: Verificar saúde dos serviços
