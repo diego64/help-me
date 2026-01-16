@@ -237,7 +237,7 @@ jobs:
       
       - name: Executar testes unitários
         working-directory: ./api
-        run: pnpm run test:unit:ci
+        run: pnpm run test:unit
       
       - name: Upload de coverage (se disponível)
         if: always()
