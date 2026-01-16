@@ -334,7 +334,7 @@ jobs:
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
-        run: pnpm run seed-bib-ci
+        run: pnpm run seed-big-ci
       
       - name: Executar testes E2E
         working-directory: ./api
