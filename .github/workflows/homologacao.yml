@@ -304,11 +304,8 @@ jobs:
           PORTAS=(5432 5433 27017 27018 6379 2181 9092 9093 8086)
           for porta in "${PORTAS[@]}"; do
             echo "  Liberando porta $porta..."
-            # Método 1: fuser
             sudo fuser -k ${porta}/tcp 2>/dev/null || true
-            # Método 2: lsof
             sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
-            # Método 3: netstat + kill
             sudo netstat -tlnp 2>/dev/null | grep ":${porta} " | awk '{print $7}' | cut -d'/' -f1 | xargs -r sudo kill -9 2>/dev/null || true
           done
           sleep 5
@@ -377,7 +374,7 @@ jobs:
           
           echo ""
           echo "=== AMBIENTE LIMPO COM SUCESSO ==="
-      
+
       - name: Diagnóstico de ambiente
         run: |
           echo "=== DIAGNÓSTICO DO AMBIENTE ==="
@@ -472,6 +469,111 @@ jobs:
           echo "[SUCESSO] Todos os containers estão rodando"
           echo ""
           echo "=== INFRAESTRUTURA PRONTA ==="
+      
+      - name: Aguardar serviços ficarem prontos
+        working-directory: ./api
+        run: |
+          echo "=== AGUARDANDO HEALTH CHECKS ==="
+          
+          # Função de retry com timeout e backoff exponencial
+          wait_for_service() {
+            local service=$1
+            local check_command=$2
+            local max_attempts=${3:-60}
+            local attempt=0
+            local backoff=1
+            
+            echo "Aguardando $service..."
+            while [ $attempt -lt $max_attempts ]; do
+              if eval "$check_command" >/dev/null 2>&1; then
+                echo "[SUCESSO] $service pronto (tentativa $((attempt + 1))/$max_attempts)"
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              
+              # Exibir progresso a cada 5 tentativas
+              if [ $((attempt % 5)) -eq 0 ]; then
+                echo "  Aguardando $service... ($attempt/$max_attempts)"
+              fi
+              
+              sleep $backoff
+              
+              # Backoff exponencial até 5 segundos
+              if [ $backoff -lt 5 ]; then
+                backoff=$((backoff + 1))
+              fi
+            done
+            
+            echo ""
+            echo "[WARN] $service não ficou pronto a tempo!"
+            echo "Exibindo logs do serviço:"
+            docker compose -f docker-compose.test.yml logs "$service" --tail=100
+            return 1
+          }
+          
+          # Aguardar PostgreSQL
+          wait_for_service "postgres" \
+            "docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste" \
+            30
+          
+          # Aguardar MongoDB
+          wait_for_service "mongodb" \
+            "docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval 'db.adminCommand({ping:1})'" \
+            40
+          
+          # Aguardar Redis
+          wait_for_service "redis" \
+            "docker compose -f docker-compose.test.yml exec -T redis redis-cli ping" \
+            30
+          
+          # Aguardar Zookeeper
+          wait_for_service "zookeeper" \
+            "docker compose -f docker-compose.test.yml exec -T zookeeper bash -c \"timeout 3 bash -c '</dev/tcp/localhost/2181' 2>/dev/null\"" \
+            40
+          
+          # Aguardar Kafka (precisa de mais tempo)
+          echo ""
+          echo "Aguardando Kafka (pode demorar até 3 minutos)..."
+          
+          # Primeiro, aguardar o Kafka aceitar conexões
+          wait_for_service "kafka" \
+            "docker compose -f docker-compose.test.yml exec -T kafka bash -c 'timeout 3 bash -c </dev/tcp/localhost/9092 2>/dev/null'" \
+            90
+          
+          # Depois, aguardar o Kafka estar totalmente operacional
+          echo "Verificando se Kafka está totalmente operacional..."
+          KAFKA_READY=false
+          for i in {1..60}; do
+            if docker compose -f docker-compose.test.yml exec -T kafka \
+               kafka-broker-api-versions --bootstrap-server localhost:9092 2>/dev/null | grep -q "ApiVersion"; then
+              echo "[SUCESSO] Kafka totalmente operacional (tentativa $i/60)"
+              KAFKA_READY=true
+              break
+            fi
+            
+            if [ $((i % 10)) -eq 0 ]; then
+              echo "  Kafka ainda inicializando... ($i/60)"
+            fi
+            sleep 3
+          done
+          
+          if [ "$KAFKA_READY" = false ]; then
+            echo "[WARN] Kafka não ficou operacional a tempo!"
+            echo "Status do Kafka:"
+            docker compose -f docker-compose.test.yml exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 || true
+            echo ""
+            echo "Logs do Kafka:"
+            docker compose -f docker-compose.test.yml logs kafka --tail=100
+            exit 1
+          fi
+          
+          # Aguardar InfluxDB
+          wait_for_service "influxdb" \
+            "docker compose -f docker-compose.test.yml exec -T influxdb influx ping" \
+            40
+          
+          echo ""
+          echo "=== TODOS OS SERVIÇOS PRONTOS ==="
 
       - name: Verificar saúde dos serviços
         working-directory: ./api
@@ -480,7 +582,7 @@ jobs:
           
           echo "1. Testando PostgreSQL..."
           if docker compose -f docker-compose.test.yml exec -T postgres \
-            psql -U teste -d helpme_database_teste -c "SELECT version();" >/dev/null 2>&1; then
+             psql -U teste -d helpme_database_teste -c "SELECT version();" >/dev/null 2>&1; then
             VERSION=$(docker compose -f docker-compose.test.yml exec -T postgres \
                       psql -U teste -d helpme_database_teste -tc "SELECT version();" | xargs)
             echo "[SUCESSO] PostgreSQL operacional: ${VERSION:0:50}..."
@@ -492,7 +594,7 @@ jobs:
           echo ""
           echo "2. Testando MongoDB..."
           if MONGO_VERSION=$(docker compose -f docker-compose.test.yml exec -T mongodb \
-            mongosh --quiet --eval "db.version()" 2>/dev/null); then
+             mongosh --quiet --eval "db.version()" 2>/dev/null); then
             echo "[SUCESSO] MongoDB operacional: v$MONGO_VERSION"
           else
             echo "[ERROR] MongoDB falhou no teste"
@@ -515,9 +617,8 @@ jobs:
           
           echo ""
           echo "4. Testando Zookeeper..."
-          # Usar verificação de porta ao invés de comando four-letter
           if docker compose -f docker-compose.test.yml exec -T zookeeper \
-            bash -c "timeout 3 bash -c '</dev/tcp/localhost/2181' 2>/dev/null"; then
+             bash -c "timeout 3 bash -c '</dev/tcp/localhost/2181' 2>/dev/null"; then
             echo "[SUCESSO] Zookeeper operacional (porta 2181 respondendo)"
           else
             echo "[ERROR] Zookeeper não está respondendo na porta 2181"
@@ -528,18 +629,16 @@ jobs:
           echo ""
           echo "5. Testando Kafka..."
           
-          # Teste 1: Verificar se a porta está aberta
           if docker compose -f docker-compose.test.yml exec -T kafka \
-            bash -c "timeout 3 bash -c '</dev/tcp/localhost/9092' 2>/dev/null"; then
+             bash -c "timeout 3 bash -c '</dev/tcp/localhost/9092' 2>/dev/null"; then
             echo "[SUCESSO] Kafka porta 9092 respondendo"
           else
             echo "[ERROR] Kafka porta 9092 não responde"
             exit 1
           fi
           
-          # Teste 2: Verificar API versions
           if docker compose -f docker-compose.test.yml exec -T kafka \
-            kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 | grep -q "ApiVersion"; then
+             kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 | grep -q "ApiVersion"; then
             echo "[SUCESSO] Kafka API respondendo"
           else
             echo "[ERROR] Kafka API não responde"
@@ -547,20 +646,17 @@ jobs:
             exit 1
           fi
           
-          # Teste 3: Criar e verificar tópico de teste
           echo "  Criando tópico de teste..."
           if docker compose -f docker-compose.test.yml exec -T kafka \
-            kafka-topics --bootstrap-server localhost:9092 \
-            --create --topic healthcheck-test \
-            --partitions 1 --replication-factor 1 \
-            --if-not-exists >/dev/null 2>&1; then
+             kafka-topics --bootstrap-server localhost:9092 \
+             --create --topic healthcheck-test \
+             --partitions 1 --replication-factor 1 \
+             --if-not-exists >/dev/null 2>&1; then
             
-            # Verificar se tópico foi criado
             if docker compose -f docker-compose.test.yml exec -T kafka \
-              kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
+               kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
               echo "[SUCESSO] Kafka operacional (tópico criado com sucesso)"
               
-              # Limpar tópico de teste
               docker compose -f docker-compose.test.yml exec -T kafka \
                 kafka-topics --bootstrap-server localhost:9092 \
                 --delete --topic healthcheck-test >/dev/null 2>&1 || true
@@ -588,75 +684,76 @@ jobs:
           echo ""
           echo "[INFO] Resumo dos serviços:"
           docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-            
-            - name: Executar migrations
-              working-directory: ./api
-              env:
-                DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-              run: |
-                echo "=== EXECUTANDO MIGRATIONS ==="
-                pnpm run migrate
-                echo "[SUCESSO] Migrations executadas"
-            
-            - name: Popular banco de dados (seed)
-              working-directory: ./api
-              run: |
-                echo "=== POPULANDO BANCO DE DADOS ==="
-                pnpm run seed-big-ci
-                echo "[SUCESSO] Seed executado"
-            
-            - name: Executar testes E2E
-              working-directory: ./api
-              run: |
-                echo "=== EXECUTANDO TESTES E2E ==="
-                pnpm run test:e2e
-                echo "[SUCESSO] Testes E2E concluídos"
-            
-            - name: Upload de coverage E2E
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                name: coverage-e2e
-                path: ./api/coverage/
-                retention-days: 7
-              continue-on-error: true
 
-            - name: Logs dos serviços (em caso de falha)
-              working-directory: ./api
-              if: failure()
-              run: |
-                echo "=== LOGS DOS SERVIÇOS ==="
-                
-                echo "PostgreSQL Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 postgres
-                
-                echo ""
-                echo "MongoDB Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 mongodb
-                
-                echo ""
-                echo "Redis Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 redis
-                
-                echo ""
-                echo "Zookeeper Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
-                
-                echo ""
-                echo "Kafka Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 kafka
-                
-                echo ""
-                echo "InfluxDB Logs:"
-                docker compose -f docker-compose.test.yml logs --tail=100 influxdb
-            
-            - name: Derrubar infraestrutura
-              working-directory: ./api 
-              if: always()
-              run: |
-                echo "=== DERRUBANDO INFRAESTRUTURA ==="
-                docker compose -f docker-compose.test.yml down -v --timeout 30
-                echo "[SUCESSO] Infraestrutura derrubada"
+      - name: Executar migrations
+        working-directory: ./api
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+        run: |
+          echo "=== EXECUTANDO MIGRATIONS ==="
+          pnpm run migrate
+          echo "[SUCESSO] Migrations executadas"
+      
+      - name: Popular banco de dados (seed)
+        working-directory: ./api
+        run: |
+          echo "=== POPULANDO BANCO DE DADOS ==="
+          pnpm run seed-big-ci
+          echo "[SUCESSO] Seed executado"
+
+      - name: Executar testes E2E
+        working-directory: ./api
+        run: |
+          echo "=== EXECUTANDO TESTES E2E ==="
+          pnpm run test:e2e
+          echo "[SUCESSO] Testes E2E concluídos"
+
+      - name: Upload de coverage E2E
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-e2e
+          path: ./api/coverage/
+          retention-days: 7
+        continue-on-error: true
+      
+      - name: Logs dos serviços (em caso de falha)
+        working-directory: ./api
+        if: failure()
+        run: |
+          echo "=== LOGS DOS SERVIÇOS ==="
+          
+          echo "PostgreSQL Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 postgres
+          
+          echo ""
+          echo "MongoDB Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 mongodb
+          
+          echo ""
+          echo "Redis Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 redis
+          
+          echo ""
+          echo "Zookeeper Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
+          
+          echo ""
+          echo "Kafka Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 kafka
+          
+          echo ""
+          echo "InfluxDB Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 influxdb
+
+      - name: Derrubar infraestrutura
+        working-directory: ./api 
+        if: always()
+        run: |
+          echo "=== DERRUBANDO INFRAESTRUTURA ==="
+          docker compose -f docker-compose.test.yml down -v --timeout 30
+          echo "[SUCESSO] Infraestrutura derrubada"
+
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
