@@ -3,6 +3,8 @@ services:
     image: postgres:16-alpine
     container_name: helpme-postgres-test
     restart: unless-stopped
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_USER: teste
       POSTGRES_PASSWORD: senha_teste
@@ -32,6 +34,8 @@ services:
     image: mongo:7-jammy
     container_name: helpme-mongodb-test
     restart: unless-stopped
+    ports:
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: senha_mongo_teste
@@ -51,6 +55,8 @@ services:
     image: redis:7-alpine
     container_name: helpme-redis-test
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     volumes:
       - redis_test_data:/data
     networks:
@@ -68,6 +74,8 @@ services:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: helpme-zookeeper-test
     restart: unless-stopped
+    ports:
+      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -89,6 +97,8 @@ services:
     restart: unless-stopped
     depends_on:
       - zookeeper
+    ports:
+      - "9093:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -137,6 +147,8 @@ services:
     image: influxdb:2.7-alpine
     container_name: helpme-influxdb-test
     restart: unless-stopped
+    ports:
+      - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
