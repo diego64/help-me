@@ -384,34 +384,7 @@ jobs:
             sleep 5
           fi
           
-          echo "Verificação FINAL antes de subir containers..."
-          PORTS_FREE=true
-          for port in 5433 27018 6379 2181 9093 8086; do
-            if sudo lsof -i :${port} >/dev/null 2>&1; then
-              echo "[ERROR] ERRO: Porta ${port} ainda ocupada!"
-              sudo lsof -i :${port}
-              PORTS_FREE=false
-            fi
-          done
-          
-          if [ "$PORTS_FREE" = false ]; then
-            echo "[ERROR] ABORTANDO: Portas ocupadas!"
-            echo "Tentando liberar..."
-            for port in 5433 27018 6379 2181 9093 8086; do
-              sudo fuser -k ${port}/tcp 2>/dev/null || true
-              sudo kill -9 $(sudo lsof -ti:${port}) 2>/dev/null || true
-            done
-            sleep 10
-            for port in 5433 27018 6379 2181 9093 8086; do
-              if sudo lsof -i :${port} >/dev/null 2>&1; then
-                echo "[ERROR] Porta ${port} AINDA ocupada!"
-                sudo lsof -i :${port}
-                exit 1
-              fi
-            done
-          fi
-          
-          echo "[SUCESSO] Todas as portas livres!"
+          echo "[SUCESSO] Ambiente limpo!"
           
           echo "Baixando imagens..."
           for i in {1..3}; do
@@ -424,16 +397,30 @@ jobs:
             fi
           done
           
-          echo "Criando containers..."
-          docker compose -f docker-compose.test.yml create --force-recreate --remove-orphans
+          echo "Subindo containers com portas dinâmicas..."
+          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans
           
-          echo "Containers criados:"
-          docker compose -f docker-compose.test.yml ps -a
+          echo "Aguardando 10s para containers iniciarem..."
+          sleep 10
           
-          echo "Iniciando containers..."
-          docker compose -f docker-compose.test.yml start
+          echo "Descobrindo portas dinâmicas..."
+          POSTGRES_PORT=$(docker compose -f docker-compose.test.yml port postgres 5432 2>/dev/null | cut -d: -f2)
+          MONGODB_PORT=$(docker compose -f docker-compose.test.yml port mongodb 27017 2>/dev/null | cut -d: -f2)
+          REDIS_PORT=$(docker compose -f docker-compose.test.yml port redis 6379 2>/dev/null | cut -d: -f2)
+          KAFKA_PORT=$(docker compose -f docker-compose.test.yml port kafka 9092 2>/dev/null | cut -d: -f2)
           
-          echo "Aguardando 60s..."
+          echo "Portas atribuídas:"
+          echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+          echo "  MongoDB: localhost:$MONGODB_PORT"
+          echo "  Redis: localhost:$REDIS_PORT"
+          echo "  Kafka: localhost:$KAFKA_PORT"
+          
+          echo "POSTGRES_PORT=$POSTGRES_PORT" >> $GITHUB_ENV
+          echo "MONGODB_PORT=$MONGODB_PORT" >> $GITHUB_ENV
+          echo "REDIS_PORT=$REDIS_PORT" >> $GITHUB_ENV
+          echo "KAFKA_PORT=$KAFKA_PORT" >> $GITHUB_ENV
+          
+          echo "Aguardando serviços ficarem prontos (60s)..."
           sleep 60
           
           echo "Status dos containers:"
@@ -445,6 +432,8 @@ jobs:
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
+          echo "Usando PostgreSQL na porta: ${{ env.POSTGRES_PORT }}"
+          echo "Usando Redis na porta: ${{ env.REDIS_PORT }}"
           
           echo "Testando PostgreSQL..."
           for i in {1..30}; do
@@ -478,14 +467,11 @@ jobs:
           
           echo "Containers em execução:"
           docker compose -f docker-compose.test.yml ps
-          
-          echo "Portas expostas:"
-          docker compose -f docker-compose.test.yml ps --format json | jq -r '.[].Publishers[] | "\(.PublishedPort) -> \(.TargetPort)"' 2>/dev/null || docker compose -f docker-compose.test.yml ps
       
       - name: Executar migrations
         working-directory: ./api
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:${{ env.POSTGRES_PORT }}/helpme_database_teste?schema=public
         run: pnpm run migrate
       
       - name: Popular banco de dados (seed)
