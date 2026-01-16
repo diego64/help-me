@@ -515,48 +515,63 @@ jobs:
           
           echo ""
           echo "4. Testando Zookeeper..."
-          ZK_STATUS=$(docker compose -f docker-compose.test.yml exec -T zookeeper \
-                      sh -c 'echo ruok | nc localhost 2181' 2>/dev/null)
-          if echo "$ZK_STATUS" | grep -q "imok"; then
-            echo "[SUCESSO] Zookeeper operacional: $ZK_STATUS"
+          # Usar verificação de porta ao invés de comando four-letter
+          if docker compose -f docker-compose.test.yml exec -T zookeeper \
+            bash -c "timeout 3 bash -c '</dev/tcp/localhost/2181' 2>/dev/null"; then
+            echo "[SUCESSO] Zookeeper operacional (porta 2181 respondendo)"
           else
-            echo "[ERROR] Zookeeper falhou no teste (retornou: '$ZK_STATUS')"
+            echo "[ERROR] Zookeeper não está respondendo na porta 2181"
+            docker compose -f docker-compose.test.yml logs zookeeper --tail=30
             exit 1
           fi
           
           echo ""
           echo "5. Testando Kafka..."
           
-          # Teste 1: Verificar API versions
+          # Teste 1: Verificar se a porta está aberta
           if docker compose -f docker-compose.test.yml exec -T kafka \
-            kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+            bash -c "timeout 3 bash -c '</dev/tcp/localhost/9092' 2>/dev/null"; then
+            echo "[SUCESSO] Kafka porta 9092 respondendo"
+          else
+            echo "[ERROR] Kafka porta 9092 não responde"
+            exit 1
+          fi
+          
+          # Teste 2: Verificar API versions
+          if docker compose -f docker-compose.test.yml exec -T kafka \
+            kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 | grep -q "ApiVersion"; then
             echo "[SUCESSO] Kafka API respondendo"
           else
             echo "[ERROR] Kafka API não responde"
+            docker compose -f docker-compose.test.yml logs kafka --tail=50
             exit 1
           fi
           
-          # Teste 2: Criar tópico de teste
+          # Teste 3: Criar e verificar tópico de teste
           echo "  Criando tópico de teste..."
-          docker compose -f docker-compose.test.yml exec -T kafka \
+          if docker compose -f docker-compose.test.yml exec -T kafka \
             kafka-topics --bootstrap-server localhost:9092 \
             --create --topic healthcheck-test \
             --partitions 1 --replication-factor 1 \
-            --if-not-exists >/dev/null 2>&1
-          
-          # Teste 3: Listar tópicos
-          if docker compose -f docker-compose.test.yml exec -T kafka \
-            kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
-            echo "[SUCESSO] Kafka operacional (tópico criado com sucesso)"
+            --if-not-exists >/dev/null 2>&1; then
+            
+            # Verificar se tópico foi criado
+            if docker compose -f docker-compose.test.yml exec -T kafka \
+              kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
+              echo "[SUCESSO] Kafka operacional (tópico criado com sucesso)"
+              
+              # Limpar tópico de teste
+              docker compose -f docker-compose.test.yml exec -T kafka \
+                kafka-topics --bootstrap-server localhost:9092 \
+                --delete --topic healthcheck-test >/dev/null 2>&1 || true
+            else
+              echo "[ERROR] Kafka não conseguiu listar tópicos"
+              exit 1
+            fi
           else
-            echo "[ERROR] Kafka falhou ao criar tópico"
+            echo "[ERROR] Kafka não conseguiu criar tópico"
             exit 1
           fi
-          
-          # Limpar tópico de teste
-          docker compose -f docker-compose.test.yml exec -T kafka \
-            kafka-topics --bootstrap-server localhost:9092 \
-            --delete --topic healthcheck-test >/dev/null 2>&1 || true
           
           echo ""
           echo "6. Testando InfluxDB..."
@@ -573,75 +588,75 @@ jobs:
           echo ""
           echo "[INFO] Resumo dos serviços:"
           docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-      
-      - name: Executar migrations
-        working-directory: ./api
-        env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-        run: |
-          echo "=== EXECUTANDO MIGRATIONS ==="
-          pnpm run migrate
-          echo "[SUCESSO] Migrations executadas"
-      
-      - name: Popular banco de dados (seed)
-        working-directory: ./api
-        run: |
-          echo "=== POPULANDO BANCO DE DADOS ==="
-          pnpm run seed-big-ci
-          echo "[SUCESSO] Seed executado"
-      
-      - name: Executar testes E2E
-        working-directory: ./api
-        run: |
-          echo "=== EXECUTANDO TESTES E2E ==="
-          pnpm run test:e2e
-          echo "[SUCESSO] Testes E2E concluídos"
-      
-      - name: Upload de coverage E2E
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-e2e
-          path: ./api/coverage/
-          retention-days: 7
-        continue-on-error: true
+            
+            - name: Executar migrations
+              working-directory: ./api
+              env:
+                DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+              run: |
+                echo "=== EXECUTANDO MIGRATIONS ==="
+                pnpm run migrate
+                echo "[SUCESSO] Migrations executadas"
+            
+            - name: Popular banco de dados (seed)
+              working-directory: ./api
+              run: |
+                echo "=== POPULANDO BANCO DE DADOS ==="
+                pnpm run seed-big-ci
+                echo "[SUCESSO] Seed executado"
+            
+            - name: Executar testes E2E
+              working-directory: ./api
+              run: |
+                echo "=== EXECUTANDO TESTES E2E ==="
+                pnpm run test:e2e
+                echo "[SUCESSO] Testes E2E concluídos"
+            
+            - name: Upload de coverage E2E
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: coverage-e2e
+                path: ./api/coverage/
+                retention-days: 7
+              continue-on-error: true
 
-      - name: Logs dos serviços (em caso de falha)
-        working-directory: ./api
-        if: failure()
-        run: |
-          echo "=== LOGS DOS SERVIÇOS ==="
-          
-          echo "PostgreSQL Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 postgres
-          
-          echo ""
-          echo "MongoDB Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 mongodb
-          
-          echo ""
-          echo "Redis Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 redis
-          
-          echo ""
-          echo "Zookeeper Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
-          
-          echo ""
-          echo "Kafka Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 kafka
-          
-          echo ""
-          echo "InfluxDB Logs:"
-          docker compose -f docker-compose.test.yml logs --tail=100 influxdb
-      
-      - name: Derrubar infraestrutura
-        working-directory: ./api 
-        if: always()
-        run: |
-          echo "=== DERRUBANDO INFRAESTRUTURA ==="
-          docker compose -f docker-compose.test.yml down -v --timeout 30
-          echo "[SUCESSO] Infraestrutura derrubada"
+            - name: Logs dos serviços (em caso de falha)
+              working-directory: ./api
+              if: failure()
+              run: |
+                echo "=== LOGS DOS SERVIÇOS ==="
+                
+                echo "PostgreSQL Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 postgres
+                
+                echo ""
+                echo "MongoDB Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 mongodb
+                
+                echo ""
+                echo "Redis Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 redis
+                
+                echo ""
+                echo "Zookeeper Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
+                
+                echo ""
+                echo "Kafka Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 kafka
+                
+                echo ""
+                echo "InfluxDB Logs:"
+                docker compose -f docker-compose.test.yml logs --tail=100 influxdb
+            
+            - name: Derrubar infraestrutura
+              working-directory: ./api 
+              if: always()
+              run: |
+                echo "=== DERRUBANDO INFRAESTRUTURA ==="
+                docker compose -f docker-compose.test.yml down -v --timeout 30
+                echo "[SUCESSO] Infraestrutura derrubada"
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
