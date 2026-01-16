@@ -1,5 +1,5 @@
 name: Pipeline CI/CD - Homologação
-run-name: Pipeline CI executado por ${{ github.actor }} (#${{ github.run_number }})
+run-name: Pipeline CI executado por ${{ github.actor }}
 
 on:
   workflow_dispatch:
