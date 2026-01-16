@@ -279,16 +279,62 @@ jobs:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
-      - name: Limpeza COMPLETA de ambiente
+      - name: Limpeza NUCLEAR de ambiente
         run: |
-          echo "=== LIMPEZA TOTAL DO AMBIENTE ==="
+          echo "=== LIMPEZA NUCLEAR DO AMBIENTE ==="
           
-          # 1. Parar Docker primeiro
+          # 1. PARAR TODOS OS CONTAINERS (sem exceção)
+          echo "Parando TODOS os containers Docker..."
+          if [ "$(docker ps -q | wc -l)" -gt 0 ]; then
+            docker ps -q | xargs -r docker stop -t 2 2>/dev/null || true
+            echo "  Containers parados"
+          else
+            echo "  Nenhum container em execução"
+          fi
+          
+          # 2. REMOVER TODOS OS CONTAINERS (sem exceção)
+          echo ""
+          echo "Removendo TODOS os containers Docker..."
+          if [ "$(docker ps -aq | wc -l)" -gt 0 ]; then
+            TOTAL=$(docker ps -aq | wc -l)
+            echo "  Encontrados $TOTAL containers para remover"
+            docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
+            echo "  Containers removidos"
+          else
+            echo "  Nenhum container para remover"
+          fi
+          
+          # 3. REMOVER TODAS AS REDES customizadas
+          echo ""
+          echo "Removendo TODAS as redes Docker customizadas..."
+          CUSTOM_NETWORKS=$(docker network ls --filter type=custom -q 2>/dev/null | wc -l)
+          if [ "$CUSTOM_NETWORKS" -gt 0 ]; then
+            docker network ls --filter type=custom -q | xargs -r docker network rm 2>/dev/null || true
+            echo "  Redes removidas"
+          else
+            echo "  Nenhuma rede customizada"
+          fi
+          
+          # 4. REMOVER TODOS OS VOLUMES
+          echo ""
+          echo "Removendo TODOS os volumes Docker..."
+          if [ "$(docker volume ls -q | wc -l)" -gt 0 ]; then
+            TOTAL=$(docker volume ls -q | wc -l)
+            echo "  Encontrados $TOTAL volumes para remover"
+            docker volume ls -q | xargs -r docker volume rm -f 2>/dev/null || true
+            echo "  Volumes removidos"
+          else
+            echo "  Nenhum volume para remover"
+          fi
+          
+          # 5. Parar Docker daemon
+          echo ""
           echo "Parando Docker daemon..."
           sudo systemctl stop docker.socket docker.service || true
           sleep 3
           
-          # 2. Matar TODOS os processos relacionados
+          # 6. Matar TODOS os processos relacionados
+          echo ""
           echo "Eliminando processos Docker e serviços..."
           sudo pkill -9 dockerd || true
           sudo pkill -9 containerd || true
@@ -299,25 +345,27 @@ jobs:
           sudo pkill -9 java || true
           sleep 3
           
-          # 3. Liberar portas específicas de forma agressiva
+          # 7. Liberar portas específicas de forma agressiva
+          echo ""
           echo "Liberando portas críticas..."
           PORTAS=(5432 5433 27017 27018 6379 2181 9092 9093 8086)
           for porta in "${PORTAS[@]}"; do
-            echo "  Liberando porta $porta..."
             sudo fuser -k ${porta}/tcp 2>/dev/null || true
             sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
             sudo netstat -tlnp 2>/dev/null | grep ":${porta} " | awk '{print $7}' | cut -d'/' -f1 | xargs -r sudo kill -9 2>/dev/null || true
           done
           sleep 5
           
-          # 4. Limpar estado do Docker
+          # 8. Limpar estado do Docker
+          echo ""
           echo "Limpando estado do Docker..."
           sudo rm -rf /var/lib/docker/containers/* || true
           sudo rm -rf /var/lib/docker/network/files/* || true
           sudo rm -rf /var/run/docker/netns/* || true
           sudo rm -rf /var/lib/docker/overlay2/* || true
           
-          # 5. Configurar Docker daemon
+          # 9. Configurar Docker daemon
+          echo ""
           echo "Configurando Docker daemon..."
           sudo mkdir -p /etc/docker
           cat <<EOF | sudo tee /etc/docker/daemon.json
@@ -333,28 +381,60 @@ jobs:
           }
           EOF
           
-          # 6. Reiniciar Docker limpo
+          # 10. Reiniciar Docker limpo
+          echo ""
           echo "Reiniciando Docker daemon..."
           sudo systemctl start docker.service
           sleep 8
           
-          # 7. Verificar Docker está funcionando
+          # 11. Verificar Docker está funcionando
           if ! docker info >/dev/null 2>&1; then
-            echo "ERROR: Docker falhou ao iniciar!"
+            echo "[ERROR] Docker falhou ao iniciar!"
             sudo systemctl status docker.service
             sudo journalctl -xeu docker.service --no-pager | tail -50
             exit 1
           fi
           
-          # 8. Limpeza total do Docker
+          # 12. Limpeza total do Docker (system prune)
+          echo ""
           echo "Executando limpeza do sistema Docker..."
           docker system prune -af --volumes 2>/dev/null || true
           docker network prune -f 2>/dev/null || true
           docker volume prune -f 2>/dev/null || true
           
-          # 9. Verificação final de portas
+          # 13. VERIFICAÇÃO FINAL COMPLETA
           echo ""
           echo "=== VERIFICAÇÃO FINAL ==="
+          
+          # Verificar containers
+          CONTAINERS_COUNT=$(docker ps -aq | wc -l)
+          if [ "$CONTAINERS_COUNT" -gt 0 ]; then
+            echo "[ERROR] Ainda existem $CONTAINERS_COUNT containers!"
+            docker ps -a
+            exit 1
+          else
+            echo "[SUCESSO] Nenhum container no sistema"
+          fi
+          
+          # Verificar redes customizadas
+          NETWORKS_COUNT=$(docker network ls --filter type=custom -q | wc -l)
+          if [ "$NETWORKS_COUNT" -gt 0 ]; then
+            echo "[WARN] Existem $NETWORKS_COUNT redes customizadas"
+            docker network ls
+          else
+            echo "[SUCESSO] Nenhuma rede customizada"
+          fi
+          
+          # Verificar volumes
+          VOLUMES_COUNT=$(docker volume ls -q | wc -l)
+          if [ "$VOLUMES_COUNT" -gt 0 ]; then
+            echo "[WARN] Existem $VOLUMES_COUNT volumes"
+            docker volume ls
+          else
+            echo "[SUCESSO] Nenhum volume"
+          fi
+          
+          # Verificar portas
           PORTS_OK=true
           for porta in "${PORTAS[@]}"; do
             if sudo lsof -i :${porta} >/dev/null 2>&1; then
@@ -368,12 +448,12 @@ jobs:
           
           if [ "$PORTS_OK" = false ]; then
             echo ""
-            echo "ERROR: Algumas portas ainda estão ocupadas!"
+            echo "[ERROR] Algumas portas ainda estão ocupadas!"
             exit 1
           fi
           
           echo ""
-          echo "=== AMBIENTE LIMPO COM SUCESSO ==="
+          echo "=== AMBIENTE 100% LIMPO E PRONTO ==="
 
       - name: Diagnóstico de ambiente
         run: |
@@ -383,12 +463,12 @@ jobs:
           docker info | grep -E 'Server Version|Storage Driver|Logging Driver'
           
           echo ""
-          echo "Processos escutando em portas críticas:"
-          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo nas portas críticas [SUCESSO]"
-          
-          echo ""
           echo "Containers Docker:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "  Nenhum container"
+          CONTAINERS_COUNT=$(docker ps -aq | wc -l)
+          echo "  Total: $CONTAINERS_COUNT containers"
+          if [ "$CONTAINERS_COUNT" -gt 0 ]; then
+            docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+          fi
           
           echo ""
           echo "Redes Docker:"
@@ -396,7 +476,15 @@ jobs:
           
           echo ""
           echo "Volumes Docker:"
-          docker volume ls
+          VOLUMES_COUNT=$(docker volume ls -q | wc -l)
+          echo "  Total: $VOLUMES_COUNT volumes"
+          if [ "$VOLUMES_COUNT" -gt 0 ]; then
+            docker volume ls
+          fi
+          
+          echo ""
+          echo "Processos escutando em portas críticas:"
+          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo [SUCESSO]"
           
           echo ""
           echo "Espaço em disco:"
@@ -413,13 +501,12 @@ jobs:
           # Verificação de segurança final
           EXISTING=$(docker ps -aq | wc -l)
           if [ "$EXISTING" -gt 0 ]; then
-            echo "[WARN] Ainda existem $EXISTING containers! Removendo..."
-            docker ps -aq | xargs -r docker stop -t 5 2>/dev/null || true
-            docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
-            sleep 5
+            echo "[ERROR] CRÍTICO: Ainda existem $EXISTING containers após limpeza nuclear!"
+            docker ps -a
+            exit 1
           fi
           
-          echo "[SUCESSO] Ambiente completamente limpo"
+          echo "[SUCESSO] Ambiente 100% limpo confirmado"
           
           # Pull de imagens com retry
           echo ""
