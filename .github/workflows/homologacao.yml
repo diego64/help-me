@@ -296,54 +296,87 @@ jobs:
       
       - name: Liberar portas ocupadas (force kill)
         run: |
-          echo "Matando processos nas portas necessárias..."
-          sudo fuser -k 5433/tcp 2>/dev/null || true
-          sudo fuser -k 27018/tcp 2>/dev/null || true  
-          sudo fuser -k 6379/tcp 2>/dev/null || true
-          sudo fuser -k 2181/tcp 2>/dev/null || true
-          sudo fuser -k 9093/tcp 2>/dev/null || true
-          sudo fuser -k 8086/tcp 2>/dev/null || true
+          echo "=== LIBERANDO PORTAS OCUPADAS ==="
+          
+          # Matar processos usando as portas
+          for port in 5433 27018 6379 2181 9093 8086; do
+            echo "Liberando porta $port..."
+            sudo fuser -k ${port}/tcp 2>/dev/null || true
+            sudo lsof -ti:${port} | xargs kill -9 2>/dev/null || true
+          done
+          
           sleep 5
+          
+          # Verificar se portas foram liberadas
+          echo "Verificando liberação das portas..."
+          for port in 5433 27018 6379 2181 9093 8086; do
+            if sudo lsof -i :${port} >/dev/null 2>&1; then
+              echo "[WARN]  AVISO: Porta ${port} ainda ocupada!"
+              sudo lsof -i :${port}
+            else
+              echo "[SUCESSO] Porta ${port} livre"
+            fi
+          done
+          
+          echo "=== PORTAS LIBERADAS ==="
       
       - name: Limpar TODOS os containers e recursos órfãos
         working-directory: ./api
         run: |
           echo "=== LIMPEZA COMPLETA DE RECURSOS DOCKER ==="
           
-          # 1. Parar TODOS os containers em execução
-          echo "Parando todos os containers..."
-          docker stop $(docker ps -aq) 2>/dev/null || echo "Nenhum container para parar"
-          
-          # 2. Remover TODOS os containers
-          echo "Removendo todos os containers..."
-          docker rm -f $(docker ps -aq) 2>/dev/null || echo "Nenhum container para remover"
-          
-          # 3. Limpar recursos do projeto específico
-          echo "Limpando recursos do docker-compose..."
+          # 1. Forçar parada do compose atual (se existir)
+          echo "Forçando parada do docker-compose..."
           docker compose -f docker-compose.test.yml down -v --remove-orphans 2>/dev/null || true
           
-          # 4. Remover TODAS as redes customizadas
+          # 2. Parar TODOS os containers em execução
+          echo "Parando todos os containers..."
+          docker ps -q | xargs -r docker stop 2>/dev/null || echo "Nenhum container em execução"
+          
+          # 3. Remover TODOS os containers (incluindo parados)
+          echo "Removendo todos os containers..."
+          docker ps -aq | xargs -r docker rm -f 2>/dev/null || echo "Nenhum container para remover"
+          
+          # 4. Remover containers órfãos por nome
+          echo "Removendo containers órfãos conhecidos..."
+          for name in helpme-redis-test helpme-postgres-test helpme-mongodb-test helpme-zookeeper-test helpme-kafka-test helpme-influxdb-test mongodb_helpme_teste postgresql_helpme_teste redis; do
+            docker rm -f $name 2>/dev/null || true
+          done
+          
+          # 5. Remover TODAS as redes customizadas
           echo "Removendo todas as redes customizadas..."
           docker network prune -f
           
-          # 5. Remover TODOS os volumes não usados
+          # 6. Remover redes órfãs específicas
+          docker network rm helpme_test_network helpme-test-network 2>/dev/null || true
+          
+          # 7. Remover TODOS os volumes não usados
           echo "Removendo volumes não utilizados..."
           docker volume prune -f
           
-          # 6. Aguardar liberação das portas
-          echo "Aguardando liberação completa das portas..."
-          sleep 10
+          # 8. Aguardar liberação completa
+          echo "Aguardando liberação completa dos recursos..."
+          sleep 15
           
-          # 7. Verificar portas
-          echo "Verificando status das portas necessárias:"
+          # 9. Verificar portas novamente
+          echo "Verificando status final das portas:"
           for port in 5433 27018 6379 2181 9093 8086; do
-            if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-              echo "[WARN] Porta $port ainda em uso!"
-              lsof -i :$port || true
+            if sudo lsof -i :${port} >/dev/null 2>&1; then
+              echo "[WARN]  Porta ${port} ainda em uso - tentando liberar novamente..."
+              sudo fuser -k ${port}/tcp 2>/dev/null || true
+              sudo lsof -ti:${port} | xargs kill -9 2>/dev/null || true
             else
-              echo "[SUCESSO] Porta $port livre"
+              echo "[SUCESSO] Porta ${port} livre"
             fi
           done
+          
+          # 10. Aguardar mais um pouco
+          sleep 5
+          
+          # 11. Verificação final
+          echo "Verificação final de recursos Docker:"
+          echo "Containers: $(docker ps -a | wc -l) linhas"
+          echo "Redes: $(docker network ls | grep -v bridge | grep -v host | grep -v none | wc -l) redes customizadas"
           
           echo "=== LIMPEZA CONCLUÍDA ==="
       
@@ -352,26 +385,44 @@ jobs:
         run: |
           echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
           
+          # Verificação pré-subida
+          echo "Verificando se portas estão realmente livres..."
+          for port in 5433 27018 6379 2181 9093 8086; do
+            if sudo netstat -tulpn 2>/dev/null | grep ":${port} " | grep LISTEN; then
+              echo "[ERROR] Porta ${port} ainda ocupada!"
+              sudo netstat -tulpn | grep ":${port} "
+              exit 1
+            fi
+          done
+          echo "[SUCESSO] Todas as portas estão livres"
+          
           # Pull das imagens (com retry)
           echo "Baixando imagens Docker..."
           for i in {1..3}; do
-            docker compose -f docker-compose.test.yml pull && break || {
-              echo "Tentativa $i de pull falhou, tentando novamente..."
+            if docker compose -f docker-compose.test.yml pull; then
+              echo "[SUCESSO] Pull concluído com sucesso"
+              break
+            else
+              echo "[WARN] Tentativa $i de pull falhou, tentando novamente..."
               sleep 5
-            }
+            fi
           done
           
           # Subir serviços
           echo "Iniciando serviços..."
-          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans
+          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans --timeout 120
+          
+          # Verificar se containers subiram
+          echo "Verificando containers criados..."
+          docker compose -f docker-compose.test.yml ps
           
           # Aguardar inicialização
           echo "Aguardando serviços ficarem prontos (60s)..."
           sleep 60
           
-          # Verificar status
+          # Status final
           echo "Status dos containers:"
-          docker compose -f docker-compose.test.yml ps
+          docker compose -f docker-compose.test.yml ps -a
           
           echo "=== INFRAESTRUTURA PRONTA ==="
       
