@@ -351,7 +351,7 @@ jobs:
         working-directory: ./api
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-        run: pnpm run seed
+        run: pnpm run seed-big
       
       - name: Executar testes E2E
         working-directory: ./api
