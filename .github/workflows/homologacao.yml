@@ -300,7 +300,15 @@ jobs:
           echo "Parando e removendo containers existentes com --remove-orphans..."
           docker compose -f docker-compose.test.yml down -v --remove-orphans || true
           
-          echo "Forçando parada de todos os containers órfãos..."
+          echo "Forçando parada explícita dos containers órfãos conhecidos..."
+          docker stop helpme-redis-test 2>/dev/null || true
+          docker stop helpme-postgres-test 2>/dev/null || true
+          docker stop helpme-mongodb-test 2>/dev/null || true
+          docker rm -f helpme-redis-test 2>/dev/null || true
+          docker rm -f helpme-postgres-test 2>/dev/null || true
+          docker rm -f helpme-mongodb-test 2>/dev/null || true
+          
+          echo "Forçando parada de todos os containers órfãos por filtro..."
           docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker stop || true
           docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
           
@@ -319,8 +327,19 @@ jobs:
           echo "Removendo volumes órfãos..."
           docker volume ls --filter "name=helpme" --format "{{.ID}}" | xargs -r docker volume rm -f || true
           
+          echo "Limpeza geral de containers parados..."
+          docker container prune -f || true
+          
           echo "Aguardando liberação completa das portas..."
-          sleep 10
+          sleep 15
+          
+          echo "Verificando se portas estão livres..."
+          if netstat -tulpn 2>/dev/null | grep -E ":(5433|27018|6379)"; then
+            echo "AVISO: Portas ainda em uso!"
+            netstat -tulpn 2>/dev/null | grep -E ":(5433|27018|6379)"
+          else
+            echo "Portas liberadas com sucesso"
+          fi
           
           echo "Tentando pull das imagens (opcional)..."
           docker compose -f docker-compose.test.yml pull --quiet || echo "Pull falhou, usando imagens em cache"
