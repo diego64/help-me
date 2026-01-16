@@ -350,15 +350,8 @@ jobs:
       - name: Popular banco de dados (seed)
         working-directory: ./api
         env:
-          NODE_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
-          MONGO_INITDB_URI: ${{ secrets.MONGO_INITDB_URI_TEST }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET_TEST }}
-          REDIS_PASSWORD: ""
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-        run: pnpm run seed-big
+        run: pnpm run seed
       
       - name: Executar testes E2E
         working-directory: ./api
