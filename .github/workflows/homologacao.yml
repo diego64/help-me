@@ -286,13 +286,43 @@ jobs:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
-      - name: Configurar timeout do Docker
+      - name: Limpeza NUCLEAR do Docker (garantir ambiente limpo)
         run: |
-          echo "Configurando timeout do Docker daemon..."
+          echo "=== LIMPEZA NUCLEAR DO DOCKER ==="
+          
+          # 1. Parar Docker daemon
+          echo "Parando Docker daemon..."
+          sudo systemctl stop docker.socket || true
+          sudo systemctl stop docker || true
+          sleep 3
+          
+          # 2. Matar TODOS os processos Docker
+          echo "Matando processos Docker remanescentes..."
+          sudo pkill -9 dockerd || true
+          sudo pkill -9 containerd || true
+          sudo pkill -9 docker-proxy || true
+          sleep 2
+          
+          # 3. Remover TODOS os arquivos de estado do Docker
+          echo "Limpando arquivos de estado..."
+          sudo rm -rf /var/lib/docker/containers/* || true
+          sudo rm -rf /var/lib/docker/network/files/* || true
+          
+          # 4. Reiniciar Docker daemon
+          echo "Reiniciando Docker daemon..."
+          sudo systemctl start docker
+          sleep 5
+          
+          # 5. Verificar se Docker está rodando
+          docker info || (echo "Docker falhou ao iniciar!" && exit 1)
+          
+          # 6. Configurar Docker
           sudo mkdir -p /etc/docker
           echo '{"max-concurrent-downloads": 3, "max-download-attempts": 5}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker || true
           sleep 5
+          
+          echo "=== DOCKER REINICIADO COM AMBIENTE LIMPO ==="
       
       - name: Liberar portas ocupadas (force kill)
         run: |
@@ -379,6 +409,55 @@ jobs:
           echo "Redes: $(docker network ls | grep -v bridge | grep -v host | grep -v none | wc -l) redes customizadas"
           
           echo "=== LIMPEZA CONCLUÍDA ==="
+      
+      - name: Verificação FINAL de portas (antes de subir)
+        run: |
+          echo "=== VERIFICAÇÃO FINAL DE PORTAS ==="
+          
+          PORTS_OK=true
+          
+          for port in 5433 27018 6379 2181 9093 8086; do
+            echo "Verificando porta ${port}..."
+            
+            # Método 1: netstat
+            if sudo netstat -tulpn 2>/dev/null | grep ":${port} " | grep LISTEN; then
+              echo "[ERROR] Porta ${port} ocupada (netstat):"
+              sudo netstat -tulpn | grep ":${port} "
+              PORTS_OK=false
+            fi
+            
+            # Método 2: lsof
+            if sudo lsof -i :${port} 2>/dev/null; then
+              echo "[ERROR] Porta ${port} ocupada (lsof):"
+              sudo lsof -i :${port}
+              PORTS_OK=false
+            fi
+            
+            # Método 3: nc (netcat)
+            if timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null; then
+              echo "[ERROR] Porta ${port} está respondendo!"
+              PORTS_OK=false
+            fi
+            
+            if [ "$PORTS_OK" = true ]; then
+              echo "[SUCESSO] Porta ${port} completamente livre"
+            fi
+          done
+          
+          if [ "$PORTS_OK" = false ]; then
+            echo ""
+            echo "[ERROR] Portas ainda ocupadas após limpeza!"
+            echo ""
+            echo "Listando TODOS os processos nas portas:"
+            sudo lsof -i :5433 -i :27018 -i :6379 -i :2181 -i :9093 -i :8086 || true
+            echo ""
+            echo "Containers Docker:"
+            docker ps -a
+            echo ""
+            exit 1
+          fi
+          
+          echo "=== [SUCESSO] TODAS AS PORTAS LIVRES ==="
       
       - name: Subir infraestrutura com Docker Compose
         working-directory: ./api
