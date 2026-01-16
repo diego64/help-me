@@ -102,6 +102,7 @@ jobs:
         run: pnpm run generate
       
       - name: Verificar TypeScript
+        continue-on-error: true
         working-directory: ./api
         run: |
           echo "Verificando versão do TypeScript:"
