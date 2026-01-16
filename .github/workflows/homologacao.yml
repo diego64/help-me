@@ -289,36 +289,19 @@ jobs:
       - name: Subir infraestrutura completa com Docker Compose
         working-directory: ./api
         run: |
-          echo "Parando e removendo containers existentes com --remove-orphans..."
+          echo "Parando e removendo containers existentes..."
           docker compose -f docker-compose.test.yml down -v --remove-orphans || true
           
-          echo "Forçando parada de todos os containers órfãos..."
-          docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          echo "Limpando containers, redes e volumes órfãos do projeto..."
+          docker ps -a --filter "name=helpme" -q | xargs -r docker rm -f || true
+          docker network ls --filter "name=helpme" -q | xargs -r docker network rm || true
+          docker volume ls --filter "name=helpme" -q | xargs -r docker volume rm || true
           
-          docker ps -a --filter "name=mongodb_helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=mongodb_helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
+          echo "Aguardando liberação das portas..."
+          sleep 5
           
-          docker ps -a --filter "name=postgresql_helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=postgresql_helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
-          
-          docker ps -a --filter "name=redis" --filter "name=helpme" --format "{{.ID}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=redis" --filter "name=helpme" --format "{{.ID}}" | xargs -r docker rm -f || true
-          
-          echo "Removendo redes órfãs..."
-          docker network ls --filter "name=helpme" --format "{{.ID}}" | xargs -r docker network rm || true
-          
-          echo "Removendo volumes órfãos..."
-          docker volume ls --filter "name=helpme" --format "{{.ID}}" | xargs -r docker volume rm -f || true
-          
-          echo "Aguardando liberação completa das portas..."
-          sleep 10
-          
-          echo "Verificando portas antes de subir..."
-          netstat -tulpn | grep -E ":(5433|27018|6379)" || echo "Portas liberadas"
-          
-          echo "Subindo nova infraestrutura com --force-recreate..."
-          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans
+          echo "Subindo nova infraestrutura..."
+          docker compose -f docker-compose.test.yml up -d
           
           echo "Aguardando serviços ficarem prontos..."
           sleep 60
