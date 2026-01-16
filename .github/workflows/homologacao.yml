@@ -80,12 +80,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-
       
-      - name: Limpar instalação anterior (se existir)
+      - name: Limpar instalação anterior
         working-directory: ./api
         run: |
-          rm -rf node_modules
-          rm -rf .turbo
-          rm -rf dist
+          rm -rf node_modules .turbo dist
       
       - name: Instalar dependências
         working-directory: ./api
@@ -95,7 +93,6 @@ jobs:
         id: version
         working-directory: ./api
         run: |
-          # Função para incrementar versão
           bump_version() {
             local version=$1
             local bump_type=$2
@@ -123,11 +120,9 @@ jobs:
             echo "$MAJOR.$MINOR.$PATCH"
           }
           
-          # Ler versão do package.json
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "Versão do package.json: $PACKAGE_VERSION"
           
-          # Determinar versão final
           if [ -n "${{ inputs.version-override }}" ]; then
             VERSION="${{ inputs.version-override }}"
             echo "Usando versão manual: $VERSION"
@@ -139,7 +134,6 @@ jobs:
             echo "Usando versão do package.json: $VERSION"
           fi
           
-          # Validar formato
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Versão inválida: $VERSION"
             echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
@@ -150,7 +144,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       
-      - name: Atualizar package.json (se necessário)
+      - name: Atualizar package.json
         if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
         working-directory: ./api
         run: |
@@ -159,7 +153,7 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add package.json
-          git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração no package.json"
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração"
       
       - name: Gerar Prisma Client
         working-directory: ./api
@@ -185,8 +179,7 @@ jobs:
         run: |
           echo "Conteúdo do diretório dist:"
           ls -lah dist/
-          echo "Verificando arquivo principal:"
-          test -f dist/server.js && echo "server.js encontrado" || echo "server.js NÃO encontrado"
+          test -f dist/server.js && echo "[SUCESSO] server.js encontrado" || (echo "✗ server.js NÃO encontrado" && exit 1)
       
       - name: Upload do build
         uses: actions/upload-artifact@v4
@@ -239,7 +232,7 @@ jobs:
         working-directory: ./api
         run: pnpm run test:unit
       
-      - name: Upload de coverage (se disponível)
+      - name: Upload de coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -286,149 +279,134 @@ jobs:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
-      - name: Limpeza NUCLEAR do Docker
+      - name: Limpeza COMPLETA de ambiente
         run: |
-          echo "=== LIMPEZA NUCLEAR DO DOCKER ==="
+          echo "=== LIMPEZA TOTAL DO AMBIENTE ==="
           
+          # 1. Parar Docker primeiro
           echo "Parando Docker daemon..."
-          sudo systemctl stop docker.socket || true
-          sudo systemctl stop docker || true
+          sudo systemctl stop docker.socket docker.service || true
           sleep 3
           
-          echo "Matando processos Docker remanescentes..."
+          # 2. Matar TODOS os processos relacionados
+          echo "Eliminando processos Docker e serviços..."
           sudo pkill -9 dockerd || true
           sudo pkill -9 containerd || true
           sudo pkill -9 docker-proxy || true
-          sleep 2
+          sudo pkill -9 postgres || true
+          sudo pkill -9 mongod || true
+          sudo pkill -9 redis-server || true
+          sudo pkill -9 java || true
+          sleep 3
           
-          echo "Limpando arquivos de estado..."
+          # 3. Liberar portas específicas de forma agressiva
+          echo "Liberando portas críticas..."
+          PORTAS=(5432 5433 27017 27018 6379 2181 9092 9093 8086)
+          for porta in "${PORTAS[@]}"; do
+            echo "  Liberando porta $porta..."
+            # Método 1: fuser
+            sudo fuser -k ${porta}/tcp 2>/dev/null || true
+            # Método 2: lsof
+            sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
+            # Método 3: netstat + kill
+            sudo netstat -tlnp 2>/dev/null | grep ":${porta} " | awk '{print $7}' | cut -d'/' -f1 | xargs -r sudo kill -9 2>/dev/null || true
+          done
+          sleep 5
+          
+          # 4. Limpar estado do Docker
+          echo "Limpando estado do Docker..."
           sudo rm -rf /var/lib/docker/containers/* || true
           sudo rm -rf /var/lib/docker/network/files/* || true
           sudo rm -rf /var/run/docker/netns/* || true
+          sudo rm -rf /var/lib/docker/overlay2/* || true
           
-          echo "Reiniciando Docker daemon..."
-          sudo systemctl start docker
-          sleep 5
-          
-          docker info || (echo "Docker falhou ao iniciar!" && exit 1)
-          
+          # 5. Configurar Docker daemon
+          echo "Configurando Docker daemon..."
           sudo mkdir -p /etc/docker
-          echo '{"max-concurrent-downloads": 3, "max-download-attempts": 5, "live-restore": false}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker || true
-          sleep 5
+          cat <<EOF | sudo tee /etc/docker/daemon.json
+          {
+            "max-concurrent-downloads": 3,
+            "max-download-attempts": 5,
+            "live-restore": false,
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            }
+          }
+          EOF
           
-          echo "Limpando todo o sistema Docker..."
-          docker system prune -af --volumes || true
+          # 6. Reiniciar Docker limpo
+          echo "Reiniciando Docker daemon..."
+          sudo systemctl start docker.service
+          sleep 8
           
-          echo "=== DOCKER REINICIADO COM AMBIENTE LIMPO ==="
-      
-      - name: Liberar portas ocupadas
-        run: |
-          echo "=== LIBERANDO PORTAS OCUPADAS ==="
+          # 7. Verificar Docker está funcionando
+          if ! docker info >/dev/null 2>&1; then
+            echo "ERROR: Docker falhou ao iniciar!"
+            sudo systemctl status docker.service
+            sudo journalctl -xeu docker.service --no-pager | tail -50
+            exit 1
+          fi
           
-          for port in 5433 27018 6379 2181 9093 8086; do
-            echo "Liberando porta $port..."
-            sudo fuser -k ${port}/tcp 2>/dev/null || true
-            sudo lsof -ti:${port} | xargs kill -9 2>/dev/null || true
-          done
+          # 8. Limpeza total do Docker
+          echo "Executando limpeza do sistema Docker..."
+          docker system prune -af --volumes 2>/dev/null || true
+          docker network prune -f 2>/dev/null || true
+          docker volume prune -f 2>/dev/null || true
           
-          sleep 5
-          
-          echo "Verificando liberação das portas..."
-          for port in 5433 27018 6379 2181 9093 8086; do
-            if sudo lsof -i :${port} >/dev/null 2>&1; then
-              echo "[WARN] Porta ${port} ainda ocupada!"
-              sudo lsof -i :${port}
+          # 9. Verificação final de portas
+          echo ""
+          echo "=== VERIFICAÇÃO FINAL ==="
+          PORTS_OK=true
+          for porta in "${PORTAS[@]}"; do
+            if sudo lsof -i :${porta} >/dev/null 2>&1; then
+              echo "[WARN] PORTA ${porta} AINDA OCUPADA!"
+              sudo lsof -i :${porta}
+              PORTS_OK=false
             else
-              echo "[SUCESSO] Porta ${port} livre"
+              echo "✓ Porta ${porta} livre"
             fi
           done
           
-          echo "=== PORTAS LIBERADAS ==="
-      
-      - name: Verificar ambiente Docker limpo
-        working-directory: ./api
-        run: |
-          echo "=== VERIFICANDO AMBIENTE DOCKER ==="
-          
-          echo "Containers existentes:"
-          docker ps -a || echo "Nenhum container"
+          if [ "$PORTS_OK" = false ]; then
+            echo ""
+            echo "ERROR: Algumas portas ainda estão ocupadas!"
+            exit 1
+          fi
           
           echo ""
-          echo "Redes existentes:"
+          echo "=== AMBIENTE LIMPO COM SUCESSO ==="
+      
+      - name: Diagnóstico de ambiente
+        run: |
+          echo "=== DIAGNÓSTICO DO AMBIENTE ==="
+          
+          echo "Docker Info:"
+          docker info | grep -E 'Server Version|Storage Driver|Logging Driver'
+          
+          echo ""
+          echo "Processos escutando em portas críticas:"
+          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo nas portas críticas ✓"
+          
+          echo ""
+          echo "Containers Docker:"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "  Nenhum container"
+          
+          echo ""
+          echo "Redes Docker:"
           docker network ls
           
           echo ""
-          echo "Volumes existentes:"
+          echo "Volumes Docker:"
           docker volume ls
           
           echo ""
-          echo "Removendo QUALQUER container relacionado..."
-          docker ps -aq --filter "name=helpme" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=postgres" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=mongodb" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=redis" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=kafka" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=zookeeper" | xargs -r docker rm -f 2>/dev/null || true
-          docker ps -aq --filter "name=influxdb" | xargs -r docker rm -f 2>/dev/null || true
+          echo "Espaço em disco:"
+          df -h /var/lib/docker
           
           echo ""
-          echo "Tentando remover compose órfão COM flag --remove-orphans..."
-          docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 5 2>/dev/null || echo "Nenhum compose para remover"
-          
-          echo ""
-          echo "Removendo TODAS as redes órfãs..."
-          docker network prune -f 2>/dev/null || true
-          
-          echo ""
-          echo "Removendo TODOS os volumes órfãos..."
-          docker volume prune -f 2>/dev/null || true
-          
-          sleep 10
-          
-          echo ""
-          echo "Verificação final:"
-          echo "Containers restantes: $(docker ps -aq | wc -l)"
-          
-          if [ "$(docker ps -aq | wc -l)" -gt 0 ]; then
-            echo "[WARN] Ainda há containers! Removendo TODOS..."
-            docker ps -aq | xargs -r docker rm -f
-            sleep 5
-          fi
-          
-          echo "=== AMBIENTE VERIFICADO ==="
-      
-      - name: Remover containers órfãos conhecidos do GitHub Actions
-        run: |
-          echo "=== REMOVENDO CONTAINERS ÓRFÃOS CONHECIDOS ==="
-          
-          # Lista de containers órfãos que aparecem nos logs
-          ORPHAN_CONTAINERS=(
-            "helpme-redis-test"
-            "helpme-postgres-test"
-            "helpme-mongodb-test"
-            "helpme-zookeeper-test"
-            "helpme-kafka-test"
-            "helpme-influxdb-test"
-            "postgresql_helpme_teste"
-            "mongodb_helpme_teste"
-            "redis"
-            "postgres"
-            "mongodb"
-          )
-          
-          for container in "${ORPHAN_CONTAINERS[@]}"; do
-            if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-              echo "Removendo container órfão: $container"
-              docker rm -f "$container" 2>/dev/null || true
-            fi
-          done
-          
-          echo ""
-          echo "Containers restantes após remoção:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}" || echo "Nenhum container"
-          
-          echo "=== REMOÇÃO CONCLUÍDA ==="
+          echo "=== DIAGNÓSTICO CONCLUÍDO ==="
       
       - name: Subir infraestrutura com Docker Compose
         working-directory: ./api
@@ -438,120 +416,180 @@ jobs:
           # Verificação de segurança final
           EXISTING=$(docker ps -aq | wc -l)
           if [ "$EXISTING" -gt 0 ]; then
-            echo "[ERROR] Ainda existem $EXISTING containers após limpeza!"
-            docker ps -a
-            echo "Removendo forçadamente..."
-            docker ps -aq | xargs -r docker stop -t 1
-            docker ps -aq | xargs -r docker rm -f
+            echo "[WARN] Ainda existem $EXISTING containers! Removendo..."
+            docker ps -aq | xargs -r docker stop -t 5 2>/dev/null || true
+            docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
             sleep 5
           fi
           
-          echo "[SUCESSO] Ambiente completamente limpo!"
+          echo "✓ Ambiente completamente limpo"
           
-          echo "Baixando imagens..."
-          docker compose -f docker-compose.test.yml pull --quiet || echo "Pull com avisos, continuando..."
-          
+          # Pull de imagens com retry
           echo ""
-          echo "Subindo containers com --remove-orphans EXPLÍCITO..."
-          # CRÍTICO: usar --remove-orphans aqui para Docker Compose remover órfãos automaticamente
-          docker compose -f docker-compose.test.yml up -d --force-recreate --remove-orphans --renew-anon-volumes
+          echo "Baixando imagens Docker..."
+          for i in {1..3}; do
+            if docker compose -f docker-compose.test.yml pull --quiet; then
+              echo "✓ Imagens baixadas com sucesso"
+              break
+            fi
+            echo "[WARN] Tentativa $i/3 de pull falhou, tentando novamente..."
+            sleep 5
+          done
           
+          # Subir containers
           echo ""
-          echo "Aguardando 15s para containers iniciarem..."
-          sleep 15
+          echo "Iniciando containers..."
+          docker compose -f docker-compose.test.yml up -d \
+            --force-recreate \
+            --remove-orphans \
+            --renew-anon-volumes \
+            --timeout 60
           
+          # Aguardar inicialização
           echo ""
-          echo "Status após subir:"
+          echo "Aguardando serviços iniciarem (20s)..."
+          sleep 20
+          
+          # Verificar status
+          echo ""
+          echo "Status dos containers:"
           docker compose -f docker-compose.test.yml ps -a
           
+          # Verificar se todos os containers estão running
           echo ""
-          if command -v jq &> /dev/null; then
-            echo "Descobrindo portas dinâmicas..."
-            POSTGRES_PORT=$(docker compose -f docker-compose.test.yml port postgres 5432 2>/dev/null | cut -d: -f2 || echo "5432")
-            MONGODB_PORT=$(docker compose -f docker-compose.test.yml port mongodb 27017 2>/dev/null | cut -d: -f2 || echo "27017")
-            REDIS_PORT=$(docker compose -f docker-compose.test.yml port redis 6379 2>/dev/null | cut -d: -f2 || echo "6379")
-            KAFKA_PORT=$(docker compose -f docker-compose.test.yml port kafka 9092 2>/dev/null | cut -d: -f2 || echo "9092")
-            
-            echo "Portas atribuídas:"
-            echo "  PostgreSQL: localhost:$POSTGRES_PORT"
-            echo "  MongoDB: localhost:$MONGODB_PORT"
-            echo "  Redis: localhost:$REDIS_PORT"
-            echo "  Kafka: localhost:$KAFKA_PORT"
-            
-            echo "POSTGRES_PORT=$POSTGRES_PORT" >> $GITHUB_ENV
-            echo "MONGODB_PORT=$MONGODB_PORT" >> $GITHUB_ENV
-            echo "REDIS_PORT=$REDIS_PORT" >> $GITHUB_ENV
-            echo "KAFKA_PORT=$KAFKA_PORT" >> $GITHUB_ENV
-          else
-            echo "jq não disponível, usando portas padrão..."
-            echo "POSTGRES_PORT=5432" >> $GITHUB_ENV
-            echo "MONGODB_PORT=27017" >> $GITHUB_ENV
-            echo "REDIS_PORT=6379" >> $GITHUB_ENV
-            echo "KAFKA_PORT=9092" >> $GITHUB_ENV
+          echo "Verificando saúde dos containers..."
+          FAILED_CONTAINERS=$(docker compose -f docker-compose.test.yml ps --format json 2>/dev/null | jq -r 'select(.State != "running") | .Name' || echo "")
+          
+          if [ -n "$FAILED_CONTAINERS" ]; then
+            echo "[WARN] Containers com problema:"
+            echo "$FAILED_CONTAINERS"
+            echo ""
+            echo "Logs dos containers com falha:"
+            docker compose -f docker-compose.test.yml logs --tail=50
+            exit 1
           fi
           
-          echo ""
-          echo "Aguardando mais 45s para serviços ficarem prontos..."
-          sleep 45
-          
+          echo "[SUCESSO] Todos os containers estão rodando"
           echo ""
           echo "=== INFRAESTRUTURA PRONTA ==="
+
+      - name: Aguardar serviços ficarem prontos
+        working-directory: ./api
+        run: |
+          echo "=== AGUARDANDO HEALTH CHECKS ==="
+          
+          # Função de retry com timeout
+          wait_for_service() {
+            local service=$1
+            local check_command=$2
+            local max_attempts=60
+            local attempt=0
+            
+            echo "Aguardando $service..."
+            while [ $attempt -lt $max_attempts ]; do
+              if eval "$check_command" >/dev/null 2>&1; then
+                echo "✓ $service pronto"
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              printf "."
+              sleep 2
+            done
+            
+            echo ""
+            echo "[WARN] $service não ficou pronto a tempo!"
+            docker compose -f docker-compose.test.yml logs "$service" --tail=50
+            return 1
+          }
+          
+          # Aguardar PostgreSQL
+          wait_for_service "postgres" "docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste"
+          
+          # Aguardar MongoDB
+          wait_for_service "mongodb" "docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          
+          # Aguardar Redis
+          wait_for_service "redis" "docker compose -f docker-compose.test.yml exec -T redis redis-cli ping"
+          
+          # Aguardar Zookeeper
+          wait_for_service "zookeeper" "docker compose -f docker-compose.test.yml exec -T zookeeper sh -c 'echo ruok | nc localhost 2181'"
+          
+          # Aguardar Kafka
+          wait_for_service "kafka" "docker compose -f docker-compose.test.yml exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          
+          # Aguardar InfluxDB
+          wait_for_service "influxdb" "docker compose -f docker-compose.test.yml exec -T influxdb influx ping"
+          
+          echo ""
+          echo "=== TODOS OS SERVIÇOS PRONTOS ==="
       
       - name: Verificar saúde dos serviços
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
-          echo "Usando PostgreSQL na porta: ${{ env.POSTGRES_PORT }}"
-          echo "Usando Redis na porta: ${{ env.REDIS_PORT }}"
           
           echo "Testando PostgreSQL..."
-          for i in {1..30}; do
-            if docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste; then
-              echo "[SUCESSO] PostgreSQL pronto!"
-              break
-            fi
-            echo "Aguardando PostgreSQL... ($i/30)"
-            sleep 2
-          done
+          docker compose -f docker-compose.test.yml exec -T postgres psql -U teste -d helpme_database_teste -c "SELECT version();" | head -1
+          echo "[SUCESSO] PostgreSQL operacional"
           
-          echo "Testando Redis..."
-          for i in {1..30}; do
-            if docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG; then
-              echo "[SUCESSO] Redis pronto!"
-              break
-            fi
-            echo "Aguardando Redis... ($i/30)"
-            sleep 2
-          done
-          
-          echo "Executando teste básico no Redis..."
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli set test-key "test-value"
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli get test-key
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli del test-key
-          
+          echo ""
           echo "Testando MongoDB..."
-          docker compose -f docker-compose.test.yml exec -T mongodb mongosh --eval "db.runCommand({ ping: 1 })" || echo "MongoDB ainda inicializando..."
+          docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval "db.version()"
+          echo "[SUCESSO] MongoDB operacional"
           
-          echo "=== VERIFICAÇÃO CONCLUÍDA ==="
+          echo ""
+          echo "Testando Redis..."
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli set healthcheck "ok"
+          REDIS_VALUE=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli get healthcheck)
+          if [ "$REDIS_VALUE" = "ok" ]; then
+            echo "[SUCESSO] Redis operacional"
+            docker compose -f docker-compose.test.yml exec -T redis redis-cli del healthcheck >/dev/null
+          else
+            echo "[WARN] Redis não respondeu corretamente"
+            exit 1
+          fi
           
+          echo ""
+          echo "Testando Kafka..."
+          docker compose -f docker-compose.test.yml exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+          echo "[SUCESSO] Kafka operacional"
+          
+          echo ""
+          echo "Testando InfluxDB..."
+          docker compose -f docker-compose.test.yml exec -T influxdb influx ping
+          echo "[SUCESSO] InfluxDB operacional"
+          
+          echo ""
+          echo "=== VERIFICAÇÃO CONCLUÍDA COM SUCESSO ==="
+          
+          echo ""
           echo "Containers em execução:"
-          docker compose -f docker-compose.test.yml ps
+          docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
       
       - name: Executar migrations
         working-directory: ./api
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:${{ env.POSTGRES_PORT }}/helpme_database_teste?schema=public
-        run: pnpm run migrate
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+        run: |
+          echo "=== EXECUTANDO MIGRATIONS ==="
+          pnpm run migrate
+          echo "[SUCESSO] Migrations executadas"
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
-        run: pnpm run seed-big-ci
+        run: |
+          echo "=== POPULANDO BANCO DE DADOS ==="
+          pnpm run seed-big-ci
+          echo "[SUCESSO] Seed executado"
       
       - name: Executar testes E2E
         working-directory: ./api
-        run: pnpm run test:e2e
+        run: |
+          echo "=== EXECUTANDO TESTES E2E ==="
+          pnpm run test:e2e
+          echo "[SUCESSO] Testes E2E concluídos"
       
-      - name: Upload de coverage E2E (se disponível)
+      - name: Upload de coverage E2E
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -559,27 +597,43 @@ jobs:
           path: ./api/coverage/
           retention-days: 7
         continue-on-error: true
-      
-      - name: Logs dos serviços (se falhar)
+
+      - name: Logs dos serviços (em caso de falha)
         working-directory: ./api
         if: failure()
         run: |
-          echo "=== PostgreSQL Logs ==="
+          echo "=== LOGS DOS SERVIÇOS ==="
+          
+          echo "PostgreSQL Logs:"
           docker compose -f docker-compose.test.yml logs --tail=100 postgres
-          echo "=== MongoDB Logs ==="
+          
+          echo ""
+          echo "MongoDB Logs:"
           docker compose -f docker-compose.test.yml logs --tail=100 mongodb
-          echo "=== Kafka Logs ==="
-          docker compose -f docker-compose.test.yml logs --tail=100 kafka
-          echo "=== Redis Logs ==="
+          
+          echo ""
+          echo "Redis Logs:"
           docker compose -f docker-compose.test.yml logs --tail=100 redis
-          echo "=== InfluxDB Logs ==="
+          
+          echo ""
+          echo "Zookeeper Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
+          
+          echo ""
+          echo "Kafka Logs:"
+          docker compose -f docker-compose.test.yml logs --tail=100 kafka
+          
+          echo ""
+          echo "InfluxDB Logs:"
           docker compose -f docker-compose.test.yml logs --tail=100 influxdb
       
       - name: Derrubar infraestrutura
         working-directory: ./api 
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v
-
+        run: |
+          echo "=== DERRUBANDO INFRAESTRUTURA ==="
+          docker compose -f docker-compose.test.yml down -v --timeout 30
+          echo "[SUCESSO] Infraestrutura derrubada"
   release:
     name: Build e Push Docker Image
     runs-on: ubuntu-latest
@@ -664,14 +718,15 @@ jobs:
           git config user.email "actions@github.com"
           git tag -a "v${{ needs.build.outputs.version }}" -m "Release v${{ needs.build.outputs.version }}"
           git push origin "v${{ needs.build.outputs.version }}"
-          echo "Tag v${{ needs.build.outputs.version }} criada e enviada"
+          echo "✓ Tag v${{ needs.build.outputs.version }} criada e enviada"
       
       - name: Resumo da release
         run: |
           echo "## Release v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "### Versão" >> $GITHUB_STEP_SUMMARY
-          echo "- **Versão do package.json**: \`${{ needs.build.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Versão**: \`${{ needs.build.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "${{ inputs.version-override }}" ]; then
             echo "- **Origem**: Manual override" >> $GITHUB_STEP_SUMMARY
@@ -686,14 +741,16 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Informações da Build" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Build**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Executor**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Data**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Para usar:" >> $GITHUB_STEP_SUMMARY
+          echo "### Como usar:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "# Versão específica" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
