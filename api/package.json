@@ -19,6 +19,7 @@
     "studio": "dotenv -e .env -- prisma studio",
     "seed": "tsx --env-file=.env prisma/seed.ts",
     "seed-big": "tsx --env-file=.env prisma/seed-big.ts",
+    "seed-big-ci": "tsx --env-file=.env.test prisma/seed-big.ts",
     "prisma:reset": "dotenv -e .env -- prisma migrate reset --force",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
