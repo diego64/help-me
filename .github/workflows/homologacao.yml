@@ -179,7 +179,7 @@ jobs:
         run: |
           echo "Conteúdo do diretório dist:"
           ls -lah dist/
-          test -f dist/server.js && echo "[SUCESSO] server.js encontrado" || (echo "✗ server.js NÃO encontrado" && exit 1)
+          test -f dist/server.js && echo "[SUCESSO] server.js encontrado" || (echo "[ERROR] server.js NÃO encontrado" && exit 1)
       
       - name: Upload do build
         uses: actions/upload-artifact@v4
@@ -365,7 +365,7 @@ jobs:
               sudo lsof -i :${porta}
               PORTS_OK=false
             else
-              echo "✓ Porta ${porta} livre"
+              echo "[SUCESSO] Porta ${porta} livre"
             fi
           done
           
@@ -387,7 +387,7 @@ jobs:
           
           echo ""
           echo "Processos escutando em portas críticas:"
-          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo nas portas críticas ✓"
+          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo nas portas críticas [SUCESSO]"
           
           echo ""
           echo "Containers Docker:"
@@ -422,14 +422,14 @@ jobs:
             sleep 5
           fi
           
-          echo "✓ Ambiente completamente limpo"
+          echo "[SUCESSO] Ambiente completamente limpo"
           
           # Pull de imagens com retry
           echo ""
           echo "Baixando imagens Docker..."
           for i in {1..3}; do
             if docker compose -f docker-compose.test.yml pull --quiet; then
-              echo "✓ Imagens baixadas com sucesso"
+              echo "[SUCESSO] Imagens baixadas com sucesso"
               break
             fi
             echo "[WARN] Tentativa $i/3 de pull falhou, tentando novamente..."
@@ -478,92 +478,205 @@ jobs:
         run: |
           echo "=== AGUARDANDO HEALTH CHECKS ==="
           
-          # Função de retry com timeout
+          # Função de retry com timeout e backoff exponencial
           wait_for_service() {
             local service=$1
             local check_command=$2
-            local max_attempts=60
+            local max_attempts=${3:-60}
             local attempt=0
+            local backoff=1
             
             echo "Aguardando $service..."
             while [ $attempt -lt $max_attempts ]; do
               if eval "$check_command" >/dev/null 2>&1; then
-                echo "✓ $service pronto"
+                echo "[SUCESSO] $service pronto (tentativa $((attempt + 1))/$max_attempts)"
                 return 0
               fi
               attempt=$((attempt + 1))
-              printf "."
-              sleep 2
+              
+              # Exibir progresso a cada 5 tentativas
+              if [ $((attempt % 5)) -eq 0 ]; then
+                echo "  Aguardando $service... ($attempt/$max_attempts)"
+              fi
+              
+              sleep $backoff
+              
+              # Backoff exponencial até 5 segundos
+              if [ $backoff -lt 5 ]; then
+                backoff=$((backoff + 1))
+              fi
             done
             
             echo ""
             echo "[WARN] $service não ficou pronto a tempo!"
-            docker compose -f docker-compose.test.yml logs "$service" --tail=50
+            echo "Exibindo logs do serviço:"
+            docker compose -f docker-compose.test.yml logs "$service" --tail=100
             return 1
           }
           
           # Aguardar PostgreSQL
-          wait_for_service "postgres" "docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste"
+          wait_for_service "postgres" \
+            "docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U teste" \
+            30
           
           # Aguardar MongoDB
-          wait_for_service "mongodb" "docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          wait_for_service "mongodb" \
+            "docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval 'db.adminCommand({ping:1})'" \
+            40
           
           # Aguardar Redis
-          wait_for_service "redis" "docker compose -f docker-compose.test.yml exec -T redis redis-cli ping"
+          wait_for_service "redis" \
+            "docker compose -f docker-compose.test.yml exec -T redis redis-cli ping" \
+            30
           
           # Aguardar Zookeeper
-          wait_for_service "zookeeper" "docker compose -f docker-compose.test.yml exec -T zookeeper sh -c 'echo ruok | nc localhost 2181'"
+          wait_for_service "zookeeper" \
+            "docker compose -f docker-compose.test.yml exec -T zookeeper sh -c 'echo ruok | nc localhost 2181 2>/dev/null | grep -q imok'" \
+            40
           
-          # Aguardar Kafka
-          wait_for_service "kafka" "docker compose -f docker-compose.test.yml exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          # Aguardar Kafka (precisa de mais tempo e verificação diferente)
+          echo ""
+          echo "Aguardando Kafka (pode demorar até 3 minutos)..."
+          
+          # Primeiro, aguardar o Kafka aceitar conexões
+          wait_for_service "kafka" \
+            "docker compose -f docker-compose.test.yml exec -T kafka bash -c 'nc -z localhost 9092 2>/dev/null'" \
+            90
+          
+          # Depois, aguardar o Kafka estar totalmente operacional
+          echo "Verificando se Kafka está totalmente operacional..."
+          KAFKA_READY=false
+          for i in {1..60}; do
+            if docker compose -f docker-compose.test.yml exec -T kafka \
+              kafka-broker-api-versions --bootstrap-server localhost:9092 2>/dev/null | grep -q "ApiVersion"; then
+              echo "[SUCESSO] Kafka totalmente operacional (tentativa $i/60)"
+              KAFKA_READY=true
+              break
+            fi
+            
+            if [ $((i % 10)) -eq 0 ]; then
+              echo "  Kafka ainda inicializando... ($i/60)"
+            fi
+            sleep 3
+          done
+          
+          if [ "$KAFKA_READY" = false ]; then
+            echo "[WARN] Kafka não ficou operacional a tempo!"
+            echo "Status do Kafka:"
+            docker compose -f docker-compose.test.yml exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 || true
+            echo ""
+            echo "Logs do Kafka:"
+            docker compose -f docker-compose.test.yml logs kafka --tail=100
+            exit 1
+          fi
           
           # Aguardar InfluxDB
-          wait_for_service "influxdb" "docker compose -f docker-compose.test.yml exec -T influxdb influx ping"
+          wait_for_service "influxdb" \
+            "docker compose -f docker-compose.test.yml exec -T influxdb influx ping" \
+            40
           
           echo ""
           echo "=== TODOS OS SERVIÇOS PRONTOS ==="
-      
+
       - name: Verificar saúde dos serviços
         working-directory: ./api
         run: |
           echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
           
-          echo "Testando PostgreSQL..."
-          docker compose -f docker-compose.test.yml exec -T postgres psql -U teste -d helpme_database_teste -c "SELECT version();" | head -1
-          echo "[SUCESSO] PostgreSQL operacional"
-          
-          echo ""
-          echo "Testando MongoDB..."
-          docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval "db.version()"
-          echo "[SUCESSO] MongoDB operacional"
-          
-          echo ""
-          echo "Testando Redis..."
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli set healthcheck "ok"
-          REDIS_VALUE=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli get healthcheck)
-          if [ "$REDIS_VALUE" = "ok" ]; then
-            echo "[SUCESSO] Redis operacional"
-            docker compose -f docker-compose.test.yml exec -T redis redis-cli del healthcheck >/dev/null
+          echo "1. Testando PostgreSQL..."
+          if docker compose -f docker-compose.test.yml exec -T postgres \
+            psql -U teste -d helpme_database_teste -c "SELECT version();" >/dev/null 2>&1; then
+            VERSION=$(docker compose -f docker-compose.test.yml exec -T postgres \
+                      psql -U teste -d helpme_database_teste -tc "SELECT version();" | xargs)
+            echo "[SUCESSO] PostgreSQL operacional: ${VERSION:0:50}..."
           else
-            echo "[WARN] Redis não respondeu corretamente"
+            echo "[ERROR] PostgreSQL falhou no teste"
             exit 1
           fi
           
           echo ""
-          echo "Testando Kafka..."
-          docker compose -f docker-compose.test.yml exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1
-          echo "[SUCESSO] Kafka operacional"
+          echo "2. Testando MongoDB..."
+          if MONGO_VERSION=$(docker compose -f docker-compose.test.yml exec -T mongodb \
+            mongosh --quiet --eval "db.version()" 2>/dev/null); then
+            echo "[SUCESSO] MongoDB operacional: v$MONGO_VERSION"
+          else
+            echo "[ERROR] MongoDB falhou no teste"
+            exit 1
+          fi
           
           echo ""
-          echo "Testando InfluxDB..."
-          docker compose -f docker-compose.test.yml exec -T influxdb influx ping
-          echo "[SUCESSO] InfluxDB operacional"
+          echo "3. Testando Redis..."
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli set healthcheck "ok" >/dev/null
+          REDIS_VALUE=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli get healthcheck 2>/dev/null | tr -d '\r')
+          docker compose -f docker-compose.test.yml exec -T redis redis-cli del healthcheck >/dev/null
+          
+          if [ "$REDIS_VALUE" = "ok" ]; then
+            REDIS_VERSION=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli --version | awk '{print $2}')
+            echo "[SUCESSO] Redis operacional: $REDIS_VERSION"
+          else
+            echo "[ERROR] Redis falhou no teste (retornou: '$REDIS_VALUE')"
+            exit 1
+          fi
+          
+          echo ""
+          echo "4. Testando Zookeeper..."
+          ZK_STATUS=$(docker compose -f docker-compose.test.yml exec -T zookeeper \
+                      sh -c 'echo ruok | nc localhost 2181' 2>/dev/null)
+          if echo "$ZK_STATUS" | grep -q "imok"; then
+            echo "[SUCESSO] Zookeeper operacional: $ZK_STATUS"
+          else
+            echo "[ERROR] Zookeeper falhou no teste (retornou: '$ZK_STATUS')"
+            exit 1
+          fi
+          
+          echo ""
+          echo "5. Testando Kafka..."
+          
+          # Teste 1: Verificar API versions
+          if docker compose -f docker-compose.test.yml exec -T kafka \
+            kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+            echo "[SUCESSO] Kafka API respondendo"
+          else
+            echo "[ERROR] Kafka API não responde"
+            exit 1
+          fi
+          
+          # Teste 2: Criar tópico de teste
+          echo "  Criando tópico de teste..."
+          docker compose -f docker-compose.test.yml exec -T kafka \
+            kafka-topics --bootstrap-server localhost:9092 \
+            --create --topic healthcheck-test \
+            --partitions 1 --replication-factor 1 \
+            --if-not-exists >/dev/null 2>&1
+          
+          # Teste 3: Listar tópicos
+          if docker compose -f docker-compose.test.yml exec -T kafka \
+            kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
+            echo "[SUCESSO] Kafka operacional (tópico criado com sucesso)"
+          else
+            echo "[ERROR] Kafka falhou ao criar tópico"
+            exit 1
+          fi
+          
+          # Limpar tópico de teste
+          docker compose -f docker-compose.test.yml exec -T kafka \
+            kafka-topics --bootstrap-server localhost:9092 \
+            --delete --topic healthcheck-test >/dev/null 2>&1 || true
+          
+          echo ""
+          echo "6. Testando InfluxDB..."
+          if docker compose -f docker-compose.test.yml exec -T influxdb influx ping >/dev/null 2>&1; then
+            echo "[SUCESSO] InfluxDB operacional"
+          else
+            echo "[ERROR] InfluxDB falhou no teste"
+            exit 1
+          fi
           
           echo ""
           echo "=== VERIFICAÇÃO CONCLUÍDA COM SUCESSO ==="
           
           echo ""
-          echo "Containers em execução:"
+          echo "[INFO] Resumo dos serviços:"
           docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
       
       - name: Executar migrations
@@ -718,7 +831,7 @@ jobs:
           git config user.email "actions@github.com"
           git tag -a "v${{ needs.build.outputs.version }}" -m "Release v${{ needs.build.outputs.version }}"
           git push origin "v${{ needs.build.outputs.version }}"
-          echo "✓ Tag v${{ needs.build.outputs.version }} criada e enviada"
+          echo "[SUCESSO] Tag v${{ needs.build.outputs.version }} criada e enviada"
       
       - name: Resumo da release
         run: |
