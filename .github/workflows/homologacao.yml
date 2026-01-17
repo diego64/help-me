@@ -369,10 +369,10 @@ jobs:
           docker compose -f docker-compose.test.yml up -d
           echo "[SUCESSO] Containers iniciados"
           
-          # 8. Aguardar inicialização
+          # 8. Aguardar inicialização (Kafka/Zookeeper precisam de ~60s)
           echo ""
-          echo "Aguardando inicialização dos serviços (40s)..."
-          sleep 40
+          echo "Aguardando inicialização dos serviços (60s)..."
+          sleep 60
           
           # 9. Mostrar status
           echo ""
@@ -403,6 +403,26 @@ jobs:
 
       - name: Executar testes E2E
         working-directory: ./api
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          
+          MONGO_URL: mongodb://localhost:27018/helpme_logs_teste
+          MONGO_INITDB_DATABASE: helpme_logs_teste
+          
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+          KAFKA_BROKERS: localhost:9092
+          KAFKA_CLIENT_ID: helpdesk-api
+
+          INFLUX_URL: http://localhost:8086
+          INFLUX_TOKEN: teste_token_influxdb_12345678
+          INFLUX_ORG: helpme_org
+          INFLUX_BUCKET: helpme_metrics
+          INFLUX_USERNAME: admin
+          INFLUX_PASSWORD: admin_password_teste
+
+          NODE_ENV: test
         run: |
           echo "=== EXECUTANDO TESTES E2E ==="
           pnpm exec vitest run src/__tests__/e2e
