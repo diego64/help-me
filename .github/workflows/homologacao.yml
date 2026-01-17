@@ -397,9 +397,9 @@ jobs:
           
           echo "[SUCESSO] Containers iniciados"
           
-          # Aguardar 20s para inicialização
-          echo "Aguardando inicialização dos serviços (20s)..."
-          sleep 20
+          # Aguardar 40s para inicialização (especialmente Zookeeper e Kafka)
+          echo "Aguardando inicialização dos serviços (40s)..."
+          sleep 40
           
           # Mostrar status dos containers
           echo ""

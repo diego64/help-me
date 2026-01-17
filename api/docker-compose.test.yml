@@ -194,12 +194,6 @@ services:
     volumes:
       - helpme_zookeeper_test_data:/var/lib/zookeeper/data
       - helpme_zookeeper_test_logs:/var/lib/zookeeper/log
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
     restart: unless-stopped
 
   kafka:
@@ -215,8 +209,7 @@ services:
       - "9092:9092"
       - "9093:9093"
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -236,12 +229,6 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
     volumes:
       - helpme_kafka_test_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
     restart: unless-stopped
 
   influxdb:
