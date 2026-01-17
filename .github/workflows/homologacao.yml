@@ -1,4 +1,4 @@
-name: Pipeline CI/CD - Homologação
+name: Pipeline CI/CD - Homologação (Otimizado)
 run-name: Pipeline CI executado por ${{ github.actor }}
 
 on:
@@ -246,6 +246,7 @@ jobs:
     needs: [testes-unitarios]
     runs-on: ubuntu-latest
     environment: homologacao
+    timeout-minutes: 30
     
     steps:
       - name: Checkout do código
@@ -279,374 +280,90 @@ jobs:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
       
-      - name: Limpeza específica de containers HelpMe
+      - name: Preparação completa do ambiente
         working-directory: ./api
+        timeout-minutes: 5
         run: |
-          echo "=== LIMPEZA ESPECÍFICA DO HELPME ==="
+          #!/bin/bash
+          set -e
           
-          # 1. Derrubar compose se existir
-          echo "Tentando derrubar docker-compose existente..."
-          docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 5 2>/dev/null || true
+          echo "=== PREPARAÇÃO DO AMBIENTE DE TESTES ==="
           
-          # 2. Remover containers por nome
+          # 1. Derrubar compose existente
+          echo "Derrubando docker-compose existente..."
+          docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 10 2>/dev/null || true
+          
+          # 2. Limpeza seletiva por labels (mais seguro que limpeza nuclear)
           echo ""
-          echo "Removendo containers relacionados ao HelpMe..."
-          CONTAINER_PATTERNS=(
-            "helpme-"
-            "postgres"
-            "mongodb"
-            "redis"
-            "zookeeper"
-            "kafka"
-            "influxdb"
-          )
+          echo "Removendo recursos do HelpMe por labels..."
           
-          for pattern in "${CONTAINER_PATTERNS[@]}"; do
-            FOUND=$(docker ps -aq --filter "name=${pattern}" | wc -l)
-            if [ "$FOUND" -gt 0 ]; then
-              echo "  Removendo ${FOUND} container(s) com padrão '${pattern}'"
-              docker ps -aq --filter "name=${pattern}" | xargs -r docker rm -f 2>/dev/null || true
+          # Containers
+          CONTAINERS=$(docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | wc -l)
+          if [ "$CONTAINERS" -gt 0 ]; then
+            echo "  Removendo $CONTAINERS container(s)..."
+            docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | xargs -r docker rm -f 2>/dev/null || true
+          else
+            echo "  Nenhum container do HelpMe encontrado"
+          fi
+          
+          # Networks
+          NETWORKS=$(docker network ls --filter "label=project=helpme" -q | wc -l)
+          if [ "$NETWORKS" -gt 0 ]; then
+            echo "  Removendo $NETWORKS rede(s)..."
+            docker network ls --filter "label=project=helpme" -q | xargs -r docker network rm 2>/dev/null || true
+          else
+            echo "  Nenhuma rede do HelpMe encontrada"
+          fi
+          
+          # Volumes
+          VOLUMES=$(docker volume ls --filter "label=project=helpme" -q | wc -l)
+          if [ "$VOLUMES" -gt 0 ]; then
+            echo "  Removendo $VOLUMES volume(s)..."
+            docker volume ls --filter "label=project=helpme" -q | xargs -r docker volume rm -f 2>/dev/null || true
+          else
+            echo "  Nenhum volume do HelpMe encontrado"
+          fi
+          
+          # 3. Liberar portas específicas do projeto
+          echo ""
+          echo "Liberando portas do HelpMe..."
+          PORTAS=(5433 27018 6379 2181 9092 8086)
+          for porta in "${PORTAS[@]}"; do
+            if sudo lsof -i :${porta} >/dev/null 2>&1; then
+              echo "  Liberando porta ${porta}..."
+              sudo fuser -k ${porta}/tcp 2>/dev/null || true
             fi
           done
           
-          # 3. Remover rede específica
-          echo ""
-          echo "Removendo rede do HelpMe..."
-          docker network rm helpme-test-network 2>/dev/null || echo "  Rede não existe"
-          
-          # 4. Remover volumes específicos
-          echo ""
-          echo "Removendo volumes do HelpMe..."
-          VOLUME_PATTERNS=(
-            "helpme_postgres_test_data"
-            "helpme_mongodb_test_data"
-            "helpme_mongodb_test_config"
-            "helpme_redis_test_data"
-            "helpme_zookeeper_test_data"
-            "helpme_zookeeper_test_logs"
-            "helpme_kafka_test_data"
-            "helpme_influxdb_test_data"
-            "helpme_influxdb_test_config"
-          )
-          
-          for volume in "${VOLUME_PATTERNS[@]}"; do
-            docker volume rm "$volume" 2>/dev/null && echo "  Removido: $volume" || true
-          done
-          
-          # 5. Aguardar liberação de recursos
+          # 4. Aguardar liberação de recursos
           echo ""
           echo "Aguardando liberação de recursos (5s)..."
           sleep 5
           
-          echo ""
-          echo "[SUCESSO] Limpeza específica concluída"
-
-      - name: Limpeza NUCLEAR de ambiente
-        run: |
-          echo "=== LIMPEZA NUCLEAR DO AMBIENTE ==="
-          
-          # 1. PARAR TODOS OS CONTAINERS (sem exceção)
-          echo "Parando TODOS os containers Docker..."
-          if [ "$(docker ps -q | wc -l)" -gt 0 ]; then
-            docker ps -q | xargs -r docker stop -t 2 2>/dev/null || true
-            echo "  Containers parados"
-          else
-            echo "  Nenhum container em execução"
-          fi
-          
-          # 2. REMOVER TODOS OS CONTAINERS (sem exceção)
-          echo ""
-          echo "Removendo TODOS os containers Docker..."
-          if [ "$(docker ps -aq | wc -l)" -gt 0 ]; then
-            TOTAL=$(docker ps -aq | wc -l)
-            echo "  Encontrados $TOTAL containers para remover"
-            docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
-            echo "  Containers removidos"
-          else
-            echo "  Nenhum container para remover"
-          fi
-          
-          # 3. REMOVER TODAS AS REDES customizadas
-          echo ""
-          echo "Removendo TODAS as redes Docker customizadas..."
-          CUSTOM_NETWORKS=$(docker network ls --filter type=custom -q 2>/dev/null | wc -l)
-          if [ "$CUSTOM_NETWORKS" -gt 0 ]; then
-            docker network ls --filter type=custom -q | xargs -r docker network rm 2>/dev/null || true
-            echo "  Redes removidas"
-          else
-            echo "  Nenhuma rede customizada"
-          fi
-          
-          # 4. REMOVER TODOS OS VOLUMES
-          echo ""
-          echo "Removendo TODOS os volumes Docker..."
-          if [ "$(docker volume ls -q | wc -l)" -gt 0 ]; then
-            TOTAL=$(docker volume ls -q | wc -l)
-            echo "  Encontrados $TOTAL volumes para remover"
-            docker volume ls -q | xargs -r docker volume rm -f 2>/dev/null || true
-            echo "  Volumes removidos"
-          else
-            echo "  Nenhum volume para remover"
-          fi
-          
-          # 5. Parar Docker daemon
-          echo ""
-          echo "Parando Docker daemon..."
-          sudo systemctl stop docker.socket docker.service || true
-          sleep 3
-          
-          # 6. Matar TODOS os processos relacionados
-          echo ""
-          echo "Eliminando processos Docker e serviços..."
-          sudo pkill -9 dockerd || true
-          sudo pkill -9 containerd || true
-          sudo pkill -9 docker-proxy || true
-          sudo pkill -9 postgres || true
-          sudo pkill -9 mongod || true
-          sudo pkill -9 redis-server || true
-          sudo pkill -9 java || true
-          sleep 3
-          
-          # 7. Liberar portas específicas de forma agressiva
-          echo ""
-          echo "Liberando portas críticas..."
-          PORTAS=(5432 5433 27017 27018 6379 2181 9092 9093 8086)
-          for porta in "${PORTAS[@]}"; do
-            sudo fuser -k ${porta}/tcp 2>/dev/null || true
-            sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
-            sudo netstat -tlnp 2>/dev/null | grep ":${porta} " | awk '{print $7}' | cut -d'/' -f1 | xargs -r sudo kill -9 2>/dev/null || true
-          done
-          sleep 5
-          
-          # 8. Limpar estado do Docker
-          echo ""
-          echo "Limpando estado do Docker..."
-          sudo rm -rf /var/lib/docker/containers/* || true
-          sudo rm -rf /var/lib/docker/network/files/* || true
-          sudo rm -rf /var/run/docker/netns/* || true
-          sudo rm -rf /var/lib/docker/overlay2/* || true
-          
-          # 9. Configurar Docker daemon
-          echo ""
-          echo "Configurando Docker daemon..."
-          sudo mkdir -p /etc/docker
-          cat <<EOF | sudo tee /etc/docker/daemon.json
-          {
-            "max-concurrent-downloads": 3,
-            "max-download-attempts": 5,
-            "live-restore": false,
-            "log-driver": "json-file",
-            "log-opts": {
-              "max-size": "10m",
-              "max-file": "3"
-            }
-          }
-          EOF
-          
-          # 10. Reiniciar Docker limpo
-          echo ""
-          echo "Reiniciando Docker daemon..."
-          sudo systemctl start docker.service
-          sleep 8
-          
-          # 11. Verificar Docker está funcionando
-          if ! docker info >/dev/null 2>&1; then
-            echo "[ERROR] Docker falhou ao iniciar!"
-            sudo systemctl status docker.service
-            sudo journalctl -xeu docker.service --no-pager | tail -50
-            exit 1
-          fi
-          
-          # 12. Limpeza total do Docker (system prune)
-          echo ""
-          echo "Executando limpeza do sistema Docker..."
-          docker system prune -af --volumes 2>/dev/null || true
-          docker network prune -f 2>/dev/null || true
-          docker volume prune -f 2>/dev/null || true
-          
-          # 13. VERIFICAÇÃO FINAL COMPLETA
+          # 5. Verificação final
           echo ""
           echo "=== VERIFICAÇÃO FINAL ==="
           
-          # Verificar containers
-          CONTAINERS_COUNT=$(docker ps -aq | wc -l)
-          if [ "$CONTAINERS_COUNT" -gt 0 ]; then
-            echo "[ERROR] Ainda existem $CONTAINERS_COUNT containers!"
-            docker ps -a
-            exit 1
-          else
-            echo "[SUCESSO] Nenhum container no sistema"
-          fi
-          
-          # Verificar redes customizadas
-          NETWORKS_COUNT=$(docker network ls --filter type=custom -q | wc -l)
-          if [ "$NETWORKS_COUNT" -gt 0 ]; then
-            echo "[WARN] Existem $NETWORKS_COUNT redes customizadas"
-            docker network ls
-          else
-            echo "[SUCESSO] Nenhuma rede customizada"
-          fi
-          
-          # Verificar volumes
-          VOLUMES_COUNT=$(docker volume ls -q | wc -l)
-          if [ "$VOLUMES_COUNT" -gt 0 ]; then
-            echo "[WARN] Existem $VOLUMES_COUNT volumes"
-            docker volume ls
-          else
-            echo "[SUCESSO] Nenhum volume"
-          fi
-          
-          # Verificar portas
-          PORTS_OK=true
-          for porta in "${PORTAS[@]}"; do
-            if sudo lsof -i :${porta} >/dev/null 2>&1; then
-              echo "[WARN] PORTA ${porta} AINDA OCUPADA!"
-              sudo lsof -i :${porta}
-              PORTS_OK=false
-            else
-              echo "[SUCESSO] Porta ${porta} livre"
-            fi
-          done
-          
-          if [ "$PORTS_OK" = false ]; then
-            echo ""
-            echo "[ERROR] Algumas portas ainda estão ocupadas!"
+          REMAINING=$(docker ps -aq --filter "label=project=helpme" | wc -l)
+          if [ "$REMAINING" -gt 0 ]; then
+            echo "[ERROR] Ainda existem $REMAINING containers do HelpMe!"
+            docker ps -a --filter "label=project=helpme"
             exit 1
           fi
           
+          echo "[SUCESSO] Ambiente limpo e pronto"
+          
+          # 6. Diagnóstico resumido
           echo ""
-          echo "=== AMBIENTE 100% LIMPO E PRONTO ==="
+          echo "Status do ambiente:"
+          echo "  Containers Docker total: $(docker ps -aq | wc -l)"
+          echo "  Portas em uso (HelpMe): $(sudo netstat -tlnp 2>/dev/null | grep -E ':(5433|27018|6379|9092|2181|8086)' | wc -l)"
 
-      - name: Aguardar estabilização completa do ambiente
-        run: |
-          echo "=== AGUARDANDO ESTABILIZAÇÃO DO AMBIENTE ==="
-          
-          # Aguardar 10 segundos para sistema operacional liberar recursos
-          echo "Aguardando sistema operacional liberar recursos..."
-          sleep 10
-          
-          # Verificar múltiplas vezes se portas estão realmente livres
-          echo ""
-          echo "Verificando liberação de portas (3 verificações)..."
-          PORTAS=(5432 5433 27017 27018 6379 2181 9092 9093 8086)
-          
-          for tentativa in {1..3}; do
-            echo ""
-            echo "Verificação #$tentativa:"
-            PORTAS_OCUPADAS=false
-            
-            for porta in "${PORTAS[@]}"; do
-              if sudo lsof -i :${porta} >/dev/null 2>&1; then
-                echo "  [WARN] Porta ${porta} ainda ocupada na tentativa ${tentativa}"
-                PORTAS_OCUPADAS=true
-                
-                # Tentar liberar novamente
-                sudo fuser -k ${porta}/tcp 2>/dev/null || true
-                sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
-              else
-                echo "  [OK] Porta ${porta} livre"
-              fi
-            done
-            
-            if [ "$PORTAS_OCUPADAS" = false ]; then
-              echo ""
-              echo "[SUCESSO] Todas as portas livres na verificação #${tentativa}"
-              break
-            fi
-            
-            if [ $tentativa -lt 3 ]; then
-              echo ""
-              echo "Aguardando 5 segundos antes da próxima verificação..."
-              sleep 5
-            fi
-          done
-          
-          # Verificação final RIGOROSA
-          echo ""
-          echo "=== VERIFICAÇÃO FINAL RIGOROSA ==="
-          FINAL_CHECK_FAILED=false
-          
-          for porta in "${PORTAS[@]}"; do
-            if sudo lsof -i :${porta} >/dev/null 2>&1; then
-              echo "[ERROR] Porta ${porta} AINDA OCUPADA após 3 tentativas!"
-              sudo lsof -i :${porta}
-              FINAL_CHECK_FAILED=true
-            fi
-          done
-          
-          if [ "$FINAL_CHECK_FAILED" = true ]; then
-            echo ""
-            echo "[ERROR] Falha na liberação de portas! Abortando..."
-            exit 1
-          fi
-          
-          # Verificar que não existem containers
-          CONTAINERS=$(docker ps -aq | wc -l)
-          if [ "$CONTAINERS" -gt 0 ]; then
-            echo "[ERROR] Ainda existem $CONTAINERS containers!"
-            docker ps -a
-            exit 1
-          fi
-          
-          echo ""
-          echo "=== AMBIENTE COMPLETAMENTE ESTABILIZADO ==="
-
-      - name: Diagnóstico de ambiente
-        run: |
-          echo "=== DIAGNÓSTICO DO AMBIENTE ==="
-          
-          echo "Docker Info:"
-          docker info | grep -E 'Server Version|Storage Driver|Logging Driver'
-          
-          echo ""
-          echo "Containers Docker:"
-          CONTAINERS_COUNT=$(docker ps -aq | wc -l)
-          echo "  Total: $CONTAINERS_COUNT containers"
-          if [ "$CONTAINERS_COUNT" -gt 0 ]; then
-            docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-          fi
-          
-          echo ""
-          echo "Redes Docker:"
-          docker network ls
-          
-          echo ""
-          echo "Volumes Docker:"
-          VOLUMES_COUNT=$(docker volume ls -q | wc -l)
-          echo "  Total: $VOLUMES_COUNT volumes"
-          if [ "$VOLUMES_COUNT" -gt 0 ]; then
-            docker volume ls
-          fi
-          
-          echo ""
-          echo "Processos escutando em portas críticas:"
-          sudo netstat -tlnp 2>/dev/null | grep -E ':(5432|5433|27017|27018|6379|9092|9093|2181|8086)' || echo "  Nenhum processo [SUCESSO]"
-          
-          echo ""
-          echo "Espaço em disco:"
-          df -h /var/lib/docker
-          
-          echo ""
-          echo "=== DIAGNÓSTICO CONCLUÍDO ==="
-
-      - name: Subir infraestrutura com Docker Compose
+      - name: Pull de imagens Docker
         working-directory: ./api
         run: |
-          echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
+          echo "=== BAIXANDO IMAGENS DOCKER ==="
           
-          # Verificação de segurança final
-          EXISTING=$(docker ps -aq | wc -l)
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "[ERROR] CRÍTICO: Ainda existem $EXISTING containers após limpeza nuclear!"
-            docker ps -a
-            exit 1
-          fi
-          
-          echo "[SUCESSO] Ambiente 100% limpo confirmado"
-          
-          # Pull de imagens com retry
-          echo ""
-          echo "Baixando imagens Docker..."
           for i in {1..3}; do
             if docker compose -f docker-compose.test.yml pull --quiet; then
               echo "[SUCESSO] Imagens baixadas com sucesso"
@@ -655,9 +372,22 @@ jobs:
             echo "[WARN] Tentativa $i/3 de pull falhou, tentando novamente..."
             sleep 5
           done
+
+      - name: Subir infraestrutura de testes
+        working-directory: ./api
+        timeout-minutes: 5
+        run: |
+          echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
           
-          # Subir containers
-          echo ""
+          # Verificação de segurança
+          EXISTING=$(docker ps -aq --filter "label=project=helpme" | wc -l)
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "[ERROR] Ainda existem $EXISTING containers do HelpMe após limpeza!"
+            docker ps -a --filter "label=project=helpme"
+            exit 1
+          fi
+          
+          # Subir containers com health checks nativos
           echo "Iniciando containers..."
           docker compose -f docker-compose.test.yml up -d \
             --force-recreate \
@@ -665,142 +395,142 @@ jobs:
             --renew-anon-volumes \
             --timeout 60
           
-          # Aguardar inicialização
-          echo ""
-          echo "Aguardando serviços iniciarem (20s)..."
-          sleep 20
+          echo "[SUCESSO] Containers iniciados"
+
+      - name: Aguardar serviços ficarem saudáveis
+        working-directory: ./api
+        timeout-minutes: 3
+        run: |
+          echo "=== AGUARDANDO HEALTH CHECKS ==="
           
-          # Verificar status
-          echo ""
-          echo "Status dos containers:"
-          docker compose -f docker-compose.test.yml ps -a
+          # Aguardar todos os serviços ficarem healthy (usando health checks do compose)
+          TIMEOUT=120
+          ELAPSED=0
+          INTERVAL=3
           
-          # Verificar se todos os containers estão running
-          echo ""
-          echo "Verificando saúde dos containers..."
-          FAILED_CONTAINERS=$(docker compose -f docker-compose.test.yml ps --format json 2>/dev/null | jq -r 'select(.State != "running") | .Name' || echo "")
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            # Verificar status de todos os containers
+            ALL_HEALTHY=true
+            
+            while IFS= read -r line; do
+              SERVICE=$(echo "$line" | awk '{print $1}')
+              STATE=$(echo "$line" | awk '{print $2}')
+              
+              if [[ "$STATE" == *"unhealthy"* ]]; then
+                echo "[WARN] Serviço $SERVICE não está saudável ainda"
+                ALL_HEALTHY=false
+              elif [[ "$STATE" == *"starting"* ]]; then
+                echo "[INFO] Serviço $SERVICE ainda iniciando..."
+                ALL_HEALTHY=false
+              elif [[ "$STATE" == *"healthy"* ]] || [[ "$STATE" == *"running"* ]]; then
+                echo "[OK] Serviço $SERVICE está operacional"
+              else
+                echo "[WARN] Serviço $SERVICE em estado: $STATE"
+                ALL_HEALTHY=false
+              fi
+            done < <(docker compose -f docker-compose.test.yml ps --format "{{.Service}} {{.State}}")
+            
+            if [ "$ALL_HEALTHY" = true ]; then
+              echo ""
+              echo "[SUCESSO] Todos os serviços estão saudáveis!"
+              break
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            echo "Aguardando... (${ELAPSED}s/${TIMEOUT}s)"
+          done
           
-          if [ -n "$FAILED_CONTAINERS" ]; then
-            echo "[WARN] Containers com problema:"
-            echo "$FAILED_CONTAINERS"
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "[ERROR] Timeout aguardando serviços ficarem saudáveis"
+            docker compose -f docker-compose.test.yml ps
+            docker compose -f docker-compose.test.yml logs --tail=50
+            exit 1
+          fi
+
+      - name: Verificar saúde dos serviços (paralelo)
+        working-directory: ./api
+        timeout-minutes: 2
+        run: |
+          echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
+          
+          # Função de verificação genérica
+          check_service() {
+            local service=$1
+            local check_cmd=$2
+            local timeout=${3:-10}
+            
+            echo "Verificando $service..."
+            if timeout $timeout bash -c "$check_cmd" 2>/dev/null; then
+              echo "[SUCESSO] $service operacional"
+              return 0
+            else
+              echo "[ERROR] $service falhou"
+              return 1
+            fi
+          }
+          
+          # Verificações em paralelo usando background jobs
+          FAILED=0
+          PIDS=()
+          
+          # PostgreSQL
+          (check_service "PostgreSQL" \
+            "docker compose -f docker-compose.test.yml exec -T postgres psql -U teste -d helpme_database_teste -c 'SELECT version();' >/dev/null") &
+          PIDS+=($!)
+          
+          # MongoDB
+          (check_service "MongoDB" \
+            "docker compose -f docker-compose.test.yml exec -T mongodb mongosh --quiet --eval 'db.version()' >/dev/null") &
+          PIDS+=($!)
+          
+          # Redis
+          (check_service "Redis" \
+            "docker compose -f docker-compose.test.yml exec -T redis redis-cli ping | grep -q PONG") &
+          PIDS+=($!)
+          
+          # Zookeeper
+          (check_service "Zookeeper" \
+            "docker compose -f docker-compose.test.yml exec -T zookeeper bash -c 'timeout 3 bash -c \"</dev/tcp/localhost/2181\"'") &
+          PIDS+=($!)
+          
+          # Kafka (verificação mais completa)
+          (check_service "Kafka" \
+            "docker compose -f docker-compose.test.yml exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 | grep -q ApiVersion") &
+          PIDS+=($!)
+          
+          # InfluxDB
+          (check_service "InfluxDB" \
+            "docker compose -f docker-compose.test.yml exec -T influxdb influx ping >/dev/null") &
+          PIDS+=($!)
+          
+          # Aguardar todos os processos
+          echo ""
+          echo "Aguardando verificações paralelas..."
+          for pid in "${PIDS[@]}"; do
+            if ! wait $pid; then
+              FAILED=1
+            fi
+          done
+          
+          if [ $FAILED -eq 1 ]; then
             echo ""
-            echo "Logs dos containers com falha:"
+            echo "[ERROR] Um ou mais serviços falharam nas verificações"
+            echo ""
+            echo "Status dos containers:"
+            docker compose -f docker-compose.test.yml ps
+            echo ""
+            echo "Logs dos serviços:"
             docker compose -f docker-compose.test.yml logs --tail=50
             exit 1
           fi
           
-          echo "[SUCESSO] Todos os containers estão rodando"
           echo ""
-          echo "=== INFRAESTRUTURA PRONTA ==="
-
-      - name: Verificar saúde dos serviços
-        working-directory: ./api
-        run: |
-          echo "=== VERIFICANDO SAÚDE DOS SERVIÇOS ==="
+          echo "[SUCESSO] Todos os serviços passaram nas verificações"
           
-          echo "1. Testando PostgreSQL..."
-          if docker compose -f docker-compose.test.yml exec -T postgres \
-             psql -U teste -d helpme_database_teste -c "SELECT version();" >/dev/null 2>&1; then
-            VERSION=$(docker compose -f docker-compose.test.yml exec -T postgres \
-                      psql -U teste -d helpme_database_teste -tc "SELECT version();" | xargs)
-            echo "[SUCESSO] PostgreSQL operacional: ${VERSION:0:50}..."
-          else
-            echo "[ERROR] PostgreSQL falhou no teste"
-            exit 1
-          fi
-          
+          # Resumo
           echo ""
-          echo "2. Testando MongoDB..."
-          if MONGO_VERSION=$(docker compose -f docker-compose.test.yml exec -T mongodb \
-             mongosh --quiet --eval "db.version()" 2>/dev/null); then
-            echo "[SUCESSO] MongoDB operacional: v$MONGO_VERSION"
-          else
-            echo "[ERROR] MongoDB falhou no teste"
-            exit 1
-          fi
-          
-          echo ""
-          echo "3. Testando Redis..."
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli set healthcheck "ok" >/dev/null
-          REDIS_VALUE=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli get healthcheck 2>/dev/null | tr -d '\r')
-          docker compose -f docker-compose.test.yml exec -T redis redis-cli del healthcheck >/dev/null
-          
-          if [ "$REDIS_VALUE" = "ok" ]; then
-            REDIS_VERSION=$(docker compose -f docker-compose.test.yml exec -T redis redis-cli --version | awk '{print $2}')
-            echo "[SUCESSO] Redis operacional: $REDIS_VERSION"
-          else
-            echo "[ERROR] Redis falhou no teste (retornou: '$REDIS_VALUE')"
-            exit 1
-          fi
-          
-          echo ""
-          echo "4. Testando Zookeeper..."
-          if docker compose -f docker-compose.test.yml exec -T zookeeper \
-             bash -c "timeout 3 bash -c '</dev/tcp/localhost/2181' 2>/dev/null"; then
-            echo "[SUCESSO] Zookeeper operacional (porta 2181 respondendo)"
-          else
-            echo "[ERROR] Zookeeper não está respondendo na porta 2181"
-            docker compose -f docker-compose.test.yml logs zookeeper --tail=30
-            exit 1
-          fi
-          
-          echo ""
-          echo "5. Testando Kafka..."
-          
-          if docker compose -f docker-compose.test.yml exec -T kafka \
-             bash -c "timeout 3 bash -c '</dev/tcp/localhost/9092' 2>/dev/null"; then
-            echo "[SUCESSO] Kafka porta 9092 respondendo"
-          else
-            echo "[ERROR] Kafka porta 9092 não responde"
-            exit 1
-          fi
-          
-          if docker compose -f docker-compose.test.yml exec -T kafka \
-             kafka-broker-api-versions --bootstrap-server localhost:9092 2>&1 | grep -q "ApiVersion"; then
-            echo "[SUCESSO] Kafka API respondendo"
-          else
-            echo "[ERROR] Kafka API não responde"
-            docker compose -f docker-compose.test.yml logs kafka --tail=50
-            exit 1
-          fi
-          
-          echo "  Criando tópico de teste..."
-          if docker compose -f docker-compose.test.yml exec -T kafka \
-             kafka-topics --bootstrap-server localhost:9092 \
-             --create --topic healthcheck-test \
-             --partitions 1 --replication-factor 1 \
-             --if-not-exists >/dev/null 2>&1; then
-            
-            if docker compose -f docker-compose.test.yml exec -T kafka \
-               kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null | grep -q "healthcheck-test"; then
-              echo "[SUCESSO] Kafka operacional (tópico criado com sucesso)"
-              
-              docker compose -f docker-compose.test.yml exec -T kafka \
-                kafka-topics --bootstrap-server localhost:9092 \
-                --delete --topic healthcheck-test >/dev/null 2>&1 || true
-            else
-              echo "[ERROR] Kafka não conseguiu listar tópicos"
-              exit 1
-            fi
-          else
-            echo "[ERROR] Kafka não conseguiu criar tópico"
-            exit 1
-          fi
-          
-          echo ""
-          echo "6. Testando InfluxDB..."
-          if docker compose -f docker-compose.test.yml exec -T influxdb influx ping >/dev/null 2>&1; then
-            echo "[SUCESSO] InfluxDB operacional"
-          else
-            echo "[ERROR] InfluxDB falhou no teste"
-            exit 1
-          fi
-          
-          echo ""
-          echo "=== VERIFICAÇÃO CONCLUÍDA COM SUCESSO ==="
-          
-          echo ""
-          echo "[INFO] Resumo dos serviços:"
+          echo "Resumo dos serviços:"
           docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
       - name: Executar migrations
@@ -839,29 +569,29 @@ jobs:
         working-directory: ./api
         if: failure()
         run: |
-          echo "=== LOGS DOS SERVIÇOS ==="
+          echo "=== LOGS DOS SERVIÇOS (ÚLTIMAS 100 LINHAS) ==="
           
-          echo "PostgreSQL Logs:"
+          echo "PostgreSQL:"
           docker compose -f docker-compose.test.yml logs --tail=100 postgres
           
           echo ""
-          echo "MongoDB Logs:"
+          echo "MongoDB:"
           docker compose -f docker-compose.test.yml logs --tail=100 mongodb
           
           echo ""
-          echo "Redis Logs:"
+          echo "Redis:"
           docker compose -f docker-compose.test.yml logs --tail=100 redis
           
           echo ""
-          echo "Zookeeper Logs:"
+          echo "Zookeeper:"
           docker compose -f docker-compose.test.yml logs --tail=100 zookeeper
           
           echo ""
-          echo "Kafka Logs:"
+          echo "Kafka:"
           docker compose -f docker-compose.test.yml logs --tail=100 kafka
           
           echo ""
-          echo "InfluxDB Logs:"
+          echo "InfluxDB:"
           docker compose -f docker-compose.test.yml logs --tail=100 influxdb
 
       - name: Derrubar infraestrutura

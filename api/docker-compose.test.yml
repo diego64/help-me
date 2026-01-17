@@ -1,8 +1,93 @@
+version: '3.8'
+
+# Labels globais para identificação
+x-common-labels: &common-labels
+  project: helpme
+  env: test
+  managed-by: docker-compose
+
+networks:
+  helpme-test-network:
+    name: helpme-test-network
+    driver: bridge
+    labels:
+      <<: *common-labels
+      component: network
+
+volumes:
+  helpme_postgres_test_data:
+    name: helpme_postgres_test_data
+    labels:
+      <<: *common-labels
+      component: database
+      service: postgres
+  
+  helpme_mongodb_test_data:
+    name: helpme_mongodb_test_data
+    labels:
+      <<: *common-labels
+      component: database
+      service: mongodb
+  
+  helpme_mongodb_test_config:
+    name: helpme_mongodb_test_config
+    labels:
+      <<: *common-labels
+      component: database
+      service: mongodb
+  
+  helpme_redis_test_data:
+    name: helpme_redis_test_data
+    labels:
+      <<: *common-labels
+      component: cache
+      service: redis
+  
+  helpme_zookeeper_test_data:
+    name: helpme_zookeeper_test_data
+    labels:
+      <<: *common-labels
+      component: messaging
+      service: zookeeper
+  
+  helpme_zookeeper_test_logs:
+    name: helpme_zookeeper_test_logs
+    labels:
+      <<: *common-labels
+      component: messaging
+      service: zookeeper
+  
+  helpme_kafka_test_data:
+    name: helpme_kafka_test_data
+    labels:
+      <<: *common-labels
+      component: messaging
+      service: kafka
+  
+  helpme_influxdb_test_data:
+    name: helpme_influxdb_test_data
+    labels:
+      <<: *common-labels
+      component: timeseries
+      service: influxdb
+  
+  helpme_influxdb_test_config:
+    name: helpme_influxdb_test_config
+    labels:
+      <<: *common-labels
+      component: timeseries
+      service: influxdb
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: helpme-postgres-test
-    restart: unless-stopped
+    labels:
+      <<: *common-labels
+      service: postgres
+      component: database
+    networks:
+      - helpme-test-network
     ports:
       - "5433:5432"
     environment:
@@ -12,200 +97,179 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-    networks:
-      - helpme-test-network
-    command: >
-      postgres
-      -c max_connections=100
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=64MB
-      -c checkpoint_completion_target=0.9
-      -c wal_buffers=16MB
-      -c default_statistics_target=100
-      -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c work_mem=4MB
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
+      - helpme_postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teste -d helpme_database_teste"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    command: 
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=1GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
 
   mongodb:
-    image: mongo:7-jammy
+    image: mongo:7
     container_name: helpme-mongodb-test
-    restart: unless-stopped
+    labels:
+      <<: *common-labels
+      service: mongodb
+      component: database
+    networks:
+      - helpme-test-network
     ports:
       - "27018:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: senha_mongo_teste
-      MONGO_INITDB_DATABASE: helpme_audit_teste
+      MONGO_INITDB_DATABASE: helpme_logs_teste
     volumes:
-      - mongodb_test_data:/data/db
-      - mongodb_test_config:/data/configdb
-    networks:
-      - helpme-test-network
-    command: >
-      mongod
-      --auth
-      --bind_ip_all
-      --wiredTigerCacheSizeGB 0.5
+      - helpme_mongodb_test_data:/data/db
+      - helpme_mongodb_test_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: helpme-redis-test
-    restart: unless-stopped
+    labels:
+      <<: *common-labels
+      service: redis
+      component: cache
+    networks:
+      - helpme-test-network
     ports:
       - "6379:6379"
     volumes:
-      - redis_test_data:/data
-    networks:
-      - helpme-test-network
-    command: >
-      redis-server
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --save 60 1000
-      --tcp-backlog 511
+      - helpme_redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: helpme-zookeeper-test
-    restart: unless-stopped
+    labels:
+      <<: *common-labels
+      service: zookeeper
+      component: messaging
+    networks:
+      - helpme-test-network
     ports:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_INIT_LIMIT: 5
       ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_INIT_LIMIT: 5
       ZOOKEEPER_MAX_CLIENT_CNXNS: 60
       ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT: 3
       ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL: 24
-      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "srvr,mntr,ruok,stat"
     volumes:
-      - zookeeper_test_data:/var/lib/zookeeper/data
-      - zookeeper_test_logs:/var/lib/zookeeper/log
-    networks:
-      - helpme-test-network
+      - helpme_zookeeper_test_data:/var/lib/zookeeper/data
+      - helpme_zookeeper_test_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: helpme-kafka-test
-    restart: unless-stopped
-    depends_on:
-      - zookeeper
+    labels:
+      <<: *common-labels
+      service: kafka
+      component: messaging
+    networks:
+      - helpme-test-network
     ports:
-      - "9093:9092"
+      - "9092:9092"
+      - "9093:9093"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_MIN_INSYNC_REPLICAS: 1
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_DELETE_TOPIC_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_RETENTION_HOURS: 24
       KAFKA_LOG_RETENTION_BYTES: 1073741824
       KAFKA_LOG_SEGMENT_BYTES: 536870912
-      KAFKA_LOG_CLEANUP_POLICY: delete
-      KAFKA_LOG_SEGMENT_DELETE_DELAY_MS: 60000
-      KAFKA_NUM_NETWORK_THREADS: 3
-      KAFKA_NUM_IO_THREADS: 8
-      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
-      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
-      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_GROUP_MAX_SESSION_TIMEOUT_MS: 300000
-      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
-      KAFKA_CONFLUENT_SUPPORT_CUSTOMER_ID: anonymous
-      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
-      KAFKA_LOG4J_LOGGERS: "kafka.controller=WARN,kafka.producer.async.DefaultEventHandler=WARN,state.change.logger=WARN"
-      KAFKA_HEAP_OPTS: "-Xmx512M -Xms256M"
-      KAFKA_JVM_PERFORMANCE_OPTS: >
-        -XX:+UseG1GC
-        -XX:MaxGCPauseMillis=20
-        -XX:InitiatingHeapOccupancyPercent=35
-        -XX:G1HeapRegionSize=16M
-        -XX:MinMetaspaceFreeRatio=50
-        -XX:MaxMetaspaceFreeRatio=80
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
     volumes:
-      - kafka_test_data:/var/lib/kafka/data
-    networks:
-      - helpme-test-network
+      - helpme_kafka_test_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   influxdb:
     image: influxdb:2.7-alpine
     container_name: helpme-influxdb-test
-    restart: unless-stopped
+    labels:
+      <<: *common-labels
+      service: influxdb
+      component: timeseries
+    networks:
+      - helpme-test-network
     ports:
       - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: senha_influx_teste
-      DOCKER_INFLUXDB_INIT_ORG: helpme-org-teste
-      DOCKER_INFLUXDB_INIT_BUCKET: helpme-metrics-teste
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin_password_teste
+      DOCKER_INFLUXDB_INIT_ORG: helpme_org
+      DOCKER_INFLUXDB_INIT_BUCKET: helpme_metrics
       DOCKER_INFLUXDB_INIT_RETENTION: 7d
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: token_teste_helpme_influxdb
-      INFLUXD_REPORTING_DISABLED: "true"
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: teste_token_influxdb_12345678
     volumes:
-      - influxdb_test_data:/var/lib/influxdb2
-      - influxdb_test_config:/etc/influxdb2
-    networks:
-      - helpme-test-network
-
-networks:
-  helpme-test-network:
-    driver: bridge
-    name: helpme-test-network
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.25.0.0/16
-
-volumes:
-  postgres_test_data:
-    name: helpme_postgres_test_data
-    driver: local
-  
-  mongodb_test_data:
-    name: helpme_mongodb_test_data
-    driver: local
-  
-  mongodb_test_config:
-    name: helpme_mongodb_test_config
-    driver: local
-  
-  redis_test_data:
-    name: helpme_redis_test_data
-    driver: local
-  
-  zookeeper_test_data:
-    name: helpme_zookeeper_test_data
-    driver: local
-  
-  zookeeper_test_logs:
-    name: helpme_zookeeper_test_logs
-    driver: local
-  
-  kafka_test_data:
-    name: helpme_kafka_test_data
-    driver: local
-  
-  influxdb_test_data:
-    name: helpme_influxdb_test_data
-    driver: local
-  
-  influxdb_test_config:
-    name: helpme_influxdb_test_config
-    driver: local
+      - helpme_influxdb_test_data:/var/lib/influxdb2
+      - helpme_influxdb_test_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
