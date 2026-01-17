@@ -1,4 +1,4 @@
-name: Pipeline CI/CD - Homologação (Otimizado)
+name: Pipeline CI/CD - Homologação (Otimizado v2)
 run-name: Pipeline CI executado por ${{ github.actor }}
 
 on:
@@ -155,10 +155,10 @@ jobs:
           git add package.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração"
       
-      - name: Gerar Prisma Client
+      - name: Gerar Prisma Client (sem banco)
         working-directory: ./api
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
         run: pnpm run generate
       
       - name: Verificar TypeScript
@@ -222,10 +222,10 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Gerar Prisma Client
+      - name: Gerar Prisma Client (sem banco)
         working-directory: ./api
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
         run: pnpm run generate
       
       - name: Executar testes unitários
@@ -274,12 +274,6 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Gerar Prisma Client
-        working-directory: ./api
-        env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-        run: pnpm run generate
-      
       - name: Preparação completa do ambiente
         working-directory: ./api
         timeout-minutes: 5
@@ -293,7 +287,7 @@ jobs:
           echo "Derrubando docker-compose existente..."
           docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 10 2>/dev/null || true
           
-          # 2. Limpeza seletiva por labels (mais seguro que limpeza nuclear)
+          # 2. Limpeza seletiva por labels
           echo ""
           echo "Removendo recursos do HelpMe por labels..."
           
@@ -352,26 +346,6 @@ jobs:
           fi
           
           echo "[SUCESSO] Ambiente limpo e pronto"
-          
-          # 6. Diagnóstico resumido
-          echo ""
-          echo "Status do ambiente:"
-          echo "  Containers Docker total: $(docker ps -aq | wc -l)"
-          echo "  Portas em uso (HelpMe): $(sudo netstat -tlnp 2>/dev/null | grep -E ':(5433|27018|6379|9092|2181|8086)' | wc -l)"
-
-      - name: Pull de imagens Docker
-        working-directory: ./api
-        run: |
-          echo "=== BAIXANDO IMAGENS DOCKER ==="
-          
-          for i in {1..3}; do
-            if docker compose -f docker-compose.test.yml pull --quiet; then
-              echo "[SUCESSO] Imagens baixadas com sucesso"
-              break
-            fi
-            echo "[WARN] Tentativa $i/3 de pull falhou, tentando novamente..."
-            sleep 5
-          done
 
       - name: Subir infraestrutura de testes
         working-directory: ./api
@@ -379,21 +353,9 @@ jobs:
         run: |
           echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
           
-          # Verificação de segurança
-          EXISTING=$(docker ps -aq --filter "label=project=helpme" | wc -l)
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "[ERROR] Ainda existem $EXISTING containers do HelpMe após limpeza!"
-            docker ps -a --filter "label=project=helpme"
-            exit 1
-          fi
-          
           # Subir containers
           echo "Iniciando containers..."
-          docker compose -f docker-compose.test.yml up -d \
-            --force-recreate \
-            --remove-orphans \
-            --renew-anon-volumes \
-            --timeout 60
+          docker compose -f docker-compose.test.yml up -d
           
           echo "[SUCESSO] Containers iniciados"
           
@@ -404,7 +366,13 @@ jobs:
           # Mostrar status dos containers
           echo ""
           echo "Status dos containers:"
-          docker compose -f docker-compose.test.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+          docker compose -f docker-compose.test.yml ps
+
+      - name: Gerar Prisma Client (com banco real)
+        working-directory: ./api
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+        run: pnpm run generate
 
       - name: Executar migrations
         working-directory: ./api
