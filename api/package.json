@@ -1,6 +1,6 @@
 {
   "name": "help-me-api",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
@@ -26,6 +26,7 @@
     "test:unit": "vitest run --reporter=verbose src/__tests__/unit/",
     "test:setup": "docker compose -f docker-compose.yaml up -d postgresql_helpme_teste mongodb_helpme_teste && sleep 10 && dotenv -e .env.test -- prisma db push --accept-data-loss",
     "test:e2e": "pnpm test:setup && vitest run src/__tests__/e2e",
+    "test:e2e-ci": "vitest run src/__tests__/e2e",
     "test:e2e:watch": "vitest src/__tests__/e2e",
     "test:teardown": "docker compose -f docker-compose.yaml stop postgresql_helpme_teste mongodb_helpme_teste",
     "test:clean": "docker compose -f docker-compose.yaml down postgresql_helpme_teste mongodb_helpme_teste -v",

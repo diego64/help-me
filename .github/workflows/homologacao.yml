@@ -405,7 +405,7 @@ jobs:
         working-directory: ./api
         run: |
           echo "=== EXECUTANDO TESTES E2E ==="
-          pnpm run test:e2e
+          pnpm exec vitest run src/__tests__/e2e
           echo "[SUCESSO] Testes E2E concluídos"
 
       - name: Upload de coverage E2E
