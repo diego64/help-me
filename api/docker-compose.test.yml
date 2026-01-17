@@ -138,7 +138,9 @@ services:
     ports:
       - "27018:27017"
     environment:
-      MONGO_INITDB_DATABASE: helpme_logs_teste
+      MONGO_INITDB_ROOT_USERNAME: teste
+      MONGO_INITDB_ROOT_PASSWORD: senha
+      MONGO_INITDB_DATABASE: helpme_mongo_teste
     volumes:
       - helpme_mongodb_test_data:/data/db
       - helpme_mongodb_test_config:/data/configdb

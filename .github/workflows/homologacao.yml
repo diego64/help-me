@@ -384,36 +384,51 @@ jobs:
         run: |
           echo "=== CRIANDO .env.test PARA CI ==="
           cat > .env.test << 'EOF'
-          # PostgreSQL
+          # ==================== AMBIENTE ====================
+          NODE_ENV=test
+          
+          # ==================== BANCO DE DADOS (PRINCIPAL) ===================
+          DB_USER=teste
+          DB_PASSWORD=senha_teste
+          DB_NAME=helpme_database_teste
+          DB_HOST=localhost
+          DB_PORT=5433
+          DB_MAX_CONNECTIONS=20
           DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
           
-          # MongoDB (SEM autenticação)
-          MONGO_URL=mongodb://localhost:27018/helpme_logs_teste
-          MONGO_INITDB_DATABASE=helpme_logs_teste
+          # ==================== BANCO DE DADOS (HISTÓRICO) ===================
+          MONGO_INITDB_ROOT_USERNAME=teste
+          MONGO_INITDB_ROOT_PASSWORD=senha
+          MONGO_INITDB_DATABASE=helpme_mongo_teste
+          MONGO_PORT=27018
+          MONGO_INITDB_URI=mongodb://teste:senha@localhost:27018/helpme-mongo-teste?authSource=admin
           
-          # Redis (SEM senha)
+          # ==================== JWT ===================
+          JWT_SECRET=chavesecretadeteste123
+          JWT_REFRESH_SECRET=refreshsegredodeteste456
+          JWT_EXPIRATION=8h
+          JWT_REFRESH_EXPIRATION=7d
+          
+          # ==================== REDIS ===================
+          REDIS_PASSWORD=
           REDIS_HOST=localhost
           REDIS_PORT=6379
+          REDIS_MAX_MEMORY=256mb
+          REDIS_MAXMEMORY_POLICY=allkeys-lru
           
-          # Kafka - PORTA 9092 (não 9093!)
-          KAFKA_BROKERS=localhost:9092
-          KAFKA_CLIENT_ID=helpdesk-api
+          # ==================== KAFKA ===================
+          KAFKA_BROKER_URL=localhost:9092
+          KAFKAJS_NO_PARTITIONER_WARNING=1
           
-          # InfluxDB
-          INFLUX_URL=http://localhost:8086
-          INFLUX_TOKEN=teste_token_influxdb_12345678
-          INFLUX_ORG=helpme_org
-          INFLUX_BUCKET=helpme_metrics
-          INFLUX_USERNAME=admin
-          INFLUX_PASSWORD=admin_password_teste
+          # ==================== EMAIL SMTP ===================
+          SMTP_HOST=sandbox.smtp.mailtrap.io
+          SMTP_PORT=2525
+          SMTP_USER=e0f224ffc3cf93
+          SMTP_PASS=3263bb9ce3c328
+          SMTP_FROM=test@helpme.com
           
-          # JWT
-          JWT_SECRET=test_secret_key_for_testing_only
-          JWT_EXPIRES_IN=1h
-          
-          # Ambiente
-          NODE_ENV=test
-          PORT=3000
+          # ==================== URL BASE ===================
+          API_BASE_URL=http://localhost:3000
           EOF
           
           echo "[SUCESSO] .env.test criado"
@@ -422,7 +437,7 @@ jobs:
           ls -la .env.test
           echo ""
           echo "Primeiras linhas do .env.test:"
-          head -5 .env.test
+          head -10 .env.test
 
       - name: Gerar Prisma Client (com banco real)
         working-directory: ./api
