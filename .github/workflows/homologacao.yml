@@ -417,7 +417,7 @@ jobs:
           REDIS_MAXMEMORY_POLICY=allkeys-lru
           
           # ==================== KAFKA ===================
-          KAFKA_BROKER_URL=localhost:9092
+          KAFKA_BROKER_URL=localhost:9093
           KAFKAJS_NO_PARTITIONER_WARNING=1
           
           # ==================== EMAIL SMTP ===================
