@@ -274,14 +274,14 @@ jobs:
         working-directory: ./api
         run: pnpm install --frozen-lockfile
       
-      - name: Preparação completa do ambiente
+      - name: Preparar e subir infraestrutura de testes
         working-directory: ./api
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
           #!/bin/bash
           set -e
           
-          echo "=== PREPARAÇÃO DO AMBIENTE DE TESTES ==="
+          echo "=== PREPARAÇÃO E SUBIDA DA INFRAESTRUTURA ==="
           
           # 1. Derrubar compose existente
           echo "Derrubando docker-compose existente..."
@@ -291,52 +291,47 @@ jobs:
           echo ""
           echo "Removendo recursos do HelpMe por labels..."
           
-          # Containers
           CONTAINERS=$(docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | wc -l)
           if [ "$CONTAINERS" -gt 0 ]; then
             echo "  Removendo $CONTAINERS container(s)..."
             docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | xargs -r docker rm -f 2>/dev/null || true
-          else
-            echo "  Nenhum container do HelpMe encontrado"
           fi
           
-          # Networks
           NETWORKS=$(docker network ls --filter "label=project=helpme" -q | wc -l)
           if [ "$NETWORKS" -gt 0 ]; then
             echo "  Removendo $NETWORKS rede(s)..."
             docker network ls --filter "label=project=helpme" -q | xargs -r docker network rm 2>/dev/null || true
-          else
-            echo "  Nenhuma rede do HelpMe encontrada"
           fi
           
-          # Volumes
           VOLUMES=$(docker volume ls --filter "label=project=helpme" -q | wc -l)
           if [ "$VOLUMES" -gt 0 ]; then
             echo "  Removendo $VOLUMES volume(s)..."
             docker volume ls --filter "label=project=helpme" -q | xargs -r docker volume rm -f 2>/dev/null || true
-          else
-            echo "  Nenhum volume do HelpMe encontrado"
           fi
           
-          # 3. Liberar portas específicas do projeto
+          # 3. Liberar portas específicas AGRESSIVAMENTE
           echo ""
           echo "Liberando portas do HelpMe..."
           PORTAS=(5433 27018 6379 2181 9092 8086)
           for porta in "${PORTAS[@]}"; do
+            echo "  Verificando porta ${porta}..."
+            # Matar processo na porta
+            sudo fuser -k ${porta}/tcp 2>/dev/null || true
+            # Verificar se liberou
             if sudo lsof -i :${porta} >/dev/null 2>&1; then
-              echo "  Liberando porta ${porta}..."
-              sudo fuser -k ${porta}/tcp 2>/dev/null || true
+              echo "  [WARN] Porta ${porta} ainda ocupada, forçando..."
+              sudo lsof -ti:${porta} | xargs -r sudo kill -9 2>/dev/null || true
             fi
           done
           
-          # 4. Aguardar liberação de recursos
+          # 4. Aguardar liberação
           echo ""
-          echo "Aguardando liberação de recursos (5s)..."
-          sleep 5
+          echo "Aguardando liberação de recursos (10s)..."
+          sleep 10
           
-          # 5. Verificação final
+          # 5. Verificação RIGOROSA
           echo ""
-          echo "=== VERIFICAÇÃO FINAL ==="
+          echo "=== VERIFICAÇÃO DE LIMPEZA ==="
           
           REMAINING=$(docker ps -aq --filter "label=project=helpme" | wc -l)
           if [ "$REMAINING" -gt 0 ]; then
@@ -345,25 +340,41 @@ jobs:
             exit 1
           fi
           
-          echo "[SUCESSO] Ambiente limpo e pronto"
-
-      - name: Subir infraestrutura de testes
-        working-directory: ./api
-        timeout-minutes: 5
-        run: |
-          echo "=== SUBINDO INFRAESTRUTURA DE TESTES ==="
+          # Verificar portas
+          PORTAS_OCUPADAS=false
+          for porta in "${PORTAS[@]}"; do
+            if sudo lsof -i :${porta} >/dev/null 2>&1; then
+              echo "[ERROR] Porta ${porta} ainda está ocupada!"
+              sudo lsof -i :${porta}
+              PORTAS_OCUPADAS=true
+            fi
+          done
           
-          # Subir containers
-          echo "Iniciando containers..."
+          if [ "$PORTAS_OCUPADAS" = true ]; then
+            echo "[ERROR] Algumas portas ainda estão ocupadas!"
+            exit 1
+          fi
+          
+          echo "[SUCESSO] Ambiente 100% limpo"
+          
+          # 6. Pull de imagens
+          echo ""
+          echo "=== BAIXANDO IMAGENS DOCKER ==="
+          docker compose -f docker-compose.test.yml pull --quiet
+          echo "[SUCESSO] Imagens baixadas"
+          
+          # 7. Subir containers
+          echo ""
+          echo "=== SUBINDO CONTAINERS ==="
           docker compose -f docker-compose.test.yml up -d
-          
           echo "[SUCESSO] Containers iniciados"
           
-          # Aguardar 40s para inicialização (especialmente Zookeeper e Kafka)
+          # 8. Aguardar inicialização
+          echo ""
           echo "Aguardando inicialização dos serviços (40s)..."
           sleep 40
           
-          # Mostrar status dos containers
+          # 9. Mostrar status
           echo ""
           echo "Status dos containers:"
           docker compose -f docker-compose.test.yml ps
