@@ -379,12 +379,6 @@ jobs:
           echo "Status dos containers:"
           docker compose -f docker-compose.test.yml ps
 
-      - name: Gerar Prisma Client (com banco real)
-        working-directory: ./api
-        env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-        run: pnpm run generate
-
       - name: Criar/sobrescrever .env.test com configurações do CI
         working-directory: ./api
         run: |
@@ -424,8 +418,17 @@ jobs:
           
           echo "[SUCESSO] .env.test criado"
           echo ""
-          echo "Conteúdo do .env.test:"
-          cat .env.test
+          echo "Verificando se arquivo foi criado:"
+          ls -la .env.test
+          echo ""
+          echo "Primeiras linhas do .env.test:"
+          head -5 .env.test
+
+      - name: Gerar Prisma Client (com banco real)
+        working-directory: ./api
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+        run: pnpm run generate
 
       - name: Executar migrations
         working-directory: ./api
@@ -439,27 +442,8 @@ jobs:
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
-        env:
-          # PostgreSQL
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-          
-          # MongoDB (SEM autenticação)
-          MONGO_URL: mongodb://localhost:27018/helpme_logs_teste
-          MONGO_INITDB_DATABASE: helpme_logs_teste
-          
-          # Redis
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          
-          # Kafka
-          KAFKA_BROKERS: localhost:9092
-          KAFKA_CLIENT_ID: helpdesk-api
-          
-          # Node
-          NODE_ENV: test
         run: |
           echo "=== POPULANDO BANCO DE DADOS ==="
-          echo "MONGO_URL: $MONGO_URL"
           pnpm run seed-big-ci
           echo "[SUCESSO] Seed executado"
 
