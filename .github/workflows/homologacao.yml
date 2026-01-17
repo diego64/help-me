@@ -401,7 +401,7 @@ jobs:
           REDIS_HOST=localhost
           REDIS_PORT=6379
           
-          # Kafka - PORTA 9092
+          # Kafka - PORTA 9092 (não 9093!)
           KAFKA_BROKERS=localhost:9092
           KAFKA_CLIENT_ID=helpdesk-api
           
@@ -431,6 +431,7 @@ jobs:
         working-directory: ./api
         env:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          NODE_ENV: test
         run: |
           echo "=== EXECUTANDO MIGRATIONS ==="
           pnpm run migrate
@@ -438,8 +439,27 @@ jobs:
       
       - name: Popular banco de dados (seed)
         working-directory: ./api
+        env:
+          # PostgreSQL
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          
+          # MongoDB (SEM autenticação)
+          MONGO_URL: mongodb://localhost:27018/helpme_logs_teste
+          MONGO_INITDB_DATABASE: helpme_logs_teste
+          
+          # Redis
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          
+          # Kafka
+          KAFKA_BROKERS: localhost:9092
+          KAFKA_CLIENT_ID: helpdesk-api
+          
+          # Node
+          NODE_ENV: test
         run: |
           echo "=== POPULANDO BANCO DE DADOS ==="
+          echo "MONGO_URL: $MONGO_URL"
           pnpm run seed-big-ci
           echo "[SUCESSO] Seed executado"
 
