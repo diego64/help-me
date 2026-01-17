@@ -385,6 +385,48 @@ jobs:
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
         run: pnpm run generate
 
+      - name: Criar/sobrescrever .env.test com configurações do CI
+        working-directory: ./api
+        run: |
+          echo "=== CRIANDO .env.test PARA CI ==="
+          cat > .env.test << 'EOF'
+          # PostgreSQL
+          DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
+          
+          # MongoDB (SEM autenticação)
+          MONGO_URL=mongodb://localhost:27018/helpme_logs_teste
+          MONGO_INITDB_DATABASE=helpme_logs_teste
+          
+          # Redis (SEM senha)
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          
+          # Kafka - PORTA 9092
+          KAFKA_BROKERS=localhost:9092
+          KAFKA_CLIENT_ID=helpdesk-api
+          
+          # InfluxDB
+          INFLUX_URL=http://localhost:8086
+          INFLUX_TOKEN=teste_token_influxdb_12345678
+          INFLUX_ORG=helpme_org
+          INFLUX_BUCKET=helpme_metrics
+          INFLUX_USERNAME=admin
+          INFLUX_PASSWORD=admin_password_teste
+          
+          # JWT
+          JWT_SECRET=test_secret_key_for_testing_only
+          JWT_EXPIRES_IN=1h
+          
+          # Ambiente
+          NODE_ENV=test
+          PORT=3000
+          EOF
+          
+          echo "[SUCESSO] .env.test criado"
+          echo ""
+          echo "Conteúdo do .env.test:"
+          cat .env.test
+
       - name: Executar migrations
         working-directory: ./api
         env:
@@ -404,27 +446,35 @@ jobs:
       - name: Executar testes E2E
         working-directory: ./api
         env:
+          # PostgreSQL
           DATABASE_URL: postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
           
+          # MongoDB (SEM autenticação conforme docker-compose.test.yml)
           MONGO_URL: mongodb://localhost:27018/helpme_logs_teste
           MONGO_INITDB_DATABASE: helpme_logs_teste
           
+          # Redis (SEM senha conforme docker-compose.test.yml)
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-
+          
+          # Kafka
           KAFKA_BROKERS: localhost:9092
           KAFKA_CLIENT_ID: helpdesk-api
-
+          
+          # InfluxDB
           INFLUX_URL: http://localhost:8086
           INFLUX_TOKEN: teste_token_influxdb_12345678
           INFLUX_ORG: helpme_org
           INFLUX_BUCKET: helpme_metrics
           INFLUX_USERNAME: admin
           INFLUX_PASSWORD: admin_password_teste
-
+          
+          # Ambiente
           NODE_ENV: test
         run: |
           echo "=== EXECUTANDO TESTES E2E ==="
+          # Não usar pnpm test:e2e porque ele roda test:setup que sobe containers de novo
+          # A infraestrutura já está rodando no step anterior
           pnpm exec vitest run src/__tests__/e2e
           echo "[SUCESSO] Testes E2E concluídos"
 
