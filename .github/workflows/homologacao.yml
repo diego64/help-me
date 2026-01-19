@@ -1,4 +1,4 @@
-name: Pipeline CI/CD - Homologação (Otimizado v2)
+name: Pipeline CI/CD - Homologação
 run-name: Pipeline CI executado por ${{ github.actor }}
 
 on:
