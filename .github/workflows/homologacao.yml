@@ -242,7 +242,7 @@ jobs:
         continue-on-error: true
 
   testes-e2e:
-    name: Testes End-to-End
+    name: Testes E2E
     needs: [testes-unitarios]
     runs-on: ubuntu-latest
     environment: homologacao
@@ -544,7 +544,7 @@ jobs:
           echo "[SUCESSO] Infraestrutura derrubada"
 
   release:
-    name: Build e Push Docker Image
+    name: Push Docker Image
     runs-on: ubuntu-latest
     needs: [build, testes-unitarios, testes-e2e]
     environment: homologacao
