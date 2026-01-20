@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-06T22:07:07.604Z",
+  "generatedAt": "2026-01-20T18:29:26.944Z",
   "routes": {
     "filadechamados": {
       "basePrefix": "/filadechamados",
@@ -172,27 +172,27 @@
         "_login": {
           "method": "POST",
           "path": "/login",
-          "description": "description: Erro interno do servidor"
+          "description": "error: Erro interno ao realizar login."
         },
         "_logout": {
           "method": "POST",
           "path": "/logout",
-          "description": "description: Erro ao realizar logout ou encerrar sessão"
+          "description": "error: Erro ao realizar logout."
         },
         "_refresh-token": {
           "method": "POST",
           "path": "/refresh-token",
-          "description": "description: Refresh token inválido, expirado ou usuário inativo"
+          "description": "$ref: '#/components/schemas/ErrorResponse'"
         },
         "_me": {
           "method": "GET",
           "path": "/me",
-          "description": "description: Erro ao buscar perfil do usuário"
+          "description": "error: Erro ao buscar perfil do usuário."
         },
         "_status": {
           "method": "GET",
           "path": "/status",
-          "description": "description: Não autenticado"
+          "description": "example: false"
         }
       }
     },

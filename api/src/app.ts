@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import session from 'express-session';
+import compression from 'compression';
 import { RedisStore } from 'connect-redis';
 import { redisClient } from './services/redisClient';
 
@@ -22,11 +23,20 @@ if (!JWT_SECRET) {
 
 export const app: Express = express();
 
-// ================
-// MIDDLEWARE
-// ================
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+  level: 6,
+  threshold: 1024,
+}));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 
 app.use(session({
   store: new RedisStore({ client: redisClient }),
@@ -34,11 +44,12 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 8 * 60 * 60 * 1000 // 8 horas
+    maxAge: 8 * 60 * 60 * 1000, // 8 horas
+    sameSite: 'lax'
   }
-}));
+}))
 
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
@@ -50,5 +61,32 @@ app.use('/filadechamados', filaDeChamadosRoutes);
 app.use('/testeemail', envioDeEmailTeste);
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// 404 - Rota não encontrada
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Rota não encontrada',
+    path: req.path,
+    method: req.method
+  });
+});
+
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[ERROR]', err);
+  
+  res.status(err.status || 500).json({
+    error: err.message || 'Erro interno do servidor',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
 
 export default app;

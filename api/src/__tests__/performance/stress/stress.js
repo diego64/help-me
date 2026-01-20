@@ -2,18 +2,12 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
-// ============================================
-// TESTE SPIKE FINAL - 15 Conexões DB
-// ============================================
-
-// Métricas customizadas
 const errorRate = new Rate('errors');
 const successRate = new Rate('success_rate');
 const chamadoCreationTime = new Trend('chamado_creation_time');
 const authSuccessRate = new Rate('auth_success');
 const requestCounter = new Counter('total_requests');
 
-// Configuração do teste
 export const options = {
   scenarios: {
     spike_test_light: {
@@ -59,8 +53,6 @@ function randomNumber(min, max) {
 function randomCPF() {
   return String(randomNumber(10000000000, 99999999999));
 }
-
-// ==================== AUTENTICAÇÃO ====================
 
 function authLogin() {
   const url = `${BASE_URL}/auth/login`;
@@ -118,8 +110,6 @@ function authMe(token) {
   requestCounter.add(1);
 }
 
-// ==================== USUÁRIOS ====================
-
 function usersGetAll(token) {
   const url = `${BASE_URL}/usuario`;
   const params = { 
@@ -161,8 +151,6 @@ function usersCreate(token) {
     return null;
   }
 }
-
-// ==================== CHAMADOS ====================
 
 function chamadoAbertura(token) {
   const url = `${BASE_URL}/chamado/abertura-chamado`;
@@ -230,7 +218,6 @@ function chamadoGetHistorico(token) {
   requestCounter.add(1);
 }
 
-// ==================== FILA ====================
 
 function filaChamadosAbertos(token) {
   const url = `${BASE_URL}/filadechamados/abertos`;
@@ -271,8 +258,6 @@ function filaTodosChamados(token) {
   requestCounter.add(1);
 }
 
-// ==================== SERVIÇOS ====================
-
 function servicesGetAll(token) {
   const url = `${BASE_URL}/servico`;
   const params = { 
@@ -299,8 +284,6 @@ function servicesGetById(token) {
   errorRate.add(res.status >= 500);
   requestCounter.add(1);
 }
-
-// ==================== FUNÇÃO PRINCIPAL ====================
 
 export default function () {
   const token = authLogin();
@@ -341,7 +324,6 @@ export default function () {
   sleep(Math.random() * 2 + 1);
 }
 final
-// ==================== SETUP ====================
 
 export function setup() {
   console.log('');
@@ -367,8 +349,6 @@ export function setup() {
   }
 }
 
-// ==================== TEARDOWN ====================
-
 export function teardown(data) {
   console.log('');
   console.log('🏁 Teste finalizado');
@@ -382,12 +362,10 @@ export function handleSummary(data) {
   
   const metrics = data.metrics;
   
-  // HTTP
   console.log('HTTP:');
   console.log(`- Requisições: ${metrics.http_reqs.values.count}`);
   console.log(`- Taxa: ${metrics.http_reqs.values.rate.toFixed(2)} req/s`);
   
-  // Latência
   console.log('\nLatência:');
   console.log(`- Média: ${metrics.http_req_duration.values.avg.toFixed(2)}ms`);
   console.log(`- Mediana: ${metrics.http_req_duration.values.med.toFixed(2)}ms`);
@@ -395,19 +373,16 @@ export function handleSummary(data) {
   console.log(`- p95: ${metrics.http_req_duration.values['p(95)'].toFixed(2)}ms`);
   console.log(`- Máxima: ${metrics.http_req_duration.values.max.toFixed(2)}ms`);
   
-  // Performance
   console.log('\nPerformance:');
   console.log(`- Taxa de sucesso: ${(metrics.success_rate.values.rate * 100).toFixed(2)}%`);
   console.log(`- Erros reais (500+): ${(metrics.errors.values.rate * 100).toFixed(2)}%`);
   console.log(`- Checks OK: ${(metrics.checks.values.rate * 100).toFixed(2)}%`);
   
-  // VUs
   console.log('\nUsuários:');
   console.log(`- Iterações: ${metrics.iterations.values.count}`);
   console.log(`- Dropped: ${metrics.dropped_iterations.values.count}`);
   console.log(`- VUs máx: 15`);
   
-  // Thresholds
   console.log('\nThresholds:');
   const p95Ok = metrics.http_req_duration.values['p(95)'] < 2000;
   const errorsOk = metrics.errors.values.rate < 0.15;
@@ -417,7 +392,6 @@ export function handleSummary(data) {
   console.log(`- erros < 15%: ${errorsOk ? '[SUCESSO]' : '[ERROR]'} (${(metrics.errors.values.rate * 100).toFixed(2)}%)`);
   console.log(`- sucesso > 70%: ${successOk ? '[SUCESSO]' : '[ERROR]'} (${(metrics.success_rate.values.rate * 100).toFixed(2)}%)`);
   
-  // Análise
   console.log('\n========================================');
   console.log('ANÁLISE');
   console.log('========================================');
@@ -434,7 +408,7 @@ export function handleSummary(data) {
     console.log(`- Latência p95: ${p95.toFixed(2)}ms`);
     console.log(`- Sistema estável com 15 conexões DB`);
   } else {
-    console.log('[WARN]  SISTEMA SOB STRESS');
+    console.log('[WARN] SISTEMA SOB STRESS');
     console.log('');
     if (!p95Ok) console.log('- Latência alta (p95 > 2s)');
     if (!errorsOk) console.log(`- Erros reais: ${errorsPct.toFixed(2)}%`);
