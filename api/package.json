@@ -1,6 +1,6 @@
 {
   "name": "help-me-api",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
