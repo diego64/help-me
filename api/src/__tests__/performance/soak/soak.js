@@ -2,16 +2,10 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
-// ========================================
-// MÉTRICAS CUSTOMIZADAS
-// ========================================
 const errorRate = new Rate('errors');
 const customTrend = new Trend('custom_response_time');
 const requestCount = new Counter('total_requests');
 
-// ========================================
-// CONFIGURAÇÃO DO TESTE DE SOAK
-// ========================================
 export const options = {
   stages: [
     // 1. RAMP-UP: Sobe gradualmente até a carga alvo
@@ -44,18 +38,12 @@ export const options = {
   teardownTimeout: '2m',
 };
 
-// ========================================
-// VARIÁVEIS DE AMBIENTE
-// ========================================
 const BASE_URL = __ENV.API_URL || 'http://localhost:3000';
 const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || 'admin@helpme.com';
 const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || 'Admin123!';
 const USER_EMAIL = __ENV.USER_EMAIL || 'user@helpme.com';
 const USER_PASSWORD = __ENV.USER_PASSWORD || 'User123!';
 
-// ========================================
-// SETUP
-// ========================================
 export function setup() {
   console.log('[INFO] Iniciando TESTE DE SOAK (Resistência)');
   console.log('[INFO] Duração estimada: ~30min');
@@ -121,9 +109,9 @@ export function setup() {
     console.error(`  Password: ${ADMIN_PASSWORD}`);
     console.error('');
     console.error('Como resolver:');
-    console.error('  ✓ Verifique as credenciais no banco de dados');
-    console.error('  ✓ Crie o usuário admin se necessário');
-    console.error('  ✓ Configure variáveis de ambiente: API_URL, ADMIN_EMAIL, ADMIN_PASSWORD');
+    console.error('  [INFO] Verifique as credenciais no banco de dados');
+    console.error('  [INFO] Crie o usuário admin se necessário');
+    console.error('  [INFO] Configure variáveis de ambiente: API_URL, ADMIN_EMAIL, ADMIN_PASSWORD');
     console.error('='.repeat(70) + '\n');
     throw new Error('Setup falhou: login retornou status ' + loginRes.status);
   }
@@ -163,9 +151,6 @@ export function setup() {
   };
 }
 
-// ========================================
-// FUNÇÃO PRINCIPAL DO TESTE
-// ========================================
 export default function(data) {
   if (!data || !data.adminToken) {
     console.error('[ERROR] Dados de setup não disponíveis');
@@ -193,7 +178,6 @@ export default function(data) {
       customTrend.add(servicosRes.timings.duration);
       requestCount.add(1);
       
-      // Perfil do usuário
       const meRes = http.get(
         `${BASE_URL}/auth/me`,
         { headers, tags: { name: 'ObterPerfil' } }
@@ -211,7 +195,6 @@ export default function(data) {
   // ====== CENÁRIO 2: OPERAÇÕES DE ESCRITA (20% das operações) ======
   else if (Math.random() < 0.9) {
     group('Operações de Escrita', function() {
-      // Criar serviço
       const timestamp = Date.now();
       const payload = JSON.stringify({
         nome: `Serviço Soak Test ${timestamp}`,
@@ -256,7 +239,6 @@ export default function(data) {
   // ====== CENÁRIO 3: OPERAÇÕES COMPLEXAS (10% das operações) ======
   else {
     group('Operações Complexas', function() {
-      // Listar com filtros
       const filteredRes = http.get(
         `${BASE_URL}/servico?incluirInativos=true`,
         { headers, tags: { name: 'ListarComFiltros' } }
@@ -272,12 +254,9 @@ export default function(data) {
   }
   
   // Pausa realista entre requisições
-  sleep(Math.random() * 3 + 2); // Entre 2-5 segundos
+  sleep(Math.random() * 3 + 2); // Pausa realista entre requisições (2~5 segundos) 
 }
 
-// ========================================
-// TEARDOWN: EXECUTADO UMA VEZ NO FINAL
-// ========================================
 export function teardown(data) {
   if (!data) return;
   
@@ -290,12 +269,7 @@ export function teardown(data) {
   console.log('='.repeat(60) + '\n');
 }
 
-// ========================================
-// RELATÓRIO
-// ========================================
-
 export function handleSummary(data) {
-  // Helper para acessar valores de forma segura
   const getMetricValue = (metric, key) => {
     if (!metric || !metric.values) return 0;
     const value = metric.values[key];
@@ -316,26 +290,26 @@ export function handleSummary(data) {
   console.log('\n' + '='.repeat(70));
   console.log('[INFO] RESUMO DO TESTE DE SOAK (RESISTÊNCIA)');
   console.log('='.repeat(70));
-  console.log(`[INFO]  Duração total: ${durationMinutes.toFixed(2)} minutos`);
-  console.log(`[INFO]  Total de requisições: ${httpReqsCount}`);
-  console.log(`⚡ Requisições/seg (média): ${httpReqsRate.toFixed(2)}`);
-  console.log(`[INFO]  Tempo de resposta (média): ${httpReqDurationAvg.toFixed(2)}ms`);
+  console.log(`[INFO] Duração total: ${durationMinutes.toFixed(2)} minutos`);
+  console.log(`[INFO] Total de requisições: ${httpReqsCount}`);
+  console.log(`[INFO] Requisições/seg (média): ${httpReqsRate.toFixed(2)}`);
+  console.log(`[INFO] Tempo de resposta (média): ${httpReqDurationAvg.toFixed(2)}ms`);
   console.log(`[INFO] P95: ${p95.toFixed(2)}ms`);
   console.log(`[INFO] P99: ${p99.toFixed(2)}ms`);
-  console.log(`[ERROR] Taxa de erro: ${(errorRate * 100).toFixed(3)}%`);
+  console.log(`[INFO] Taxa de erro: ${(errorRate * 100).toFixed(3)}%`);
 
   console.log('\n' + '='.repeat(70));
   console.log('[INFO] ANÁLISE DE DEGRADAÇÃO');
   console.log('='.repeat(70));
 
   if (p95 > 500) {
-    console.log('[WARN]  ATENÇÃO: P95 acima de 500ms - possível degradação de performance');
+    console.log('[WARN] ATENÇÃO: P95 acima de 500ms - possível degradação de performance');
   } else {
     console.log('[SUCESSO] P95 dentro do esperado (< 500ms)');
   }
 
   if (p99 > 1000) {
-    console.log('[WARN]  ATENÇÃO: P99 acima de 1s - possível memory leak ou degradação');
+    console.log('[WARN] ATENÇÃO: P99 acima de 1s - possível memory leak ou degradação');
   } else {
     console.log('[SUCESSO] P99 dentro do esperado (< 1s)');
   }

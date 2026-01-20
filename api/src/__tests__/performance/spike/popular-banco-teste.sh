@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Script para popular banco com DADOS DE TESTES
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -17,7 +15,6 @@ echo ""
 BASE_URL="http://localhost:3000"
 TOKEN=""
 
-# 1. Fazer login
 echo -e "${YELLOW}[1/5] Fazendo login...${NC}"
 echo ""
 
@@ -35,7 +32,6 @@ else
     exit 1
 fi
 
-# 2. Criar serviços
 echo ""
 echo -e "${YELLOW}[2/5] Criando serviços...${NC}"
 echo ""
@@ -53,7 +49,6 @@ done
 
 echo -e "  ${GREEN}[SUCESSO] 10 serviços criados${NC}"
 
-# 3. Criar usuários
 echo ""
 echo -e "${YELLOW}[3/5] Criando usuários...${NC}"
 echo ""
@@ -74,7 +69,6 @@ done
 
 echo -e "  ${GREEN}[SUCESSO] 30 usuários criados${NC}"
 
-# 4. Criar técnicos
 echo ""
 echo -e "${YELLOW}[4/5] Criando técnicos...${NC}"
 echo ""
@@ -94,7 +88,6 @@ done
 
 echo -e "  ${GREEN}[SUCESSO] 15 técnicos criados${NC}"
 
-# 5. Criar chamados
 echo ""
 echo -e "${YELLOW}[5/5] Criando chamados...${NC}"
 echo ""
@@ -116,7 +109,6 @@ done
 
 echo -e "  ${GREEN}[SUCESSO] 100 chamados criados${NC}"
 
-# Resumo
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo -e "${BLUE}RESUMO${NC}"
