@@ -3,32 +3,59 @@ services:
   # BANCO DE DADOS - PostgreSQL
   # ============================================
   postgresql_helpme:
-    image: bitnami/postgresql:latest
+    image: postgres:16
     container_name: postgresql_helpme
     hostname: postgresql_helpme
     environment:
-      POSTGRESQL_USERNAME: ${DB_USER}
-      POSTGRESQL_PASSWORD: ${DB_PASSWORD}
-      POSTGRESQL_DATABASE: ${DB_NAME}
-      POSTGRESQL_TIMEZONE: America/Sao_Paulo
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
       TZ: America/Sao_Paulo
-      POSTGRESQL_ENABLE_LDAP: "no"
-      POSTGRESQL_ENABLE_TLS: "no"
-      POSTGRESQL_PASSWORD_ENCRYPTION: scram-sha-256
-      POSTGRESQL_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
-      POSTGRESQL_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS}
-      POSTGRESQL_SHARED_BUFFERS: ${DB_SHARED_BUFFERS:-512MB}
-      POSTGRESQL_EFFECTIVE_CACHE_SIZE: ${DB_EFFECTIVE_CACHE_SIZE:-1GB}
+      PGTZ: America/Sao_Paulo
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
-      - postgresql_data:/bitnami/postgresql
+      - postgresql_data:/var/lib/postgresql/data
       - ./api/database/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
       - postgresql_backups:/backups
-      - postgresql_archive:/bitnami/postgresql/archive
+      - postgresql_archive:/archive
     networks:
       - helpme_network
     restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=${DB_MAX_CONNECTIONS:-100}"
+      - "-c"
+      - "shared_buffers=${DB_SHARED_BUFFERS:-256MB}"
+      - "-c"
+      - "effective_cache_size=${DB_EFFECTIVE_CACHE_SIZE:-1GB}"
+      - "-c"
+      - "work_mem=${POSTGRESQL_WORK_MEM:-16MB}"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "password_encryption=scram-sha-256"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "log_timezone=America/Sao_Paulo"
+      - "-c"
+      - "timezone=America/Sao_Paulo"
     deploy:
       resources:
         limits:
@@ -38,7 +65,7 @@ services:
           cpus: '0.5'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=${DB_PASSWORD} pg_isready -U ${DB_USER} -d ${DB_NAME} && PGPASSWORD=${DB_PASSWORD} psql -U ${DB_USER} -d ${DB_NAME} -c 'SELECT 1' > /dev/null"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,20 +80,39 @@ services:
       - "com.helpme.database.type=postgresql"
       - "com.helpme.environment=production"
 
+  # ============================================
+  # BANCO DE DADOS - PostgreSQL (Teste)
+  # ============================================
+
   postgresql_helpme_teste:
-    image: bitnami/postgresql:latest
+    image: postgres:16
     container_name: postgresql_helpme_teste
     hostname: postgresql_helpme_teste
     environment:
-      POSTGRESQL_USERNAME: ${DB_USER_TESTE:-teste}
-      POSTGRESQL_PASSWORD: ${DB_PASSWORD_TESTE:-senha_teste}
-      POSTGRESQL_DATABASE: ${DB_NAME_TESTE:-helpme-database-teste}
+      POSTGRES_USER: ${DB_USER_TESTE:-teste}
+      POSTGRES_PASSWORD: ${DB_PASSWORD_TESTE:-senha_teste}
+      POSTGRES_DB: ${DB_NAME_TESTE:-helpme-database-teste}
       TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
     ports:
       - "${DB_PORT_TESTE:-5433}:5432"
+    volumes:
+      - postgresql_data_teste:/var/lib/postgresql/data
     networks:
       - helpme_network
     restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "effective_cache_size=512MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "timezone=America/Sao_Paulo"
     deploy:
       resources:
         limits:
@@ -76,8 +122,8 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=$$POSTGRESQL_PASSWORD pg_isready -U $$POSTGRESQL_USERNAME -d $$POSTGRESQL_DATABASE"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER_TESTE:-teste} -d ${DB_NAME_TESTE:-helpme-database-teste}"]
+      interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
@@ -104,16 +150,6 @@ services:
       MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
       TZ: America/Sao_Paulo
     command: mongod --bind_ip_all --auth
-    healthcheck:
-      test: |
-        mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} \
-          --password $${MONGO_INITDB_ROOT_PASSWORD} \
-          --authenticationDatabase admin \
-          --eval "db.adminCommand('ping')" > /dev/null
-      interval: 10s
-      timeout: 5s
-      start_period: 30s
-      retries: 5
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
@@ -130,6 +166,16 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
+    healthcheck:
+      test: |
+        mongosh --quiet --username ${MONGO_INITDB_ROOT_USERNAME} \
+          --password ${MONGO_INITDB_ROOT_PASSWORD} \
+          --authenticationDatabase admin \
+          --eval "db.adminCommand('ping')" > /dev/null
+      interval: 15s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
     logging:
       driver: "json-file"
       options:
@@ -167,13 +213,13 @@ services:
           memory: 256M
     healthcheck:
       test: |
-        mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME_TESTE:-teste} \
-          --password $${MONGO_INITDB_ROOT_PASSWORD_TESTE:-senha_teste} \
+        mongosh --quiet --username ${MONGO_INITDB_ROOT_USERNAME_TESTE:-teste} \
+          --password ${MONGO_INITDB_ROOT_PASSWORD_TESTE:-senha_teste} \
           --authenticationDatabase admin \
           --eval "db.adminCommand('ping')" > /dev/null || exit 1
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 3
       start_period: 30s
     logging:
       driver: "json-file"
@@ -208,12 +254,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo srvr | nc localhost 2181 | grep -q Mode"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -227,8 +267,7 @@ services:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka_helpme
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     ports:
       - '9092:9092'
       - '9093:9093'
@@ -248,12 +287,6 @@ services:
     networks:
       - helpme_network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 60
-      start_period: 120s
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.5.0
@@ -331,19 +364,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    healthcheck:
-      test: >
-        sh -c '
-        if [ -z "$REDIS_PASSWORD" ]; then
-          redis-cli ping
-        else
-          redis-cli --pass "$REDIS_PASSWORD" ping
-        fi
-        '
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
     logging:
       driver: "json-file"
       options:
@@ -386,12 +406,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    healthcheck:
-      test: ["CMD", "influx", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -428,10 +442,8 @@ services:
     networks:
       - helpme_network
     depends_on:
-      influxdb:
-        condition: service_healthy
-      postgresql_helpme:
-        condition: service_healthy
+      - influxdb
+      - postgresql_helpme
     deploy:
       resources:
         limits:
@@ -440,12 +452,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -488,12 +494,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -534,12 +534,6 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9100/metrics"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -584,12 +578,6 @@ services:
         reservations:
           cpus: '0.1'
           memory: 128M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -615,8 +603,7 @@ services:
       - helpme_network
     restart: unless-stopped
     depends_on:
-      postgresql_helpme:
-        condition: service_healthy
+      - postgresql_helpme
     deploy:
       resources:
         limits:
@@ -625,12 +612,6 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187/metrics"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -697,8 +678,7 @@ services:
       - helpme_network
     restart: unless-stopped
     depends_on:
-      redis_helpme:
-        condition: service_healthy
+      - redis_helpme
     deploy:
       resources:
         limits:
@@ -707,12 +687,6 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9121/metrics"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -778,6 +752,9 @@ volumes:
   postgresql_data:
     driver: local
     name: postgresql_helpme_data
+  postgresql_data_teste:
+    driver: local
+    name: postgresql_helpme_data_teste
   postgresql_backups:
     driver: local
     name: postgresql_helpme_backups
