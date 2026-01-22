@@ -35,7 +35,7 @@ RUN pnpm install --frozen-lockfile
 # Copiar schema do Prisma
 COPY prisma ./prisma
 
-# Gerar Prisma Client
+# Gerar Prisma Client usando pnpm
 RUN pnpm prisma generate
 
 # Copiar código fonte
@@ -43,7 +43,7 @@ COPY src ./src
 COPY tsconfig.json ./
 COPY tsup.config.ts* ./
 
-# Compilar TypeScript para JavaScript
+# Compilar TypeScript para JavaScript usando pnpm
 RUN pnpm run build
 
 # ========================================
@@ -73,6 +73,9 @@ RUN apk add --no-cache \
     curl \
     && rm -rf /var/cache/apk/*
 
+# Habilitar pnpm via corepack no stage de produção
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # Criar grupo e usuário 'prod' (não-root para segurança)
 RUN addgroup -g 1001 -S prod && \
     adduser -S prod -u 1001 -G prod
@@ -80,8 +83,8 @@ RUN addgroup -g 1001 -S prod && \
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar package.json
-COPY --chown=prod:prod package.json ./
+# Copiar package.json e pnpm-lock.yaml
+COPY --chown=prod:prod package.json pnpm-lock.yaml ./
 
 # Copiar schema do Prisma
 COPY --chown=prod:prod prisma ./prisma
@@ -89,9 +92,8 @@ COPY --chown=prod:prod prisma ./prisma
 # Copiar dependências de produção do stage deps
 COPY --from=deps --chown=prod:prod /app/node_modules ./node_modules
 
-# Copiar Prisma Client gerado do builder ao invés de gerar novamente
-COPY --from=builder --chown=prod:prod /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=prod:prod /app/node_modules/@prisma/client ./node_modules/@prisma/client
+# Copiar toda a estrutura .pnpm que contém o Prisma Client gerado
+COPY --from=builder --chown=prod:prod /app/node_modules/.pnpm ./node_modules/.pnpm
 
 # Copiar código compilado do stage builder
 COPY --from=builder --chown=prod:prod /app/dist ./dist
@@ -112,7 +114,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     TZ=America/Sao_Paulo
 
-# Healthcheck para monitoramento
+# Healthcheck para monitoramento usando pnpm
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
