@@ -89,8 +89,9 @@ COPY --chown=prod:prod prisma ./prisma
 # Copiar dependências de produção do stage deps
 COPY --from=deps --chown=prod:prod /app/node_modules ./node_modules
 
-# Gerar Prisma Client (necessário no runtime)
-RUN npx prisma generate
+# Copiar Prisma Client gerado do builder ao invés de gerar novamente
+COPY --from=builder --chown=prod:prod /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=prod:prod /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
 # Copiar código compilado do stage builder
 COPY --from=builder --chown=prod:prod /app/dist ./dist
