@@ -83,7 +83,6 @@ services:
   # ============================================
   # BANCO DE DADOS - PostgreSQL (Teste)
   # ============================================
-
   postgresql_helpme_teste:
     image: postgres:16
     container_name: postgresql_helpme_teste
@@ -186,6 +185,9 @@ services:
       - "com.helpme.database.type=mongodb"
       - "com.helpme.environment=production"
 
+  # ============================================
+  # BANCO DE DADOS - MongoDB (Teste)
+  # ============================================
   mongodb_helpme_teste:
     image: mongo:8.0
     container_name: mongodb_helpme_teste
@@ -287,6 +289,14 @@ services:
     networks:
       - helpme_network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=kafka"
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.5.0
@@ -416,6 +426,85 @@ services:
       - "com.helpme.monitoring.type=timeseries"
 
   # ============================================
+  # MONITORAMENTO - Loki (Logs)
+  # ============================================
+  loki:
+      image: grafana/loki:3.0.0
+      container_name: helpme_loki
+      hostname: loki
+      environment:
+        TZ: America/Sao_Paulo
+      ports:
+        - "${LOKI_PORT:-3100}:3100"
+      command: -config.file=/etc/loki/local-config.yaml
+      volumes:
+        - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+        - loki_data:/loki
+      networks:
+        - helpme_network
+      restart: unless-stopped
+      deploy:
+        resources:
+          limits:
+            cpus: '1'
+            memory: 1G
+          reservations:
+            cpus: '0.25'
+            memory: 256M
+      healthcheck:
+        test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 10s
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
+      labels:
+        - "com.helpme.service=monitoring"
+        - "com.helpme.monitoring.type=logs"
+
+  # ============================================
+  # MONITORAMENTO - Promtail (Log Collector)
+  # ============================================
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: helpme_promtail
+    hostname: promtail
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ~/code/node/help-me/api/logs:/host/logs:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - helpme_network
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=log-collector"
+
+  # ============================================
   # MONITORAMENTO - Grafana
   # ============================================
   grafana:
@@ -436,14 +525,16 @@ services:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./dashboards/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-      - ./dashboards/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - ./dashboards/grafana/dashboards:/var/lib/grafana/dashboards
+      # Datasources e dashboards existentes (da pasta dashboards/)
+      - ./dashboards/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./dashboards/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./dashboards/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - helpme_network
     depends_on:
       - influxdb
       - postgresql_helpme
+      - loki
     deploy:
       resources:
         limits:
@@ -453,6 +544,12 @@ services:
           cpus: '0.25'
           memory: 256M
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -481,7 +578,7 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - helpme_network
@@ -494,6 +591,12 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -603,7 +706,8 @@ services:
       - helpme_network
     restart: unless-stopped
     depends_on:
-      - postgresql_helpme
+      postgresql_helpme:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -639,7 +743,8 @@ services:
       - '--mongodb.global-conn-pool=true'
       - '--collect-all'
     depends_on:
-      - mongodb_helpme
+      mongodb_helpme:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -776,6 +881,9 @@ volumes:
   influxdb_config:
     driver: local
     name: influxdb_helpme_config
+  loki_data:
+    driver: local
+    name: loki_helpme_data
   grafana_data:
     driver: local
     name: grafana_helpme_data
