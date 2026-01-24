@@ -1,4 +1,4 @@
-import express, { Express } from 'express';
+import express, { Request, Response, NextFunction, Express } from 'express';
 import session from 'express-session';
 import compression from 'compression';
 import { RedisStore } from 'connect-redis';
@@ -12,6 +12,9 @@ import servicoRoutes from './routes/servico.routes';
 import chamadoRoutes from './routes/chamado.routes';
 import filaDeChamadosRoutes from './routes/fila-de-chamados.routes';
 import envioDeEmailTeste from './routes/envio-email-teste.routes';
+
+import { requestLoggerMiddleware } from './middleware/request-logger.middleware';
+import { errorLoggerMiddleware } from './middleware/error-logger.middleware';
 
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
@@ -37,6 +40,7 @@ app.use(compression({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+app.use(requestLoggerMiddleware);
 
 app.use(session({
   store: new RedisStore({ client: redisClient }),
@@ -49,7 +53,19 @@ app.use(session({
     maxAge: 8 * 60 * 60 * 1000, // 8 horas
     sameSite: 'lax'
   }
-}))
+}));
+
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    service: 'helpme-api',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
@@ -60,32 +76,33 @@ app.use('/chamado', chamadoRoutes);
 app.use('/filadechamados', filaDeChamadosRoutes);
 app.use('/testeemail', envioDeEmailTeste);
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
-  });
-});
-
-// 404 - Rota não encontrada
-app.use((req, res) => {
+app.use((req: Request, res: Response) => {
+  req.log.warn({ 
+    path: req.path, 
+    method: req.method 
+  }, 'Route not found');
+  
   res.status(404).json({
+    success: false,
     error: 'Rota não encontrada',
     path: req.path,
-    method: req.method
+    method: req.method,
+    requestId: req.id,
   });
 });
 
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('[ERROR]', err);
-  
-  res.status(err.status || 500).json({
-    error: err.message || 'Erro interno do servidor',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+app.use(errorLoggerMiddleware);
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  const statusCode = err.status || err.statusCode || 500;
+
+  res.status(statusCode).json({
+    success: false,
+    error: {
+      message: err.message || 'Erro interno do servidor',
+      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    },
+    requestId: req.id,
   });
 });
 

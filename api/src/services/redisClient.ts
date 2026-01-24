@@ -1,4 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
+import { logger } from '../utils/logger';
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
@@ -19,8 +20,9 @@ export const redisClient: RedisClientType = createClient({
   socket: {
     reconnectStrategy: (retries) => {
       if (retries > MAX_RETRY_ATTEMPTS) {
-        console.error(
-          `[REDIS] Falha ao conectar após ${MAX_RETRY_ATTEMPTS} tentativas`
+        logger.error(
+          { maxRetries: MAX_RETRY_ATTEMPTS },
+          'Falha ao conectar Redis após múltiplas tentativas'
         );
         return new Error('Máximo de tentativas de reconexão excedido');
       }
@@ -30,42 +32,42 @@ export const redisClient: RedisClientType = createClient({
         30000 // Max 30 segundos
       );
 
-      console.log(
-        `[REDIS] Tentativa de reconexão ${retries}/${MAX_RETRY_ATTEMPTS} em ${delay}ms`
+      logger.info(
+        { tentativa: retries, maxTentativas: MAX_RETRY_ATTEMPTS, delay },
+        'Tentativa de reconexão Redis'
       );
 
       return delay;
     },
     connectTimeout: CONNECTION_TIMEOUT,
   },
-  // Configurações de performance
   commandsQueueMaxLength: 1000,
   disableOfflineQueue: false,
 });
 
 redisClient.on('error', (err) => {
-  console.error('[REDIS ERROR]', err.message);
+  logger.error({ err }, 'Erro no cliente Redis');
 });
 
 redisClient.on('connect', () => {
-  console.log('[REDIS CONNECT] Conectado ao servidor Redis');
+  logger.info('Cliente Redis conectado');
 });
 
 redisClient.on('ready', () => {
-  console.log('[REDIS READY] Redis pronto para uso');
+  logger.info('Cliente Redis pronto');
 });
 
 redisClient.on('reconnecting', () => {
-  console.log('[REDIS RECONNECTING] Tentando reconectar...');
+  logger.info('Tentando reconectar ao Redis');
 });
 
 redisClient.on('end', () => {
-  console.log('[REDIS END] Conexão encerrada');
+  logger.info('Conexão Redis encerrada');
 });
 
 if (!redisClient.isOpen) {
   redisClient.connect().catch((err) => {
-    console.error('[REDIS CONNECT ERROR]', err.message);
+    logger.error({ err }, 'Erro ao conectar ao Redis');
   });
 }
 
@@ -86,13 +88,6 @@ export async function waitForRedis(timeout = 10000): Promise<boolean> {
   return false;
 }
 
-/**
- * Define um valor no cache com TTL opcional
- *
- * @param key - Chave do cache
- * @param value - Valor a ser armazenado (string ou objeto)
- * @param ttl - Tempo de vida em segundos (opcional)
- */
 export async function cacheSet(
   key: string,
   value: string | object,
@@ -100,7 +95,7 @@ export async function cacheSet(
 ): Promise<void> {
   try {
     if (!isRedisConnected()) {
-      console.warn('[REDIS SET] Redis não conectado, operação ignorada');
+      logger.warn('Redis não conectado, operação SET ignorada');
       return;
     }
 
@@ -109,40 +104,28 @@ export async function cacheSet(
 
     await redisClient.set(key, valueToStore, { EX: ttlToUse });
   } catch (err: any) {
-    console.error('[REDIS SET ERROR]', { key, error: err.message });
+    logger.error({ err, key }, 'Erro ao executar SET no Redis');
   }
 }
 
-/**
- * Obtém um valor do cache
- *
- * @param key - Chave do cache
- * @returns Valor armazenado ou null se não encontrado
- */
 export async function cacheGet(key: string): Promise<string | null> {
   try {
     if (!isRedisConnected()) {
-      console.warn('[REDIS GET] Redis não conectado, retornando null');
+      logger.warn('Redis não conectado, operação GET retornando null');
       return null;
     }
 
     return await redisClient.get(key);
   } catch (err: any) {
-    console.error('[REDIS GET ERROR]', { key, error: err.message });
+    logger.error({ err, key }, 'Erro ao executar GET no Redis');
     return null;
   }
 }
 
-/**
- * Deleta uma ou mais chaves do cache
- *
- * @param keys - Chave(s) a serem deletadas
- * @returns Número de chaves deletadas
- */
 export async function cacheDel(...keys: string[]): Promise<number> {
   try {
     if (!isRedisConnected()) {
-      console.warn('[REDIS DEL] Redis não conectado, operação ignorada');
+      logger.warn('Redis não conectado, operação DEL ignorada');
       return 0;
     }
 
@@ -153,21 +136,15 @@ export async function cacheDel(...keys: string[]): Promise<number> {
     const deleted = await redisClient.del(keys);
     return deleted;
   } catch (err: any) {
-    console.error('[REDIS DEL ERROR]', { keys, error: err.message });
+    logger.error({ err, keys }, 'Erro ao executar DEL no Redis');
     return 0;
   }
 }
 
-/**
- * Deleta todas as chaves que correspondem a um padrão
- *
- * @param pattern - Padrão de busca (ex: "usuarios:*")
- * @returns Número de chaves deletadas
- */
 export async function cacheDelPattern(pattern: string): Promise<number> {
   try {
     if (!isRedisConnected()) {
-      console.warn('[REDIS DEL PATTERN] Redis não conectado, operação ignorada');
+      logger.warn('Redis não conectado, operação DEL PATTERN ignorada');
       return 0;
     }
 
@@ -180,17 +157,11 @@ export async function cacheDelPattern(pattern: string): Promise<number> {
     const deleted = await redisClient.del(keys);
     return deleted;
   } catch (err: any) {
-    console.error('[REDIS DEL PATTERN ERROR]', { pattern, error: err.message });
+    logger.error({ err, pattern }, 'Erro ao executar DEL PATTERN no Redis');
     return 0;
   }
 }
 
-/**
- * Verifica se uma chave existe
- *
- * @param key - Chave a ser verificada
- * @returns true se existe, false caso contrário
- */
 export async function cacheExists(key: string): Promise<boolean> {
   try {
     if (!isRedisConnected()) {
@@ -200,18 +171,11 @@ export async function cacheExists(key: string): Promise<boolean> {
     const exists = await redisClient.exists(key);
     return exists === 1;
   } catch (err: any) {
-    console.error('[REDIS EXISTS ERROR]', { key, error: err.message });
+    logger.error({ err, key }, 'Erro ao executar EXISTS no Redis');
     return false;
   }
 }
 
-/**
- * Define o TTL de uma chave existente
- *
- * @param key - Chave
- * @param ttl - Tempo de vida em segundos
- * @returns true se sucesso (chave existe), false caso contrário
- */
 export async function cacheExpire(key: string, ttl: number): Promise<boolean> {
   try {
     if (!isRedisConnected()) {
@@ -221,17 +185,11 @@ export async function cacheExpire(key: string, ttl: number): Promise<boolean> {
     const result = await redisClient.expire(key, ttl);
     return result === 1;
   } catch (err: any) {
-    console.error('[REDIS EXPIRE ERROR]', { key, ttl, error: err.message });
+    logger.error({ err, key, ttl }, 'Erro ao executar EXPIRE no Redis');
     return false;
   }
 }
 
-/**
- * Obtém o TTL restante de uma chave
- *
- * @param key - Chave
- * @returns TTL em segundos ou -1 se não tem TTL, -2 se não existe
- */
 export async function cacheTTL(key: string): Promise<number> {
   try {
     if (!isRedisConnected()) {
@@ -240,18 +198,11 @@ export async function cacheTTL(key: string): Promise<number> {
 
     return await redisClient.ttl(key);
   } catch (err: any) {
-    console.error('[REDIS TTL ERROR]', { key, error: err.message });
+    logger.error({ err, key }, 'Erro ao executar TTL no Redis');
     return -2;
   }
 }
 
-/**
- * Incrementa um contador
- *
- * @param key - Chave do contador
- * @param increment - Valor a incrementar (padrão: 1)
- * @returns Novo valor do contador
- */
 export async function cacheIncr(key: string, increment = 1): Promise<number> {
   try {
     if (!isRedisConnected()) {
@@ -264,18 +215,11 @@ export async function cacheIncr(key: string, increment = 1): Promise<number> {
       return await redisClient.incrBy(key, increment);
     }
   } catch (err: any) {
-    console.error('[REDIS INCR ERROR]', { key, increment, error: err.message });
+    logger.error({ err, key, increment }, 'Erro ao executar INCR no Redis');
     return 0;
   }
 }
 
-/**
- * Decrementa um contador
- *
- * @param key - Chave do contador
- * @param decrement - Valor a decrementar (padrão: 1)
- * @returns Novo valor do contador
- */
 export async function cacheDecr(key: string, decrement = 1): Promise<number> {
   try {
     if (!isRedisConnected()) {
@@ -288,16 +232,13 @@ export async function cacheDecr(key: string, decrement = 1): Promise<number> {
       return await redisClient.decrBy(key, decrement);
     }
   } catch (err: any) {
-    console.error('[REDIS DECR ERROR]', { key, decrement, error: err.message });
+    logger.error({ err, key, decrement }, 'Erro ao executar DECR no Redis');
     return 0;
   }
 }
 
-/**
- * Limpa todo o cache (USE COM CUIDADO!)
- *
- * @returns true se sucesso, false caso contrário
- */
+// Limpa todo o cache
+
 export async function cacheFlush(): Promise<boolean> {
   try {
     if (!isRedisConnected()) {
@@ -305,10 +246,10 @@ export async function cacheFlush(): Promise<boolean> {
     }
 
     await redisClient.flushDb();
-    console.log('[REDIS FLUSH] Cache limpo com sucesso');
+    logger.info('Cache Redis limpo com sucesso');
     return true;
   } catch (err: any) {
-    console.error('[REDIS FLUSH ERROR]', err.message);
+    logger.error({ err }, 'Erro ao executar FLUSH no Redis');
     return false;
   }
 }
@@ -362,21 +303,11 @@ export async function disconnectRedis(): Promise<void> {
   try {
     if (redisClient.isOpen) {
       await redisClient.quit();
-      console.log('[REDIS DISCONNECT] Desconectado com sucesso');
+      logger.info('Redis desconectado com sucesso');
     }
   } catch (err: any) {
-    console.error('[REDIS DISCONNECT ERROR]', err.message);
+    logger.error({ err }, 'Erro ao desconectar Redis');
   }
 }
-
-process.on('SIGINT', async () => {
-  await disconnectRedis();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  await disconnectRedis();
-  process.exit(0);
-});
 
 export default redisClient;

@@ -4,18 +4,25 @@ import {
   logLevel,
   LogEntry
 } from 'kafkajs';
+import { logger } from '../utils/logger';
 
 const ignoreMessages = [
   'The group is rebalancing, so a rejoin is needed'
 ];
 
+// Logger customizado para o Kafka usando Pino
 export const customLogCreator = () => (entry: LogEntry) => {
   const errorMsg = typeof entry.log?.error === 'string' ? entry.log.error : '';
+  
   if (
     (entry.level === logLevel.ERROR || entry.level === logLevel.WARN) &&
     !ignoreMessages.some(msg => errorMsg.includes(msg))
   ) {
-    console.log(`[Kafka][${entry.label}]`, entry.log);
+    if (entry.level === logLevel.ERROR) {
+      logger.error({ kafka: entry.log, label: entry.label }, 'Kafka error');
+    } else {
+      logger.warn({ kafka: entry.log, label: entry.label }, 'Kafka warning');
+    }
   }
 };
 
@@ -107,9 +114,6 @@ export function getProducerInstanceForTest(): Producer | null {
   return producerInstance;
 }
 
-/**
- * VERIFICA SE O KAFKA ESTÁ CONECTADO
- */
 export function isKafkaConnected(): boolean {
   return isConnected;
 }
@@ -119,11 +123,11 @@ export async function conectarKafkaProducer(): Promise<void> {
     const prod = getProducerInstance();
     await prod.connect();
     isConnected = true;
-    console.log('[Kafka][Producer] Kafka Producer conectado');
+    logger.info('Kafka Producer conectado');
   } catch (error) {
     isConnected = false;
-    console.warn('[Kafka][Producer] Falha ao conectar ao Kafka - funcionando sem Kafka');
-    console.warn('[Kafka][Producer] Certifique-se de que o Kafka está rodando em:', process.env.KAFKA_BROKER_URL);
+    logger.warn('Falha ao conectar ao Kafka - funcionando sem Kafka');
+    logger.warn({ brokerUrl: process.env.KAFKA_BROKER_URL }, 'Certifique-se de que o Kafka está rodando');
   }
 }
 
@@ -131,9 +135,9 @@ export async function desconectarKafkaProducer(): Promise<void> {
   if (producerInstance && isConnected) {
     try {
       await producerInstance.disconnect();
-      console.log('[Kafka][Producer] Kafka Producer desconectado');
+      logger.info('Kafka Producer desconectado');
     } catch (error) {
-      console.error('[Kafka][Producer] Erro ao desconectar:', error);
+      logger.error({ err: error }, 'Erro ao desconectar Kafka Producer');
     }
   }
   
@@ -145,7 +149,7 @@ export async function desconectarKafkaProducer(): Promise<void> {
 
 export async function sendMessage(topic: string, messages: any[]): Promise<void> {
   if (!isConnected) {
-    console.warn(`[Kafka][Producer] Kafka não conectado - mensagem não enviada para o tópico "${topic}"`);
+    logger.warn({ topic }, 'Kafka não conectado - mensagem não enviada');
     return;
   }
   
@@ -155,8 +159,9 @@ export async function sendMessage(topic: string, messages: any[]): Promise<void>
       topic,
       messages
     });
+    logger.debug({ topic, messageCount: messages.length }, 'Mensagem enviada ao Kafka');
   } catch (error) {
-    console.error(`[Kafka][Producer] Erro ao enviar mensagem para o tópico "${topic}":`, error);
+    logger.error({ err: error, topic }, 'Erro ao enviar mensagem ao Kafka');
     throw error;
   }
 }
