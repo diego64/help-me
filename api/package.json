@@ -1,6 +1,6 @@
 {
   "name": "help-me-api",
-  "version": "1.0.6",
+  "version": "1.1.1",
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
@@ -18,6 +18,7 @@
     "migrate": "dotenv -e .env -- prisma migrate dev",
     "studio": "dotenv -e .env -- prisma studio",
     "seed": "tsx --env-file=.env prisma/seed.ts",
+    "seed-medium": "tsx --env-file=.env prisma/seed-medium.ts",
     "seed-big": "tsx --env-file=.env prisma/seed-big.ts",
     "seed-big-ci": "tsx --env-file=.env.test prisma/seed-big.ts",
     "prisma:reset": "dotenv -e .env -- prisma migrate reset --force",
@@ -39,7 +40,7 @@
     "diagnostico:api": "bash scripts/check-api.sh"
   },
   "keywords": [],
-  "packageManager": "pnpm@10.28.1",
+  "packageManager": "pnpm@10.28.2",
   "dependencies": {
     "@influxdata/influxdb-client": "^1.35.0",
     "@prisma/adapter-pg": "^7.2.0",
@@ -77,6 +78,7 @@
     "@types/node": "^25.0.9",
     "@types/nodemailer": "^7.0.5",
     "@types/pg": "^8.16.0",
+    "@types/qs": "^6.14.0",
     "@types/supertest": "^6.0.3",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",

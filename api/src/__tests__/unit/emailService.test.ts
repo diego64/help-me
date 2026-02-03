@@ -46,7 +46,7 @@ describe('Email Service', () => {
   describe('transporter', () => {
     it('deve criar transporter com configurações corretas do ambiente', async () => {
       // Arrange & Act
-      await import('../../services/emailService');
+      await import('../../infrastructure/email/email.service');
 
       // Assert
       expect(nodemailer.createTransport).toHaveBeenCalledWith({
@@ -66,7 +66,7 @@ describe('Email Service', () => {
       vi.resetModules();
 
       // Act
-      await import('../../services/emailService');
+      await import('../../infrastructure/email/email.service');
 
       // Assert
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe('Email Service', () => {
 
     it('deve criar transporter com secure false por padrão', async () => {
       // Arrange & Act
-      await import('../../services/emailService');
+      await import('../../infrastructure/email/email.service');
 
       // Assert
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
@@ -99,7 +99,7 @@ describe('Email Service', () => {
       };
       sendMailMock.mockResolvedValue(mockResponse);
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       const destinatario = 'recipient@test.com';
       const assunto = 'Teste de Email';
@@ -126,7 +126,7 @@ describe('Email Service', () => {
 
       sendMailMock.mockResolvedValue({ messageId: 'test-id' });
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act
       await sendEmail('test@test.com', 'Assunto', '<p>Conteúdo</p>');
@@ -142,7 +142,7 @@ describe('Email Service', () => {
     it('deve enviar email com múltiplos destinatários', async () => {
       // Arrange
       sendMailMock.mockResolvedValue({ messageId: 'test-id' });
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       const destinatarios = 'user1@test.com, user2@test.com, user3@test.com';
       const assunto = 'Email para múltiplos destinatários';
@@ -163,7 +163,7 @@ describe('Email Service', () => {
     it('deve enviar email com HTML complexo', async () => {
       // Arrange
       sendMailMock.mockResolvedValue({ messageId: 'test-id' });
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       const htmlComplexo = `
         <!DOCTYPE html>
@@ -199,7 +199,7 @@ describe('Email Service', () => {
       const erro = new Error('Falha ao enviar email: SMTP connection failed');
       sendMailMock.mockRejectedValue(erro);
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act & Assert
       await expect(
@@ -214,7 +214,7 @@ describe('Email Service', () => {
       const erro = new Error('Invalid login: 535 Authentication failed');
       sendMailMock.mockRejectedValue(erro);
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act & Assert
       await expect(
@@ -227,7 +227,7 @@ describe('Email Service', () => {
       const erro = new Error('Recipient address rejected');
       sendMailMock.mockRejectedValue(erro);
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act & Assert
       await expect(
@@ -249,7 +249,7 @@ describe('Email Service', () => {
       };
       sendMailMock.mockResolvedValue(mockResponse);
 
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act
       const resultado = await sendEmail(
@@ -268,7 +268,7 @@ describe('Email Service', () => {
     it('deve enviar email vazio quando HTML estiver vazio', async () => {
       // Arrange
       sendMailMock.mockResolvedValue({ messageId: 'test-id' });
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act
       await sendEmail('user@test.com', 'Assunto Vazio', '');
@@ -284,7 +284,7 @@ describe('Email Service', () => {
     it('deve enviar email quando subject estiver vazio', async () => {
       // Arrange
       sendMailMock.mockResolvedValue({ messageId: 'test-id' });
-      const { sendEmail } = await import('../../services/emailService');
+      const { sendEmail } = await import('../../infrastructure/email/email.service');
 
       // Act
       await sendEmail('user@test.com', '', '<p>Conteúdo</p>');

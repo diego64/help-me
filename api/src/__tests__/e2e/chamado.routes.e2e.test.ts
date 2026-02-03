@@ -8,11 +8,11 @@ import {
   vi
 } from 'vitest';
 import request from 'supertest';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../../infrastructure/database/prisma/client';
 import mongoose from 'mongoose';
 import app from '../../app';
 import jwt from 'jsonwebtoken';
-import { hashPassword } from '../../utils/password';
+import { hashPassword } from '../../shared/config/password';
 
 vi.setConfig({ testTimeout: 20000 });
 

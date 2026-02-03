@@ -58,7 +58,7 @@ vi.mock('../../middleware/auth', () => ({
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../routes/servico.routes')).default;
+  router = (await import('../../presentation/http/routes/servico.routes')).default;
 }, 20000);
 
 beforeEach(() => {

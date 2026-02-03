@@ -5,11 +5,11 @@ import {
   beforeEach,
   vi
 } from 'vitest';
-import ChamadoAtualizacao from '../../models/chamadoAtualizacao.model';
+import ChamadoAtualizacao from '../../infrastructure/database/mongodb/atualizacao.chamado.model';
 import {
   listarHistoricoChamado,
   salvarHistoricoChamado,
-} from '../../repositories/chamadoAtualizacao.repository';
+} from '../../infrastructure/repositories/atualizacao.chamado.repository';
 
 describe('ChamadoAtualizacao Repository', () => {
   const createMockHistorico = () => ({

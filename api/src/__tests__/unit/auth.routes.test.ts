@@ -115,7 +115,7 @@ vi.mock('../../middleware/auth', () => ({
 let authRouter: any;
 
 beforeAll(async () => {
-  authRouter = (await import('../../routes/auth.routes')).default;
+  authRouter = (await import('../../presentation/http/routes/auth.routes')).default;
 });
 
 beforeEach(() => {

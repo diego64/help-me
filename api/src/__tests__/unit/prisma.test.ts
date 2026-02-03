@@ -73,7 +73,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBeDefined();
     expect(prisma).toBeInstanceOf(MockPrismaClient);
@@ -83,7 +83,7 @@ describe('Prisma Client Singleton', () => {
     const instanciaExistente = new MockPrismaClient();
     (globalThis as any).prisma = instanciaExistente;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBe(instanciaExistente);
   });
@@ -92,7 +92,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect((globalThis as any).prisma).toBe(prisma);
   });
@@ -101,7 +101,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'test';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect((globalThis as any).prisma).toBe(prisma);
   });
@@ -110,7 +110,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'production';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBeDefined();
     expect((globalThis as any).prisma).toBeUndefined();
@@ -122,7 +122,7 @@ describe('Prisma Client Singleton', () => {
     delete (globalThis as any).prisma;
     vi.resetModules();
 
-    const module = await import('../../lib/prisma');
+    const module = await import('../../infrastructure/database/prisma/client');
 
     expect(module.prisma).toBeDefined();
   });
@@ -133,7 +133,7 @@ describe('Prisma Client Singleton', () => {
     delete (globalThis as any).prisma;
     vi.resetModules();
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBeDefined();
   });
@@ -142,8 +142,8 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma: prisma1 } = await import('../../lib/prisma');
-    const { prisma: prisma2 } = await import('../../lib/prisma');
+    const { prisma: prisma1 } = await import('../../infrastructure/database/prisma/client');
+    const { prisma: prisma2 } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma1).toBe(prisma2);
   });
@@ -153,13 +153,13 @@ describe('Prisma Client Singleton', () => {
 
     delete (globalThis as any).prisma;
     vi.resetModules();
-    const { prisma: prismaQuandoUndefined } = await import('../../lib/prisma');
+    const { prisma: prismaQuandoUndefined } = await import('../../infrastructure/database/prisma/client');
     expect(prismaQuandoUndefined).toBeInstanceOf(MockPrismaClient);
 
     const instanciaExistente = new MockPrismaClient();
     (globalThis as any).prisma = instanciaExistente;
     vi.resetModules();
-    const { prisma: prismaQuandoExiste } = await import('../../lib/prisma');
+    const { prisma: prismaQuandoExiste } = await import('../../infrastructure/database/prisma/client');
     expect(prismaQuandoExiste).toBe(instanciaExistente);
   });
 
@@ -167,7 +167,7 @@ describe('Prisma Client Singleton', () => {
     delete process.env.NODE_ENV;
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBeDefined();
     expect(prisma).toBeInstanceOf(MockPrismaClient);
@@ -182,7 +182,7 @@ describe('Prisma Client Singleton', () => {
       delete (globalThis as any).prisma;
       vi.resetModules();
 
-      const { prisma } = await import('../../lib/prisma');
+      const { prisma } = await import('../../infrastructure/database/prisma/client');
 
       expect(prisma).toBeDefined();
       expect(prisma).toBeInstanceOf(MockPrismaClient);
@@ -199,7 +199,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect((prisma as any).options?.log).toEqual(['error', 'warn']);
   });
@@ -208,7 +208,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'production';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect((prisma as any).options?.log).toEqual(['error']);
   });
@@ -297,7 +297,7 @@ describe('Prisma Client Singleton', () => {
     delete (globalThis as any).prisma;
     vi.resetModules();
 
-    await import('../../lib/prisma');
+    await import('../../infrastructure/database/prisma/client');
 
     expect(MockPool).toBeDefined();
   });
@@ -306,7 +306,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const module = await import('../../lib/prisma');
+    const module = await import('../../infrastructure/database/prisma/client');
 
     expect(module.prisma).toBeDefined();
     expect(module.prisma).toBeInstanceOf(MockPrismaClient);
@@ -316,10 +316,10 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma: firstImport } = await import('../../lib/prisma');
+    const { prisma: firstImport } = await import('../../infrastructure/database/prisma/client');
     
-    const { prisma: secondImport } = await import('../../lib/prisma');
-    const { prisma: thirdImport } = await import('../../lib/prisma');
+    const { prisma: secondImport } = await import('../../infrastructure/database/prisma/client');
+    const { prisma: thirdImport } = await import('../../infrastructure/database/prisma/client');
 
     expect(firstImport).toBe(secondImport);
     expect(secondImport).toBe(thirdImport);
@@ -330,7 +330,7 @@ describe('Prisma Client Singleton', () => {
     process.env.NODE_ENV = 'development';
     delete (globalThis as any).prisma;
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     expect(prisma).toBeDefined();
     expect((prisma as any).options).toBeDefined();
@@ -346,7 +346,7 @@ describe('Prisma Client Singleton', () => {
     vi.resetModules();
     vi.clearAllMocks();
 
-    await import('../../lib/prisma');
+    await import('../../infrastructure/database/prisma/client');
 
     expect(processOnSpy).toHaveBeenCalledWith('beforeExit', expect.any(Function));
     
@@ -360,7 +360,7 @@ describe('Prisma Client Singleton', () => {
     vi.resetModules();
     vi.clearAllMocks();
 
-    const { prisma } = await import('../../lib/prisma');
+    const { prisma } = await import('../../infrastructure/database/prisma/client');
 
     const listeners = process.listeners('beforeExit');
     const beforeExitHandler = listeners[listeners.length - 1] as (...args: any[]) => Promise<void>;

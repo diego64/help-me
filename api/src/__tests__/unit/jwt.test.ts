@@ -5,7 +5,7 @@ import {
   beforeEach,
   afterEach,
 } from 'vitest';
-import * as jwtUtil from '../../auth/jwt';
+import * as jwtUtil from '../../shared/config/jwt';
 import jwt from 'jsonwebtoken';
 import { Regra } from '@prisma/client';
 

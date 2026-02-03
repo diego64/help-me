@@ -109,7 +109,7 @@ vi.mock('../../middleware/auth', () => ({
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../routes/fila-de-chamados.routes')).default;
+  router = (await import('../../presentation/http/routes/fila-de-chamados.routes')).default;
 });
 
 beforeEach(() => {

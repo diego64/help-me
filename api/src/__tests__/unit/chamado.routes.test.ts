@@ -130,7 +130,7 @@ vi.mock('../../middleware/auth', () => ({
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../routes/chamado.routes')).default;
+  router = (await import('../../presentation/http/routes/chamado.routes')).default;
 });
 
 beforeEach(() => {

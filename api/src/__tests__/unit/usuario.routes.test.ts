@@ -111,7 +111,7 @@ vi.mock('multer', () => {
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../routes/usuario.routes')).default;
+  router = (await import('../../presentation/http/routes/usuario.routes')).default;
 });
 
 beforeEach(() => {

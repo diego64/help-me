@@ -18,9 +18,9 @@ vi.mock('../../services/redisClient', () => ({
   cacheGet: vi.fn(),
 }));
 
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../middleware/auth';
-import * as jwtModule from '../../auth/jwt';
-import * as redisModule from '../../services/redisClient';
+import { authMiddleware, authorizeRoles, AuthRequest } from '../../infrastructure/http/middlewares/auth';
+import * as jwtModule from '../../shared/config/jwt';
+import * as redisModule from '../../services/redis';
 
 const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
 const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);

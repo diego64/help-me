@@ -12,7 +12,7 @@ import {
   gerarSenhaSegura,
   validarForcaSenha,
   CONFIGURACAO_SENHA,
-} from '../../utils/password';
+} from '../../shared/config/password';
 
 describe('password.ts - Utilitário de Senha', () => {
   describe('hashPassword', () => {

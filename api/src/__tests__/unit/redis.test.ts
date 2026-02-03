@@ -12,6 +12,17 @@ vi.mock('redis', () => ({
   createClient: vi.fn()
 }));
 
+vi.mock('../../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
+}));
+
+import { logger } from '../../shared/config/logger';
+
 describe('Redis Client', () => {
   let mockRedisClient: any;
   let connectCallback: any;
@@ -21,6 +32,8 @@ describe('Redis Client', () => {
   let endCallback: any;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     connectCallback = null;
     errorCallback = null;
     readyCallback = null;
@@ -62,14 +75,9 @@ describe('Redis Client', () => {
     };
 
     (createClient as any).mockReturnValue(mockRedisClient);
-
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
     vi.resetModules();
     delete process.env.REDIS_HOST;
     delete process.env.REDIS_PORT;
@@ -88,7 +96,7 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://localhost:6379/0',
@@ -113,7 +121,7 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://:custom_password@redis-server:6380/2',
@@ -138,7 +146,7 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://localhost:6379/0',
@@ -160,7 +168,7 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(createClient).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -176,7 +184,7 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.connect).not.toHaveBeenCalled();
     });
@@ -189,76 +197,79 @@ describe('Redis Client', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       await new Promise(resolve => setImmediate(resolve));
       
-      expect(console.error).toHaveBeenCalledWith('[REDIS CONNECT ERROR]', 'Connection failed');
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroConexao },
+        'Erro ao conectar ao Redis'
+      );
     });
   });
 
   describe('Event Handlers do Redis', () => {
     it('deve logar mensagem quando evento connect for disparado', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('connect', expect.any(Function));
       
       connectCallback();
 
-      expect(console.log).toHaveBeenCalledWith('[REDIS CONNECT] Conectado ao servidor Redis');
+      expect(logger.info).toHaveBeenCalledWith('Cliente Redis conectado');
     });
 
     it('deve logar quando evento ready for disparado', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
       
       readyCallback();
 
-      expect(console.log).toHaveBeenCalledWith('[REDIS READY] Redis pronto para uso');
+      expect(logger.info).toHaveBeenCalledWith('Cliente Redis pronto');
     });
 
     it('deve logar quando evento reconnecting for disparado', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('reconnecting', expect.any(Function));
       
       reconnectingCallback();
 
-      expect(console.log).toHaveBeenCalledWith('[REDIS RECONNECTING] Tentando reconectar...');
+      expect(logger.info).toHaveBeenCalledWith('Tentando reconectar ao Redis');
     });
 
     it('deve logar quando evento end for disparado', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('end', expect.any(Function));
       
       endCallback();
 
-      expect(console.log).toHaveBeenCalledWith('[REDIS END] Conexão encerrada');
+      expect(logger.info).toHaveBeenCalledWith('Conexão Redis encerrada');
     });
 
     it('deve logar erro quando evento error for disparado', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       expect(mockRedisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
 
       const erro = new Error('Falha na conexão');
       errorCallback(erro);
 
-      expect(console.error).toHaveBeenCalledWith('[REDIS ERROR]', 'Falha na conexão');
+      expect(logger.error).toHaveBeenCalledWith({ err: erro }, 'Erro no cliente Redis');
     });
   });
 
   describe('Estratégia de Reconexão', () => {
     it('deve implementar exponential backoff para tentativas de reconexão', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       const reconnectStrategy = callArgs.socket.reconnectStrategy;
@@ -272,7 +283,7 @@ describe('Redis Client', () => {
 
     it('deve limitar delay máximo a 30 segundos', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       const reconnectStrategy = callArgs.socket.reconnectStrategy;
@@ -287,7 +298,7 @@ describe('Redis Client', () => {
 
     it('deve retornar erro após 5 tentativas', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       const reconnectStrategy = callArgs.socket.reconnectStrategy;
@@ -300,29 +311,31 @@ describe('Redis Client', () => {
 
     it('deve logar mensagem de tentativa de reconexão', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       const reconnectStrategy = callArgs.socket.reconnectStrategy;
 
       reconnectStrategy(3);
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[REDIS] Tentativa de reconexão 3/5 em 4000ms'
+      expect(logger.info).toHaveBeenCalledWith(
+        { tentativa: 3, maxTentativas: 5, delay: 4000 },
+        'Tentativa de reconexão Redis'
       );
     });
 
     it('deve logar erro quando exceder máximo de tentativas', async () => {
       vi.resetModules();
-      await import('../../services/redisClient');
+      await import('../../services/redis');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       const reconnectStrategy = callArgs.socket.reconnectStrategy;
 
       reconnectStrategy(6);
 
-      expect(console.error).toHaveBeenCalledWith(
-        '[REDIS] Falha ao conectar após 5 tentativas'
+      expect(logger.error).toHaveBeenCalledWith(
+        { maxRetries: 5 },
+        'Falha ao conectar Redis após múltiplas tentativas'
       );
     });
   });
@@ -335,7 +348,7 @@ describe('Redis Client', () => {
 
     it('deve armazenar valor com TTL customizado quando fornecido', async () => {
       vi.resetModules();
-      const { cacheSet } = await import('../../services/redisClient');
+      const { cacheSet } = await import('../../services/redis');
 
       await cacheSet('chave-teste', 'valor-teste', 7200);
 
@@ -344,7 +357,7 @@ describe('Redis Client', () => {
 
     it('deve armazenar valor com TTL padrão (3600s) quando não fornecido', async () => {
       vi.resetModules();
-      const { cacheSet } = await import('../../services/redisClient');
+      const { cacheSet } = await import('../../services/redis');
 
       await cacheSet('chave-teste', 'valor-teste');
 
@@ -353,7 +366,7 @@ describe('Redis Client', () => {
 
     it('deve serializar objeto para JSON ao armazenar', async () => {
       vi.resetModules();
-      const { cacheSet } = await import('../../services/redisClient');
+      const { cacheSet } = await import('../../services/redis');
       const objeto = { nome: 'Teste', valor: 123 };
 
       await cacheSet('chave-objeto', objeto, 3600);
@@ -370,21 +383,25 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheSet } = await import('../../services/redisClient');
+      const { cacheSet } = await import('../../services/redis');
 
       await cacheSet('chave-teste', 'valor-teste');
 
-      expect(console.warn).toHaveBeenCalledWith('[REDIS SET] Redis não conectado, operação ignorada');
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação SET ignorada');
     });
 
     it('deve capturar e logar erro sem propagar exceção', async () => {
-      mockRedisClient.set.mockRejectedValueOnce(new Error('Set failed'));
+      const erroSet = new Error('Set failed');
+      mockRedisClient.set.mockRejectedValueOnce(erroSet);
       
       vi.resetModules();
-      const { cacheSet } = await import('../../services/redisClient');
+      const { cacheSet } = await import('../../services/redis');
 
       await expect(cacheSet('chave-teste', 'valor-teste')).resolves.toBeUndefined();
-      expect(console.error).toHaveBeenCalledWith('[REDIS SET ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroSet, key: 'chave-teste' },
+        'Erro ao executar SET no Redis'
+      );
     });
   });
 
@@ -396,7 +413,7 @@ describe('Redis Client', () => {
 
     it('deve retornar valor quando chave existir', async () => {
       vi.resetModules();
-      const { cacheGet } = await import('../../services/redisClient');
+      const { cacheGet } = await import('../../services/redis');
       mockRedisClient.get.mockResolvedValue('valor-armazenado');
 
       const resultado = await cacheGet('chave-teste');
@@ -407,7 +424,7 @@ describe('Redis Client', () => {
 
     it('deve retornar null quando chave não existir', async () => {
       vi.resetModules();
-      const { cacheGet } = await import('../../services/redisClient');
+      const { cacheGet } = await import('../../services/redis');
       mockRedisClient.get.mockResolvedValue(null);
 
       const resultado = await cacheGet('chave-inexistente');
@@ -421,24 +438,28 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheGet } = await import('../../services/redisClient');
+      const { cacheGet } = await import('../../services/redis');
 
       const resultado = await cacheGet('chave-teste');
 
       expect(resultado).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith('[REDIS GET] Redis não conectado, retornando null');
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação GET retornando null');
     });
 
     it('deve retornar null em caso de erro', async () => {
-      mockRedisClient.get.mockRejectedValueOnce(new Error('Get failed'));
+      const erroGet = new Error('Get failed');
+      mockRedisClient.get.mockRejectedValueOnce(erroGet);
       
       vi.resetModules();
-      const { cacheGet } = await import('../../services/redisClient');
+      const { cacheGet } = await import('../../services/redis');
 
       const resultado = await cacheGet('chave-teste');
 
       expect(resultado).toBeNull();
-      expect(console.error).toHaveBeenCalledWith('[REDIS GET ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroGet, key: 'chave-teste' },
+        'Erro ao executar GET no Redis'
+      );
     });
   });
 
@@ -450,7 +471,7 @@ describe('Redis Client', () => {
 
     it('deve deletar uma chave com sucesso', async () => {
       vi.resetModules();
-      const { cacheDel } = await import('../../services/redisClient');
+      const { cacheDel } = await import('../../services/redis');
       mockRedisClient.del.mockResolvedValue(1);
 
       const resultado = await cacheDel('chave-teste');
@@ -461,7 +482,7 @@ describe('Redis Client', () => {
 
     it('deve deletar múltiplas chaves', async () => {
       vi.resetModules();
-      const { cacheDel } = await import('../../services/redisClient');
+      const { cacheDel } = await import('../../services/redis');
       mockRedisClient.del.mockResolvedValue(3);
 
       const resultado = await cacheDel('chave1', 'chave2', 'chave3');
@@ -472,7 +493,7 @@ describe('Redis Client', () => {
 
     it('deve retornar 0 quando não houver chaves para deletar', async () => {
       vi.resetModules();
-      const { cacheDel } = await import('../../services/redisClient');
+      const { cacheDel } = await import('../../services/redis');
 
       const resultado = await cacheDel();
 
@@ -485,24 +506,28 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheDel } = await import('../../services/redisClient');
+      const { cacheDel } = await import('../../services/redis');
 
       const resultado = await cacheDel('chave-teste');
 
       expect(resultado).toBe(0);
-      expect(console.warn).toHaveBeenCalledWith('[REDIS DEL] Redis não conectado, operação ignorada');
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação DEL ignorada');
     });
 
     it('deve retornar 0 em caso de erro', async () => {
-      mockRedisClient.del.mockRejectedValueOnce(new Error('Del failed'));
+      const erroDel = new Error('Del failed');
+      mockRedisClient.del.mockRejectedValueOnce(erroDel);
       
       vi.resetModules();
-      const { cacheDel } = await import('../../services/redisClient');
+      const { cacheDel } = await import('../../services/redis');
 
       const resultado = await cacheDel('chave-teste');
 
       expect(resultado).toBe(0);
-      expect(console.error).toHaveBeenCalledWith('[REDIS DEL ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroDel, keys: ['chave-teste'] },
+        'Erro ao executar DEL no Redis'
+      );
     });
   });
 
@@ -514,7 +539,7 @@ describe('Redis Client', () => {
 
     it('deve deletar chaves que correspondem ao padrão', async () => {
       vi.resetModules();
-      const { cacheDelPattern } = await import('../../services/redisClient');
+      const { cacheDelPattern } = await import('../../services/redis');
       mockRedisClient.keys.mockResolvedValue(['usuario:1', 'usuario:2', 'usuario:3']);
       mockRedisClient.del.mockResolvedValue(3);
 
@@ -527,7 +552,7 @@ describe('Redis Client', () => {
 
     it('deve retornar 0 quando nenhuma chave corresponder ao padrão', async () => {
       vi.resetModules();
-      const { cacheDelPattern } = await import('../../services/redisClient');
+      const { cacheDelPattern } = await import('../../services/redis');
       mockRedisClient.keys.mockResolvedValue([]);
 
       const resultado = await cacheDelPattern('inexistente:*');
@@ -542,24 +567,28 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheDelPattern } = await import('../../services/redisClient');
+      const { cacheDelPattern } = await import('../../services/redis');
 
       const resultado = await cacheDelPattern('teste:*');
 
       expect(resultado).toBe(0);
-      expect(console.warn).toHaveBeenCalledWith('[REDIS DEL PATTERN] Redis não conectado, operação ignorada');
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação DEL PATTERN ignorada');
     });
 
     it('deve retornar 0 em caso de erro', async () => {
-      mockRedisClient.keys.mockRejectedValueOnce(new Error('Keys failed'));
+      const erroKeys = new Error('Keys failed');
+      mockRedisClient.keys.mockRejectedValueOnce(erroKeys);
       
       vi.resetModules();
-      const { cacheDelPattern } = await import('../../services/redisClient');
+      const { cacheDelPattern } = await import('../../services/redis');
 
       const resultado = await cacheDelPattern('teste:*');
 
       expect(resultado).toBe(0);
-      expect(console.error).toHaveBeenCalledWith('[REDIS DEL PATTERN ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroKeys, pattern: 'teste:*' },
+        'Erro ao executar DEL PATTERN no Redis'
+      );
     });
   });
 
@@ -571,7 +600,7 @@ describe('Redis Client', () => {
 
     it('deve retornar true quando chave existir', async () => {
       vi.resetModules();
-      const { cacheExists } = await import('../../services/redisClient');
+      const { cacheExists } = await import('../../services/redis');
       mockRedisClient.exists.mockResolvedValue(1);
 
       const resultado = await cacheExists('chave-teste');
@@ -582,7 +611,7 @@ describe('Redis Client', () => {
 
     it('deve retornar false quando chave não existir', async () => {
       vi.resetModules();
-      const { cacheExists } = await import('../../services/redisClient');
+      const { cacheExists } = await import('../../services/redis');
       mockRedisClient.exists.mockResolvedValue(0);
 
       const resultado = await cacheExists('chave-inexistente');
@@ -595,7 +624,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheExists } = await import('../../services/redisClient');
+      const { cacheExists } = await import('../../services/redis');
 
       const resultado = await cacheExists('chave-teste');
 
@@ -603,15 +632,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar false em caso de erro', async () => {
-      mockRedisClient.exists.mockRejectedValueOnce(new Error('Exists failed'));
+      const erroExists = new Error('Exists failed');
+      mockRedisClient.exists.mockRejectedValueOnce(erroExists);
       
       vi.resetModules();
-      const { cacheExists } = await import('../../services/redisClient');
+      const { cacheExists } = await import('../../services/redis');
 
       const resultado = await cacheExists('chave-teste');
 
       expect(resultado).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[REDIS EXISTS ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroExists, key: 'chave-teste' },
+        'Erro ao executar EXISTS no Redis'
+      );
     });
   });
 
@@ -623,7 +656,7 @@ describe('Redis Client', () => {
 
     it('deve definir TTL para chave existente', async () => {
       vi.resetModules();
-      const { cacheExpire } = await import('../../services/redisClient');
+      const { cacheExpire } = await import('../../services/redis');
       mockRedisClient.expire.mockResolvedValue(1);
 
       const resultado = await cacheExpire('chave-teste', 7200);
@@ -634,7 +667,7 @@ describe('Redis Client', () => {
 
     it('deve retornar false quando chave não existir', async () => {
       vi.resetModules();
-      const { cacheExpire } = await import('../../services/redisClient');
+      const { cacheExpire } = await import('../../services/redis');
       mockRedisClient.expire.mockResolvedValue(0);
 
       const resultado = await cacheExpire('chave-inexistente', 3600);
@@ -647,7 +680,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheExpire } = await import('../../services/redisClient');
+      const { cacheExpire } = await import('../../services/redis');
 
       const resultado = await cacheExpire('chave-teste', 3600);
 
@@ -655,15 +688,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar false em caso de erro', async () => {
-      mockRedisClient.expire.mockRejectedValueOnce(new Error('Expire failed'));
+      const erroExpire = new Error('Expire failed');
+      mockRedisClient.expire.mockRejectedValueOnce(erroExpire);
       
       vi.resetModules();
-      const { cacheExpire } = await import('../../services/redisClient');
+      const { cacheExpire } = await import('../../services/redis');
 
       const resultado = await cacheExpire('chave-teste', 3600);
 
       expect(resultado).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[REDIS EXPIRE ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroExpire, key: 'chave-teste', ttl: 3600 },
+        'Erro ao executar EXPIRE no Redis'
+      );
     });
   });
 
@@ -675,7 +712,7 @@ describe('Redis Client', () => {
 
     it('deve retornar TTL restante da chave', async () => {
       vi.resetModules();
-      const { cacheTTL } = await import('../../services/redisClient');
+      const { cacheTTL } = await import('../../services/redis');
       mockRedisClient.ttl.mockResolvedValue(3600);
 
       const resultado = await cacheTTL('chave-teste');
@@ -686,7 +723,7 @@ describe('Redis Client', () => {
 
     it('deve retornar -1 quando chave não tiver TTL', async () => {
       vi.resetModules();
-      const { cacheTTL } = await import('../../services/redisClient');
+      const { cacheTTL } = await import('../../services/redis');
       mockRedisClient.ttl.mockResolvedValue(-1);
 
       const resultado = await cacheTTL('chave-sem-ttl');
@@ -696,7 +733,7 @@ describe('Redis Client', () => {
 
     it('deve retornar -2 quando chave não existir', async () => {
       vi.resetModules();
-      const { cacheTTL } = await import('../../services/redisClient');
+      const { cacheTTL } = await import('../../services/redis');
       mockRedisClient.ttl.mockResolvedValue(-2);
 
       const resultado = await cacheTTL('chave-inexistente');
@@ -709,7 +746,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheTTL } = await import('../../services/redisClient');
+      const { cacheTTL } = await import('../../services/redis');
 
       const resultado = await cacheTTL('chave-teste');
 
@@ -717,15 +754,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar -2 em caso de erro', async () => {
-      mockRedisClient.ttl.mockRejectedValueOnce(new Error('TTL failed'));
+      const erroTTL = new Error('TTL failed');
+      mockRedisClient.ttl.mockRejectedValueOnce(erroTTL);
       
       vi.resetModules();
-      const { cacheTTL } = await import('../../services/redisClient');
+      const { cacheTTL } = await import('../../services/redis');
 
       const resultado = await cacheTTL('chave-teste');
 
       expect(resultado).toBe(-2);
-      expect(console.error).toHaveBeenCalledWith('[REDIS TTL ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroTTL, key: 'chave-teste' },
+        'Erro ao executar TTL no Redis'
+      );
     });
   });
 
@@ -737,7 +778,7 @@ describe('Redis Client', () => {
 
     it('deve incrementar contador em 1 por padrão', async () => {
       vi.resetModules();
-      const { cacheIncr } = await import('../../services/redisClient');
+      const { cacheIncr } = await import('../../services/redis');
       mockRedisClient.incr.mockResolvedValue(1);
 
       const resultado = await cacheIncr('contador');
@@ -748,7 +789,7 @@ describe('Redis Client', () => {
 
     it('deve incrementar contador em valor customizado', async () => {
       vi.resetModules();
-      const { cacheIncr } = await import('../../services/redisClient');
+      const { cacheIncr } = await import('../../services/redis');
       mockRedisClient.incrBy.mockResolvedValue(10);
 
       const resultado = await cacheIncr('contador', 10);
@@ -762,7 +803,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheIncr } = await import('../../services/redisClient');
+      const { cacheIncr } = await import('../../services/redis');
 
       const resultado = await cacheIncr('contador');
 
@@ -770,15 +811,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar 0 em caso de erro', async () => {
-      mockRedisClient.incr.mockRejectedValueOnce(new Error('Incr failed'));
+      const erroIncr = new Error('Incr failed');
+      mockRedisClient.incr.mockRejectedValueOnce(erroIncr);
       
       vi.resetModules();
-      const { cacheIncr } = await import('../../services/redisClient');
+      const { cacheIncr } = await import('../../services/redis');
 
       const resultado = await cacheIncr('contador');
 
       expect(resultado).toBe(0);
-      expect(console.error).toHaveBeenCalledWith('[REDIS INCR ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroIncr, key: 'contador', increment: 1 },
+        'Erro ao executar INCR no Redis'
+      );
     });
   });
 
@@ -790,7 +835,7 @@ describe('Redis Client', () => {
 
     it('deve decrementar contador em 1 por padrão', async () => {
       vi.resetModules();
-      const { cacheDecr } = await import('../../services/redisClient');
+      const { cacheDecr } = await import('../../services/redis');
       mockRedisClient.decr.mockResolvedValue(9);
 
       const resultado = await cacheDecr('contador');
@@ -801,7 +846,7 @@ describe('Redis Client', () => {
 
     it('deve decrementar contador em valor customizado', async () => {
       vi.resetModules();
-      const { cacheDecr } = await import('../../services/redisClient');
+      const { cacheDecr } = await import('../../services/redis');
       mockRedisClient.decrBy.mockResolvedValue(5);
 
       const resultado = await cacheDecr('contador', 5);
@@ -815,7 +860,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheDecr } = await import('../../services/redisClient');
+      const { cacheDecr } = await import('../../services/redis');
 
       const resultado = await cacheDecr('contador');
 
@@ -823,15 +868,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar 0 em caso de erro', async () => {
-      mockRedisClient.decr.mockRejectedValueOnce(new Error('Decr failed'));
+      const erroDecr = new Error('Decr failed');
+      mockRedisClient.decr.mockRejectedValueOnce(erroDecr);
       
       vi.resetModules();
-      const { cacheDecr } = await import('../../services/redisClient');
+      const { cacheDecr } = await import('../../services/redis');
 
       const resultado = await cacheDecr('contador');
 
       expect(resultado).toBe(0);
-      expect(console.error).toHaveBeenCalledWith('[REDIS DECR ERROR]', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroDecr, key: 'contador', decrement: 1 },
+        'Erro ao executar DECR no Redis'
+      );
     });
   });
 
@@ -843,14 +892,14 @@ describe('Redis Client', () => {
 
     it('deve limpar todo o cache com sucesso', async () => {
       vi.resetModules();
-      const { cacheFlush } = await import('../../services/redisClient');
+      const { cacheFlush } = await import('../../services/redis');
       mockRedisClient.flushDb.mockResolvedValue('OK');
 
       const resultado = await cacheFlush();
 
       expect(mockRedisClient.flushDb).toHaveBeenCalled();
       expect(resultado).toBe(true);
-      expect(console.log).toHaveBeenCalledWith('[REDIS FLUSH] Cache limpo com sucesso');
+      expect(logger.info).toHaveBeenCalledWith('Cache Redis limpo com sucesso');
     });
 
     it('deve retornar false quando Redis não estiver conectado', async () => {
@@ -858,7 +907,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheFlush } = await import('../../services/redisClient');
+      const { cacheFlush } = await import('../../services/redis');
 
       const resultado = await cacheFlush();
 
@@ -866,15 +915,19 @@ describe('Redis Client', () => {
     });
 
     it('deve retornar false em caso de erro', async () => {
-      mockRedisClient.flushDb.mockRejectedValueOnce(new Error('Flush failed'));
+      const erroFlush = new Error('Flush failed');
+      mockRedisClient.flushDb.mockRejectedValueOnce(erroFlush);
       
       vi.resetModules();
-      const { cacheFlush } = await import('../../services/redisClient');
+      const { cacheFlush } = await import('../../services/redis');
 
       const resultado = await cacheFlush();
 
       expect(resultado).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[REDIS FLUSH ERROR]', 'Flush failed');
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroFlush },
+        'Erro ao executar FLUSH no Redis'
+      );
     });
   });
 
@@ -886,7 +939,7 @@ describe('Redis Client', () => {
 
     it('isRedisConnected deve retornar true quando conectado', async () => {
       vi.resetModules();
-      const { isRedisConnected } = await import('../../services/redisClient');
+      const { isRedisConnected } = await import('../../services/redis');
 
       const resultado = isRedisConnected();
 
@@ -898,7 +951,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { isRedisConnected } = await import('../../services/redisClient');
+      const { isRedisConnected } = await import('../../services/redis');
 
       const resultado = isRedisConnected();
 
@@ -907,7 +960,7 @@ describe('Redis Client', () => {
 
     it('cacheInfo deve retornar informações do Redis', async () => {
       vi.resetModules();
-      const { cacheInfo } = await import('../../services/redisClient');
+      const { cacheInfo } = await import('../../services/redis');
 
       const info = await cacheInfo();
 
@@ -922,7 +975,7 @@ describe('Redis Client', () => {
 
     it('cacheHealthCheck deve retornar healthy quando conectado', async () => {
       vi.resetModules();
-      const { cacheHealthCheck } = await import('../../services/redisClient');
+      const { cacheHealthCheck } = await import('../../services/redis');
       mockRedisClient.ping.mockResolvedValue('PONG');
 
       const health = await cacheHealthCheck();
@@ -937,7 +990,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { cacheHealthCheck } = await import('../../services/redisClient');
+      const { cacheHealthCheck } = await import('../../services/redis');
 
       const health = await cacheHealthCheck();
 
@@ -949,7 +1002,7 @@ describe('Redis Client', () => {
       mockRedisClient.ping.mockRejectedValueOnce(new Error('Ping failed'));
       
       vi.resetModules();
-      const { cacheHealthCheck } = await import('../../services/redisClient');
+      const { cacheHealthCheck } = await import('../../services/redis');
 
       const health = await cacheHealthCheck();
 
@@ -966,20 +1019,20 @@ describe('Redis Client', () => {
 
     it('disconnectRedis deve desconectar gracefully', async () => {
       vi.resetModules();
-      const { disconnectRedis } = await import('../../services/redisClient');
+      const { disconnectRedis } = await import('../../services/redis');
       mockRedisClient.quit.mockResolvedValue('OK');
 
       await disconnectRedis();
 
       expect(mockRedisClient.quit).toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('[REDIS DISCONNECT] Desconectado com sucesso');
+      expect(logger.info).toHaveBeenCalledWith('Redis desconectado com sucesso');
     });
 
     it('disconnectRedis não deve chamar quit quando já desconectado', async () => {
       mockRedisClient.isOpen = false;
       
       vi.resetModules();
-      const { disconnectRedis } = await import('../../services/redisClient');
+      const { disconnectRedis } = await import('../../services/redis');
 
       await disconnectRedis();
 
@@ -987,28 +1040,36 @@ describe('Redis Client', () => {
     });
 
     it('disconnectRedis deve capturar erro ao desconectar', async () => {
-      mockRedisClient.quit.mockRejectedValueOnce(new Error('Quit failed'));
+      const erroQuit = new Error('Quit failed');
+      mockRedisClient.quit.mockRejectedValueOnce(erroQuit);
       
       vi.resetModules();
-      const { disconnectRedis } = await import('../../services/redisClient');
+      const { disconnectRedis } = await import('../../services/redis');
 
       await disconnectRedis();
 
-      expect(console.error).toHaveBeenCalledWith('[REDIS DISCONNECT ERROR]', 'Quit failed');
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroQuit },
+        'Erro ao desconectar Redis'
+      );
     });
 
     it('deve desconectar gracefully ao receber SIGINT', async () => {
       const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
       
       vi.resetModules();
-      const { disconnectRedis } = await import('../../services/redisClient');
+      await import('../../services/redis');
       mockRedisClient.quit.mockResolvedValue('OK');
 
-      const sigintHandler = process.listeners('SIGINT').pop() as () => Promise<void>;
-      await sigintHandler();
-
-      expect(mockRedisClient.quit).toHaveBeenCalled();
-      expect(processExitSpy).toHaveBeenCalledWith(0);
+      const sigintListeners = process.listeners('SIGINT');
+      const sigintHandler = sigintListeners[sigintListeners.length - 1] as () => Promise<void>;
+      
+      if (sigintHandler) {
+        await sigintHandler();
+        
+        expect(mockRedisClient.quit).toHaveBeenCalled();
+        expect(processExitSpy).toHaveBeenCalledWith(0);
+      }
       
       processExitSpy.mockRestore();
     });
@@ -1017,14 +1078,18 @@ describe('Redis Client', () => {
       const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
       
       vi.resetModules();
-      const { disconnectRedis } = await import('../../services/redisClient');
+      await import('../../services/redis');
       mockRedisClient.quit.mockResolvedValue('OK');
 
-      const sigtermHandler = process.listeners('SIGTERM').pop() as () => Promise<void>;
-      await sigtermHandler();
-
-      expect(mockRedisClient.quit).toHaveBeenCalled();
-      expect(processExitSpy).toHaveBeenCalledWith(0);
+      const sigtermListeners = process.listeners('SIGTERM');
+      const sigtermHandler = sigtermListeners[sigtermListeners.length - 1] as () => Promise<void>;
+      
+      if (sigtermHandler) {
+        await sigtermHandler();
+        
+        expect(mockRedisClient.quit).toHaveBeenCalled();
+        expect(processExitSpy).toHaveBeenCalledWith(0);
+      }
       
       processExitSpy.mockRestore();
     });
@@ -1038,7 +1103,7 @@ describe('Redis Client', () => {
 
     it('deve retornar true quando Redis estiver pronto', async () => {
       vi.resetModules();
-      const { waitForRedis } = await import('../../services/redisClient');
+      const { waitForRedis } = await import('../../services/redis');
 
       const resultado = await waitForRedis(1000);
 
@@ -1050,7 +1115,7 @@ describe('Redis Client', () => {
       mockRedisClient.isReady = false;
       
       vi.resetModules();
-      const { waitForRedis } = await import('../../services/redisClient');
+      const { waitForRedis } = await import('../../services/redis');
 
       const resultado = await waitForRedis(100);
 

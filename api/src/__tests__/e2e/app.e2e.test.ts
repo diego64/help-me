@@ -7,9 +7,9 @@ import {
 } from 'vitest';
 import request from 'supertest';
 import app from '../../app';
-import { redisClient } from '../../services/redisClient';
-import { prisma } from '../../lib/prisma';
-import { hashPassword } from '../../utils/password';
+import { redisClient } from '../../services/redis';
+import { prisma } from '../../infrastructure/database/prisma/client';
+import { hashPassword } from '../../shared/config/password';
 
 const dadosUsuarioTeste = {
   email: 'teste.e2e@exemplo.com',

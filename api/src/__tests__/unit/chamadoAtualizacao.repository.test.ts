@@ -8,8 +8,8 @@ import {
 import {
   salvarHistoricoChamado,
   listarHistoricoChamado
-} from '../../repositories/chamadoAtualizacao.repository';
-import ChamadoAtualizacao from '../../models/chamadoAtualizacao.model';
+} from '../../infrastructure/repositories/atualizacao.chamado.repository';
+import ChamadoAtualizacao from '../../infrastructure/database/mongodb/atualizacao.chamado.model';
 
 vi.mock('../../models/chamadoAtualizacao.model', () => ({
   default: {

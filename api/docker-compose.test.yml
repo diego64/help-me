@@ -1,13 +1,16 @@
 version: '3.8'
 
 services:
-  postgres:
+  postgresql_helpme_test:
     image: postgres:16
-    container_name: helpme-postgres-test
+    container_name: postgresql_helpme_test
+    hostname: postgresql_helpme_test
     environment:
       POSTGRES_USER: teste
       POSTGRES_PASSWORD: senha_teste
       POSTGRES_DB: helpme_database_teste
+      TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
     ports:
       - "5433:5432"
     healthcheck:
@@ -16,22 +19,49 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  mongodb:
-    image: mongo:7
-    container_name: helpme-mongodb-test
+  mongodb_helpme_test:
+    image: mongo:8.0
+    container_name: mongodb_helpme_test
+    hostname: mongodb_helpme_test
     environment:
       MONGO_INITDB_ROOT_USERNAME: teste
       MONGO_INITDB_ROOT_PASSWORD: senha
+      TZ: America/Sao_Paulo
+    command: mongod --bind_ip_all --auth
     ports:
       - "27018:27017"
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    healthcheck:
+      test: |
+        mongosh --quiet --username teste \
+          --password senha \
+          --authenticationDatabase admin \
+          --eval "db.adminCommand('ping')" > /dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  redis:
-    image: redis:7-alpine
-    container_name: helpme-redis-test
+  redis_helpme_test:
+    image: redis:8.0
+    container_name: redis_helpme_test
+    hostname: redis_helpme_test
+    environment:
+      TZ: America/Sao_Paulo
     command: redis-server --appendonly yes
     ports:
       - "6379:6379"
@@ -41,31 +71,47 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  zookeeper:
+  zookeeper_helpme_test:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: helpme-zookeeper-test
+    container_name: zookeeper_helpme_test
+    hostname: zookeeper_helpme_test
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      TZ: America/Sao_Paulo
     ports:
       - "2181:2181"
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  kafka:
+  kafka_helpme_test:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: helpme-kafka-test
+    container_name: kafka_helpme_test
+    hostname: kafka_helpme_test
     depends_on:
-      - zookeeper
+      - zookeeper_helpme_test
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper_helpme_test:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      TZ: America/Sao_Paulo
     ports:
       - "9093:9093"
     healthcheck:
@@ -74,11 +120,18 @@ services:
       timeout: 10s
       retries: 5
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  influxdb:
+  influxdb_helpme_test:
     image: influxdb:2.7-alpine
-    container_name: helpme-influxdb-test
+    container_name: influxdb_helpme_test
+    hostname: influxdb_helpme_test
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: administrador
@@ -86,6 +139,8 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: org
       DOCKER_INFLUXDB_INIT_BUCKET: helpme_bucket
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: UwopC15GvVlz7By6
+      DOCKER_INFLUXDB_INIT_RETENTION: 7d
+      TZ: America/Sao_Paulo
     ports:
       - "8086:8086"
     healthcheck:
@@ -94,8 +149,15 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - helpme-test-network
+      - helpme_test_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
-  helpme-test-network:
+  helpme_test_network:
     driver: bridge
+    name: helpme_test_network

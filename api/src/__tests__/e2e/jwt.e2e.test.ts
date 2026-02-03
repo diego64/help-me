@@ -14,7 +14,7 @@ import {
   isTokenExpired,
   extractTokenFromHeader,
   TokenPayload,
-} from '../../auth/jwt';
+} from '../../shared/config/jwt';
 
 function verifyTokenForTesting(token: string, expectedType: 'access' | 'refresh'): TokenPayload {
   const decoded = jwt.decode(token) as TokenPayload | null;

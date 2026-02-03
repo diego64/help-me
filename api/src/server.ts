@@ -1,10 +1,10 @@
-import { prisma } from '../src/lib/prisma';
 import mongoose from 'mongoose';
+import { logger } from './shared/config/logger';
+import { prisma } from './infrastructure/database/prisma/client';
+import { redisClient } from './infrastructure/database/redis/client'
+import { conectarKafkaProducer, desconectarKafkaProducer } from './infrastructure/messaging/kafka/client';
+import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamadoConsumer';
 import app from './app';
-import { conectarKafkaProducer, desconectarKafkaProducer } from './services/kafka';
-import { startChamadoConsumer, stopChamadoConsumer } from './consumers/chamadoConsumer';
-import { logger } from './utils/logger';
-import { redisClient } from './services/redisClient';
 
 const PORT = process.env.PORT || 3000;
 
@@ -93,7 +93,6 @@ const progressiveShutdown = async (sinal: string) => {
     process.exit(0);
   }
 };
-
 
 process.on('SIGTERM', () => progressiveShutdown('SIGTERM'));
 process.on('SIGINT', () => progressiveShutdown('SIGINT'));

@@ -4,7 +4,8 @@ import {
   expect,
   vi,
   afterEach,
-  beforeEach
+  beforeEach,
+  beforeAll
 } from 'vitest';
 import { logLevel } from 'kafkajs';
 import {
@@ -17,12 +18,26 @@ import {
   customLogCreator,
   isKafkaConnected,
   sendMessage
-} from '../../services/kafka';
+} from '../../infrastructure/messaging/kafka';
+
+// Mock do logger ANTES de importar o módulo kafka
+vi.mock('../../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
+}));
+
+import { logger } from '../../shared/config/logger';
 
 describe('Kafka Service', () => {
   let originalBrokerUrl: string | undefined;
 
   beforeEach(() => {
+    // Limpa os mocks do logger antes de cada teste
+    vi.clearAllMocks();
     originalBrokerUrl = process.env.KAFKA_BROKER_URL;
   });
 
@@ -33,8 +48,6 @@ describe('Kafka Service', () => {
       delete process.env.KAFKA_BROKER_URL;
     }
 
-    vi.restoreAllMocks();
-
     try {
       await desconectarKafkaProducer();
     } catch (error) {
@@ -43,94 +56,90 @@ describe('Kafka Service', () => {
   }, 20000);
 
   describe('Custom Log Creator', () => {
-    let consoleLogSpy: any;
-
-    beforeEach(() => {
-      consoleLogSpy = vi.spyOn(console, 'log').mockImplementation((...args) => {});
-    });
-
-    afterEach(() => {
-      consoleLogSpy.mockRestore();
-    });
-
     it('deve logar mensagens de ERRO não ignoradas', () => {
-      const logger = customLogCreator();
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.ERROR,
         label: 'test-label',
         log: { error: 'Connection failed to broker' }
       } as any);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[Kafka][test-label]',
-        { error: 'Connection failed to broker' }
+      expect(logger.error).toHaveBeenCalledWith(
+        { kafka: { error: 'Connection failed to broker' }, label: 'test-label' },
+        'Kafka error'
       );
     });
 
     it('deve logar mensagens de WARN não ignoradas', () => {
-      const logger = customLogCreator();
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.WARN,
         label: 'warning-label',
         log: { error: 'Some warning message' }
       } as any);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[Kafka][warning-label]',
-        { error: 'Some warning message' }
+      expect(logger.warn).toHaveBeenCalledWith(
+        { kafka: { error: 'Some warning message' }, label: 'warning-label' },
+        'Kafka warning'
       );
     });
 
     it('NÃO deve logar mensagens ignoradas (rebalancing)', () => {
-      const logger = customLogCreator();
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.ERROR,
         label: 'test',
         log: { error: 'The group is rebalancing, so a rejoin is needed' }
       } as any);
 
-      expect(consoleLogSpy).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('NÃO deve logar mensagens de nível INFO', () => {
-      const logger = customLogCreator();
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.INFO,
         label: 'test',
         log: { message: 'Info message' }
       } as any);
 
-      expect(consoleLogSpy).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
     });
 
-    it('NÃO deve logar quando error não é string', () => {
-      const logger = customLogCreator();
+    it('deve logar quando error não é string', () => {
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.ERROR,
         label: 'test',
         log: { error: { code: 'ERR_001' } }
       } as any);
 
-      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        { kafka: { error: { code: 'ERR_001' } }, label: 'test' },
+        'Kafka error'
+      );
     });
 
     it('deve logar quando log.error contém mensagem de erro mas não está na lista de ignorados', () => {
-      const logger = customLogCreator();
+      const logCreator = customLogCreator();
 
-      logger({
+      logCreator({
         level: logLevel.ERROR,
         label: 'connection',
         log: { error: 'Timeout connecting to broker' }
       } as any);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[Kafka][connection]',
-        { error: 'Timeout connecting to broker' }
+      expect(logger.error).toHaveBeenCalledWith(
+        { kafka: { error: 'Timeout connecting to broker' }, label: 'connection' },
+        'Kafka error'
       );
     });
   });
@@ -181,7 +190,6 @@ describe('Kafka Service', () => {
 
   describe('dado que KAFKA_BROKER_URL não está definida, Quando obter configuração, Então deve retornar null', () => {
     beforeEach(async () => {
-      vi.restoreAllMocks();
       try {
         await desconectarKafkaProducer();
       } catch (error) {
@@ -228,11 +236,11 @@ describe('Kafka Service', () => {
       await conectarKafkaProducer();
       expect(mockConnect).toHaveBeenCalledTimes(1);
       expect(isKafkaConnected()).toBe(true);
+      expect(logger.info).toHaveBeenCalledWith('Kafka Producer conectado');
     });
 
     it('não lança erro quando conexão falha, apenas loga warning', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
@@ -244,29 +252,22 @@ describe('Kafka Service', () => {
       await conectarKafkaProducer();
       
       expect(isKafkaConnected()).toBe(false);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[Kafka][Producer] Falha ao conectar ao Kafka - funcionando sem Kafka'
+      expect(logger.warn).toHaveBeenCalledWith('Falha ao conectar ao Kafka - funcionando sem Kafka');
+      expect(logger.warn).toHaveBeenCalledWith(
+        { brokerUrl: 'localhost:9093' },
+        'Certifique-se de que o Kafka está rodando'
       );
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[Kafka][Producer] Certifique-se de que o Kafka está rodando em:',
-        'localhost:9093'
-      );
-
-      consoleWarnSpy.mockRestore();
     });
   });
 
   describe('dado que KAFKA_BROKER_URL não está definida, Quando tentar conectar producer, Então deve lançar erro', () => {
     it('não lança erro ao tentar conectar sem KAFKA_BROKER_URL, mas loga warning', async () => {
       delete process.env.KAFKA_BROKER_URL;
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       await conectarKafkaProducer();
       
       expect(isKafkaConnected()).toBe(false);
-      expect(consoleWarnSpy).toHaveBeenCalled();
-      
-      consoleWarnSpy.mockRestore();
+      expect(logger.warn).toHaveBeenCalled();
     });
   });
 
@@ -289,6 +290,7 @@ describe('Kafka Service', () => {
       
       expect(mockDisconnect).toHaveBeenCalledTimes(1);
       expect(isKafkaConnected()).toBe(false);
+      expect(logger.info).toHaveBeenCalledWith('Kafka Producer desconectado');
     });
 
     it('não lança erro quando producer não está conectado', async () => {
@@ -347,24 +349,25 @@ describe('Kafka Service', () => {
         topic: 'test-topic',
         messages: [{ value: 'test' }]
       });
+      expect(logger.debug).toHaveBeenCalledWith(
+        { topic: 'test-topic', messageCount: 1 },
+        'Mensagem enviada ao Kafka'
+      );
     });
 
     it('deve logar warning quando Kafka não está conectado', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       await sendMessage('test-topic', [{ value: 'test' }]);
       
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[Kafka][Producer] Kafka não conectado - mensagem não enviada para o tópico "test-topic"'
+      expect(logger.warn).toHaveBeenCalledWith(
+        { topic: 'test-topic' },
+        'Kafka não conectado - mensagem não enviada'
       );
-      
-      consoleWarnSpy.mockRestore();
     });
 
     it('deve logar erro e relançar exceção quando envio falha', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
@@ -382,17 +385,15 @@ describe('Kafka Service', () => {
         .rejects
         .toThrow('Falha ao enviar mensagem para Kafka');
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '[Kafka][Producer] Erro ao enviar mensagem para o tópico "test-topic":',
-        erroEnvio
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroEnvio, topic: 'test-topic' },
+        'Erro ao enviar mensagem ao Kafka'
       );
       
       expect(mockSend).toHaveBeenCalledWith({
         topic: 'test-topic',
         messages: [{ value: 'test' }]
       });
-      
-      consoleErrorSpy.mockRestore();
     });
   });
 
@@ -404,7 +405,6 @@ describe('Kafka Service', () => {
 
     it('deve logar erro quando desconexão falha', async () => {
       process.env.KAFKA_BROKER_URL = 'localhost:9093';
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       
       const kafkaProducer = producer;
       expect(typeof kafkaProducer.connect).toBe('function');
@@ -420,19 +420,15 @@ describe('Kafka Service', () => {
 
       await desconectarKafkaProducer();
       
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '[Kafka][Producer] Erro ao desconectar:',
-        erroDesconexao
+      expect(logger.error).toHaveBeenCalledWith(
+        { err: erroDesconexao },
+        'Erro ao desconectar Kafka Producer'
       );
-
-      mockDisconnect.mockRestore();
-      consoleErrorSpy.mockRestore();
     });
   });
 
   describe('Retornar configuração vazia quando ocorrer erro ao ler variáveis de ambiente do Kafka', () => {
     it('deve retornar null quando getKafkaInstance lança erro inesperado', async () => {
-      vi.restoreAllMocks();
       try {
         await desconectarKafkaProducer();
       } catch (error) {
@@ -450,7 +446,7 @@ describe('Kafka Service', () => {
       }));
 
       vi.resetModules();
-      const { getKafkaConfig: getKafkaConfigMocked } = await import('../../services/kafka');
+      const { getKafkaConfig: getKafkaConfigMocked } = await import('../../infrastructure/messaging/kafka');
 
       const config = getKafkaConfigMocked();
       expect(config).toBeNull();

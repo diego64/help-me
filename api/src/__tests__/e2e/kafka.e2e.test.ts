@@ -15,7 +15,7 @@ import {
   producer,
   isKafkaConnected,
   sendMessage
-} from '../../services/kafka';
+} from '../../infrastructure/messaging/kafka';
 
 describe('E2E - Kafka Service', () => {
   let originalKafkaBrokerUrl: string | undefined;

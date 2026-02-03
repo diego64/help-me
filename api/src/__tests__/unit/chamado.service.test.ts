@@ -5,9 +5,9 @@ import {
   vi,
   beforeEach
 } from 'vitest';
-import { registrarAcaoNoHistorico, buscarHistorico } from '../../services/chamado.service';
-import { salvarHistoricoChamado, listarHistoricoChamado } from '../../repositories/chamadoAtualizacao.repository';
-import { HistoricoChamadoInput } from '../../../@types/historicoChamado';
+import { registrarAcaoNoHistorico, buscarHistorico } from '../../application/use-cases/chamado/chamado.service';
+import { salvarHistoricoChamado, listarHistoricoChamado } from '../../infrastructure/repositories/atualizacao.chamado.repository';
+import { HistoricoChamadoInput } from '../../shared/@types/historicoChamado';
 
 vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
   salvarHistoricoChamado: vi.fn(),

@@ -124,7 +124,7 @@ vi.mock('fs', () => ({
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../routes/tecnico.routes')).default;
+  router = (await import('../../presentation/http/routes/tecnico.routes')).default;
 });
 
 beforeEach(() => {

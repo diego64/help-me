@@ -236,9 +236,10 @@ services:
   # ============================================
   # MESSAGE BROKER - Kafka
   # ============================================
-  zookeeper:
+  zookeeper_helpme:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper_helpme
+    hostname: zookeeper_helpme
     environment:
       ZOOKEEPER_CLIENT_PORT: ${ZOOKEEPER_CLIENT_PORT:-2181}
       ZOOKEEPER_TICK_TIME: ${ZOOKEEPER_TICK_TIME:-2000}
@@ -265,20 +266,21 @@ services:
       - "com.helpme.service=messaging"
       - "com.helpme.messaging.type=zookeeper"
 
-  kafka:
+  kafka_helpme:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka_helpme
+    hostname: kafka_helpme
     depends_on:
-      - zookeeper
+      - zookeeper_helpme
     ports:
       - '9092:9092'
       - '9093:9093'
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper_helpme:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka_helpme:9092,PLAINTEXT_HOST://localhost:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
@@ -298,17 +300,18 @@ services:
       - "com.helpme.service=messaging"
       - "com.helpme.messaging.type=kafka"
 
-  control-center:
+  control_center_helpme:
     image: confluentinc/cp-enterprise-control-center:7.5.0
     container_name: control_center_helpme
+    hostname: control_center_helpme
     depends_on:
-      - kafka
-      - zookeeper
+      - kafka_helpme
+      - zookeeper_helpme
     ports:
       - '${CONTROL_CENTER_PORT:-9021}:9021'
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: ${CONTROL_CENTER_BOOTSTRAP_SERVERS:-kafka:9092}
-      CONTROL_CENTER_ZOOKEEPER_CONNECT: ${CONTROL_CENTER_ZOOKEEPER_CONNECT:-zookeeper:2181}
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: ${CONTROL_CENTER_BOOTSTRAP_SERVERS:-kafka_helpme:9092}
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: ${CONTROL_CENTER_ZOOKEEPER_CONNECT:-zookeeper_helpme:2181}
       CONTROL_CENTER_REPLICATION_FACTOR: ${CONTROL_CENTER_REPLICATION_FACTOR:-1}
       PORT: 9021
       TZ: America/Sao_Paulo
@@ -386,10 +389,10 @@ services:
   # ============================================
   # MONITORAMENTO - InfluxDB
   # ============================================
-  influxdb:
+  influxdb_helpme:
     image: influxdb:2.7-alpine
     container_name: influxdb_helpme
-    hostname: influxdb
+    hostname: influxdb_helpme
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME}
@@ -428,17 +431,17 @@ services:
   # ============================================
   # MONITORAMENTO - Loki (Logs)
   # ============================================
-  loki:
+  loki_helpme:
       image: grafana/loki:3.0.0
-      container_name: helpme_loki
-      hostname: loki
+      container_name: loki_helpme
+      hostname: loki_helpme
       environment:
         TZ: America/Sao_Paulo
       ports:
         - "${LOKI_PORT:-3100}:3100"
       command: -config.file=/etc/loki/local-config.yaml
       volumes:
-        - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+        - ./painel-analitico/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
         - loki_data:/loki
       networks:
         - helpme_network
@@ -469,22 +472,21 @@ services:
   # ============================================
   # MONITORAMENTO - Promtail (Log Collector)
   # ============================================
-  promtail:
+  promtail_helpme:
     image: grafana/promtail:3.0.0
-    container_name: helpme_promtail
-    hostname: promtail
+    container_name: promtail_helpme
+    hostname: promtail_helpme
+    command: -config.file=/etc/promtail/config.yml
     environment:
       TZ: America/Sao_Paulo
     volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ~/code/node/help-me/api/logs:/host/logs:ro
-    command: -config.file=/etc/promtail/config.yml
+    - ./painel-analitico/monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+    - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - helpme_network
     depends_on:
-      loki:
+      loki_helpme:
         condition: service_healthy
     restart: unless-stopped
     deploy:
@@ -507,10 +509,10 @@ services:
   # ============================================
   # MONITORAMENTO - Grafana
   # ============================================
-  grafana:
+  grafana_helpme:
     image: grafana/grafana:10.2.3
     container_name: grafana_helpme
-    hostname: grafana
+    hostname: grafana_helpme
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
@@ -525,16 +527,15 @@ services:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      # Datasources e dashboards existentes (da pasta dashboards/)
-      - ./dashboards/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./dashboards/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./dashboards/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./painel-analitico/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./painel-analitico/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./painel-analitico/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - helpme_network
     depends_on:
-      - influxdb
+      - influxdb_helpme
       - postgresql_helpme
-      - loki
+      - loki_helpme
     deploy:
       resources:
         limits:
@@ -562,10 +563,10 @@ services:
   # ============================================
   # MONITORAMENTO - Prometheus
   # ============================================
-  prometheus:
+  prometheus_helpme:
     image: prom/prometheus:v2.48.1
     container_name: prometheus_helpme
-    hostname: prometheus
+    hostname: prometheus_helpme
     environment:
       TZ: America/Sao_Paulo
     command:
@@ -578,7 +579,7 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./dash/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./painel-analitico/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - helpme_network
@@ -609,10 +610,10 @@ services:
   # ============================================
   # MONITORAMENTO - Node Exporter
   # ============================================
-  node-exporter:
+  node_exporter_helpme:
     image: prom/node-exporter:v1.7.0
     container_name: node_exporter_helpme
-    hostname: node-exporter
+    hostname: node_exporter_helpme
     environment:
       TZ: America/Sao_Paulo
     command:
@@ -650,10 +651,10 @@ services:
   # ============================================
   # MONITORAMENTO - cAdvisor
   # ============================================
-  cadvisor:
+  cadvisor_helpme:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor_helpme
-    hostname: cadvisor
+    hostname: cadvisor_helpme
     privileged: true
     environment:
       TZ: America/Sao_Paulo
@@ -693,10 +694,10 @@ services:
   # ============================================
   # MONITORAMENTO - PostgreSQL Exporter
   # ============================================
-  postgres-exporter:
+  postgres_exporter_helpme:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres_exporter_helpme
-    hostname: postgres-exporter
+    hostname: postgres_exporter_helpme
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@postgresql_helpme:5432/${DB_NAME}?sslmode=disable"
       TZ: America/Sao_Paulo
@@ -705,9 +706,6 @@ services:
     networks:
       - helpme_network
     restart: unless-stopped
-    depends_on:
-      postgresql_helpme:
-        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -729,12 +727,12 @@ services:
   # ============================================
   # MONITORAMENTO - MongoDB Exporter
   # ============================================
-  mongodb-exporter:
+  mongodb_exporter_helpme:
     image: percona/mongodb_exporter:0.40
     container_name: mongodb_exporter_helpme
-    hostname: mongodb-exporter
+    hostname: mongodb_exporter_helpme
     environment:
-      MONGODB_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb_helpme:27017"
+      MONGODB_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb_helpme:27017/?authSource=admin"
       TZ: America/Sao_Paulo
     ports:
       - "${MONGODB_EXPORTER_PORT:-9216}:9216"
@@ -742,9 +740,6 @@ services:
       - '--mongodb.direct-connect=true'
       - '--mongodb.global-conn-pool=true'
       - '--collect-all'
-    depends_on:
-      mongodb_helpme:
-        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -769,13 +764,13 @@ services:
   # ============================================
   # MONITORAMENTO - Redis Exporter
   # ============================================
-  redis-exporter:
+  redis_exporter_helpme:
     image: oliver006/redis_exporter:v1.55.0
     container_name: redis_exporter_helpme
-    hostname: redis-exporter
+    hostname: redis_exporter_helpme
     environment:
-      REDIS_ADDR: "redis://redis_helpme:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_helpme_password}
+      REDIS_ADDR: "redis_helpme:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       TZ: America/Sao_Paulo
     ports:
       - "${REDIS_EXPORTER_PORT:-9121}:9121"
@@ -805,21 +800,21 @@ services:
   # ============================================
   # MONITORAMENTO - Kafka Exporter
   # ============================================
-  kafka-exporter:
+  kafka_exporter_helpme:
     image: danielqsj/kafka-exporter:v1.7.0
     container_name: kafka_exporter_helpme
-    hostname: kafka-exporter
+    hostname: kafka_exporter_helpme
     environment:
       TZ: America/Sao_Paulo
     ports:
       - "${KAFKA_EXPORTER_PORT:-9308}:9308"
     command:
-      - '--kafka.server=kafka:9092'
+      - '--kafka.server=kafka_helpme:9092'
     networks:
       - helpme_network
     restart: unless-stopped
     depends_on:
-      - kafka
+      - kafka_helpme
     deploy:
       resources:
         limits:
@@ -856,37 +851,47 @@ networks:
 volumes:
   postgresql_data:
     driver: local
-    name: postgresql_helpme_data
+
   postgresql_data_teste:
     driver: local
     name: postgresql_helpme_data_teste
+
   postgresql_backups:
     driver: local
     name: postgresql_helpme_backups
+
   postgresql_archive:
     driver: local
     name: postgresql_helpme_archive
+
   mongodb_data:
     driver: local
     name: mongodb_helpme_data
+
   mongodb_teste_data:
     driver: local
     name: mongodb_helpme_teste_data
+
   redis_data:
     driver: local
     name: redis_helpme_data
+
   influxdb_data:
     driver: local
     name: influxdb_helpme_data
+
   influxdb_config:
     driver: local
     name: influxdb_helpme_config
+
   loki_data:
     driver: local
     name: loki_helpme_data
+
   grafana_data:
     driver: local
     name: grafana_helpme_data
+
   prometheus_data:
     driver: local
     name: prometheus_helpme_data

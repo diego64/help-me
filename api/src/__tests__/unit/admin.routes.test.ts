@@ -71,7 +71,7 @@ let adminRouter: any;
 const app = express();
 
 beforeAll(async () => {
-  adminRouter = (await import('../../routes/admin.routes')).default;
+  adminRouter = (await import('../../presentation/http/routes/admin.routes')).default;
 });
 
 beforeEach(() => {
