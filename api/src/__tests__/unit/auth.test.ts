@@ -1,467 +1,443 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach
-} from 'vitest';
-import { Response, NextFunction } from 'express';
-import { Regra } from '@prisma/client';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('../../auth/jwt', () => ({
-  verifyToken: vi.fn(),
-  extractTokenFromHeader: vi.fn(),
+const mockLogger = {
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
+};
+
+vi.mock('../../../shared/config/logger', () => ({
+  logger: mockLogger,
 }));
 
-vi.mock('../../services/redisClient', () => ({
-  cacheGet: vi.fn(),
+const mockRedisClient = {
+  isOpen: false,
+  isReady: false,
+  connect: vi.fn(),
+  quit: vi.fn(),
+  on: vi.fn(),
+  set: vi.fn(),
+  get: vi.fn(),
+  del: vi.fn(),
+  keys: vi.fn(),
+  exists: vi.fn(),
+  expire: vi.fn(),
+  ttl: vi.fn(),
+  incr: vi.fn(),
+  incrBy: vi.fn(),
+  decr: vi.fn(),
+  decrBy: vi.fn(),
+  flushDb: vi.fn(),
+  ping: vi.fn(),
+};
+
+let reconnectStrategy: (retries: number) => number | Error;
+
+vi.mock('redis', () => ({
+  createClient: vi.fn((config: any) => {
+    if (config?.socket?.reconnectStrategy) {
+      reconnectStrategy = config.socket.reconnectStrategy;
+    }
+    return mockRedisClient;
+  }),
 }));
 
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../infrastructure/http/middlewares/auth';
-import * as jwtModule from '../../shared/config/jwt';
-import * as redisModule from '../../services/redis';
-
-const verifyTokenMock = vi.mocked(jwtModule.verifyToken);
-const extractTokenFromHeaderMock = vi.mocked(jwtModule.extractTokenFromHeader);
-const cacheGetMock = vi.mocked(redisModule.cacheGet);
-
-function createMockRequest(authorization?: string): Partial<AuthRequest> {
-  return {
-    headers: {
-      authorization,
-    },
-  } as Partial<AuthRequest>;
-}
-
-function createMockResponse(): Partial<Response> {
-  const res: Partial<Response> = {
-    status: vi.fn().mockReturnThis(),
-    json: vi.fn().mockReturnThis(),
-  };
-  return res;
-}
-
-function createMockNext(): NextFunction {
-  return vi.fn() as NextFunction;
-}
+let redisModule: any;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  Object.values(mockLogger).forEach(fn => fn.mockClear());
+  Object.values(mockRedisClient).forEach(fn => {
+    if (typeof fn === 'function' && 'mockClear' in fn) {
+      fn.mockClear();
+    }
+  });
+  
+  process.env.REDIS_HOST = 'localhost';
+  process.env.REDIS_PORT = '6379';
+  process.env.REDIS_DB = '0';
+  delete process.env.REDIS_PASSWORD;
+  
+  mockRedisClient.isOpen = false;
+  mockRedisClient.isReady = false;
+  mockRedisClient.connect.mockResolvedValue(undefined);
+  mockRedisClient.quit.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
-describe('authMiddleware', () => {
-  it('deve retornar 401 quando token não for fornecido', async () => {
-    // Arrange
-    extractTokenFromHeaderMock.mockReturnValue(null);
-    const req = createMockRequest() as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
-    expect(next).not.toHaveBeenCalled();
+describe('Redis Client - Configuração', () => {
+  beforeEach(() => {
+    vi.resetModules();
   });
 
-  it('deve retornar 401 quando extractTokenFromHeader retornar null', async () => {
-    // Arrange
-    extractTokenFromHeaderMock.mockReturnValue(null);
-    const req = createMockRequest('Bearer invalid') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve criar cliente com configuração padrão', async () => {
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(extractTokenFromHeaderMock).toHaveBeenCalledWith('Bearer invalid');
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token não fornecido.' });
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'redis://localhost:6379/0',
+        socket: expect.objectContaining({
+          connectTimeout: 5000,
+        }),
+        commandsQueueMaxLength: 1000,
+        disableOfflineQueue: false,
+      })
+    );
   });
 
-  it('deve retornar 401 quando token estiver na blacklist', async () => {
-    // Arrange
-    const mockToken = 'valid-token';
-    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockReturnValue(mockDecoded);
-    cacheGetMock.mockResolvedValue('revogado');
-    
-    const req = createMockRequest('Bearer valid-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve criar cliente com senha quando REDIS_PASSWORD estiver definido', async () => {
+    process.env.REDIS_PASSWORD = 'secret123';
+    vi.resetModules();
 
-    // Act
-    await authMiddleware(req, res, next);
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Assert
-    expect(cacheGetMock).toHaveBeenCalledWith('jwt:blacklist:token-jti');
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token revogado. Faça login novamente.' });
-    expect(next).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'redis://:secret123@localhost:6379/0',
+      })
+    );
   });
 
-  it('deve chamar next quando token for válido e não estiver na blacklist', async () => {
-    // Arrange
-    const mockToken = 'valid-token';
-    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, jti: 'token-jti', type: 'access' as const };
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockReturnValue(mockDecoded);
-    cacheGetMock.mockResolvedValue(null);
-    
-    const req = createMockRequest('Bearer valid-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve usar host customizado', async () => {
+    process.env.REDIS_HOST = 'redis.example.com';
+    vi.resetModules();
 
-    // Act
-    await authMiddleware(req, res, next);
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Assert
-    expect(req.usuario).toEqual(mockDecoded);
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'redis://redis.example.com:6379/0',
+      })
+    );
   });
 
-  it('deve chamar next quando token não tiver jti', async () => {
-    // Arrange
-    const mockToken = 'valid-token';
-    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockReturnValue(mockDecoded);
-    
-    const req = createMockRequest('Bearer valid-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve usar porta customizada', async () => {
+    process.env.REDIS_PORT = '6380';
+    vi.resetModules();
 
-    // Act
-    await authMiddleware(req, res, next);
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Assert
-    expect(cacheGetMock).not.toHaveBeenCalled();
-    expect(req.usuario).toEqual(mockDecoded);
-    expect(next).toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'redis://localhost:6380/0',
+      })
+    );
   });
 
-  it('deve retornar 401 com mensagem de token expirado quando erro contiver "expir"', async () => {
-    // Arrange
-    const mockToken = 'expired-token';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw new Error('Token expirado');
-    });
-    
-    const req = createMockRequest('Bearer expired-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve usar database customizado', async () => {
+    process.env.REDIS_DB = '5';
+    vi.resetModules();
 
-    // Act
-    await authMiddleware(req, res, next);
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
-    expect(next).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'redis://localhost:6379/5',
+      })
+    );
   });
 
-  it('deve retornar 401 com mensagem de token expirado quando erro contiver "expire" (case insensitive)', async () => {
-    // Arrange
-    const mockToken = 'expired-token';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw new Error('JWT EXPIRED at 2024');
-    });
-    
-    const req = createMockRequest('Bearer expired-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve configurar estratégia de reconexão', async () => {
+    const { createClient } = await import('redis');
+    await import('../../infrastructure/database/redis/client');
 
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
-  });
-
-  it('deve retornar 401 com mensagem genérica quando token for inválido', async () => {
-    // Arrange
-    const mockToken = 'invalid-token';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw new Error('Token inválido');
-    });
-    
-    const req = createMockRequest('Bearer invalid-token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('deve retornar 401 quando erro não for instância de Error (linha 35)', async () => {
-    // Arrange
-    const mockToken = 'token-com-erro-estranho';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw 'String de erro não estruturado';
-    });
-    
-    const req = createMockRequest('Bearer token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('deve retornar 401 quando erro for null', async () => {
-    // Arrange
-    const mockToken = 'token-com-erro-null';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw null;
-    });
-    
-    const req = createMockRequest('Bearer token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
-  });
-
-  it('deve retornar 401 quando erro for objeto sem message', async () => {
-    // Arrange
-    const mockToken = 'token-com-erro-objeto';
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw { code: 500, detail: 'Erro desconhecido' };
-    });
-    
-    const req = createMockRequest('Bearer token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
-  });
-
-  it('deve pular verificação de blacklist quando decoded não tiver jti', async () => {
-    // Arrange
-    const mockToken = 'valid-token-sem-jti';
-    const mockDecoded = { id: 'user1', regra: Regra.USUARIO, type: 'access' as const };
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockReturnValue(mockDecoded);
-    
-    const req = createMockRequest('Bearer valid-token-sem-jti') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(cacheGetMock).not.toHaveBeenCalled();
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('deve logar erro no console quando ocorrer exceção', async () => {
-    // Arrange
-    const consoleErrorSpy = vi.spyOn(console, 'error');
-    const mockToken = 'token-com-erro';
-    const mockError = new Error('Erro de verificação');
-    extractTokenFromHeaderMock.mockReturnValue(mockToken);
-    verifyTokenMock.mockImplementation(() => {
-      throw mockError;
-    });
-    
-    const req = createMockRequest('Bearer token') as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    await authMiddleware(req, res, next);
-
-    // Assert
-    expect(consoleErrorSpy).toHaveBeenCalledWith('authMiddleware error:', mockError);
+    const callArgs = (createClient as any).mock.calls[0][0];
+    expect(callArgs.socket.reconnectStrategy).toBeDefined();
+    expect(typeof callArgs.socket.reconnectStrategy).toBe('function');
   });
 });
 
-describe('authorizeRoles', () => {
-  it('deve retornar 401 quando req.usuario não estiver definido', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN);
-    const req = {} as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Não autorizado.' });
-    expect(next).not.toHaveBeenCalled();
+describe('Redis Client - Estratégia de Reconexão', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    await import('../../infrastructure/database/redis/client');
   });
 
-  it('deve retornar 403 quando usuário não tiver permissão', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN);
-    const req = {
-      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
-    expect(next).not.toHaveBeenCalled();
+  it('deve retornar delay exponencial para tentativas válidas', () => {
+    expect(reconnectStrategy(1)).toBe(1000);
+    expect(reconnectStrategy(2)).toBe(2000);
+    expect(reconnectStrategy(3)).toBe(4000);
+    expect(reconnectStrategy(4)).toBe(8000);
   });
 
-  it('deve chamar next quando usuário tiver permissão adequada', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN);
-    const req = {
-      usuario: { id: 'user1', regra: Regra.ADMIN, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
+  it('deve limitar delay máximo a 30 segundos', () => {
+    const delay = reconnectStrategy(5);
+    
+    if (typeof delay === 'number') {
+      expect(delay).toBeLessThanOrEqual(30000);
+    }
   });
 
-  it('deve aceitar múltiplas regras e permitir acesso se usuário tiver uma delas', () => {
-    // Arrange
-    const middleware = authorizeRoles('ADMIN', 'USUARIO');
-    const req = {
-      usuario: { id: 'user1', regra: 'USUARIO' as any, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
+  it('deve retornar erro após exceder tentativas máximas', () => {
+    const result = reconnectStrategy(6);
+    
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toContain('Máximo de tentativas');
   });
 
-  it('deve aceitar regras como strings', () => {
-    // Arrange
-    const middleware = authorizeRoles('ADMIN', 'USUARIO');
-    const req = {
-      usuario: { id: 'user1', regra: 'ADMIN' as any, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
-
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(next).toHaveBeenCalled();
+  it('deve calcular delay corretamente para múltiplas tentativas', () => {
+    // Tentativa 1: 1000ms
+    // Tentativa 2: 2000ms  
+    // Tentativa 3: 4000ms
+    // Tentativa 4: 8000ms
+    // Tentativa 5: 16000ms (< 30000, OK)
+    
+    const delays = [1, 2, 3, 4, 5].map(n => reconnectStrategy(n));
+    
+    expect(delays.every(d => typeof d === 'number')).toBe(true);
+    expect(delays.every(d => typeof d === 'number' && d <= 30000)).toBe(true);
   });
 
-  it('deve negar acesso quando usuário não tiver nenhuma das regras permitidas', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN);
-    const req = {
-      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve retornar Error para tentativa maior que máximo', () => {
+    const results = [6, 7, 8, 10].map(n => reconnectStrategy(n));
+    
+    expect(results.every(r => r instanceof Error)).toBe(true);
+  });
+});
 
-    // Act
-    middleware(req, res, next);
+describe('Redis Client - Event Listeners', () => {
+  it('deve registrar listeners para todos os eventos necessários', async () => {
+    vi.resetModules();
+    const eventHandlers = new Map<string, Function>();
+    
+    mockRedisClient.on.mockImplementation((event: string, handler: Function) => {
+      eventHandlers.set(event, handler);
+      return mockRedisClient;
+    });
 
-    // Assert
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Acesso negado.' });
+    await import('../../infrastructure/database/redis/client');
+
+    expect(eventHandlers.has('error')).toBe(true);
+    expect(eventHandlers.has('connect')).toBe(true);
+    expect(eventHandlers.has('ready')).toBe(true);
+    expect(eventHandlers.has('reconnecting')).toBe(true);
+    expect(eventHandlers.has('end')).toBe(true);
+  });
+});
+
+describe('Redis Client - Conexão Inicial', () => {
+  beforeEach(() => {
+    vi.resetModules();
   });
 
-  it('deve converter todas as regras para string antes de comparar', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN);
-    const req = {
-      usuario: { id: 'user1', regra: 'ADMIN' as any, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve tentar conectar se cliente não estiver aberto', async () => {
+    mockRedisClient.isOpen = false;
+    
+    await import('../../infrastructure/database/redis/client');
 
-    // Act
-    middleware(req, res, next);
-
-    // Assert
-    expect(next).toHaveBeenCalled();
+    expect(mockRedisClient.connect).toHaveBeenCalled();
   });
 
-  it('deve funcionar com uma única regra', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.USUARIO);
-    const req = {
-      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('não deve conectar se cliente já estiver aberto', async () => {
+    mockRedisClient.isOpen = true;
 
-    // Act
-    middleware(req, res, next);
+    await import('../../infrastructure/database/redis/client');
 
-    // Assert
-    expect(next).toHaveBeenCalled();
+    expect(mockRedisClient.connect).not.toHaveBeenCalled();
   });
 
-  it('deve funcionar com duas ou mais regras', () => {
-    // Arrange
-    const middleware = authorizeRoles(Regra.ADMIN, Regra.USUARIO);
-    const req = {
-      usuario: { id: 'user1', regra: Regra.USUARIO, type: 'access' as const }
-    } as AuthRequest;
-    const res = createMockResponse() as Response;
-    const next = createMockNext();
+  it('deve tratar erro de conexão sem lançar exceção', async () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.connect.mockRejectedValue(new Error('Connection refused'));
 
-    // Act
-    middleware(req, res, next);
+    // Não deve lançar erro
+    await expect(
+      import('../../infrastructure/database/redis/client')
+    ).resolves.toBeDefined();
+  });
+});
 
-    // Assert
-    expect(next).toHaveBeenCalled();
+describe('isRedisConnected', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    redisModule = await import('../../infrastructure/database/redis/client');
+  });
+
+  it('deve retornar true quando Redis estiver conectado e pronto', () => {
+    mockRedisClient.isOpen = true;
+    mockRedisClient.isReady = true;
+
+    expect(redisModule.isRedisConnected()).toBe(true);
+  });
+
+  it('deve retornar false quando Redis não estiver aberto', () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.isReady = true;
+
+    expect(redisModule.isRedisConnected()).toBe(false);
+  });
+
+  it('deve retornar false quando Redis não estiver pronto', () => {
+    mockRedisClient.isOpen = true;
+    mockRedisClient.isReady = false;
+
+    expect(redisModule.isRedisConnected()).toBe(false);
+  });
+
+  it('deve retornar false quando Redis não estiver aberto nem pronto', () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.isReady = false;
+
+    expect(redisModule.isRedisConnected()).toBe(false);
+  });
+});
+
+describe('waitForRedis', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    redisModule = await import('../../infrastructure/database/redis/client');
+  });
+
+  it('deve retornar true quando Redis estiver conectado imediatamente', async () => {
+    mockRedisClient.isOpen = true;
+    mockRedisClient.isReady = true;
+
+    const result = await redisModule.waitForRedis(1000);
+    expect(result).toBe(true);
+  });
+
+  it('deve retornar true quando Redis conectar dentro do timeout', async () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.isReady = false;
+
+    setTimeout(() => {
+      mockRedisClient.isOpen = true;
+      mockRedisClient.isReady = true;
+    }, 200);
+
+    const result = await redisModule.waitForRedis(1000);
+    expect(result).toBe(true);
+  });
+
+  it('deve retornar false quando timeout expirar', async () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.isReady = false;
+
+    const result = await redisModule.waitForRedis(100);
+    expect(result).toBe(false);
+  });
+
+  it('deve usar timeout padrão de 10000ms', async () => {
+    mockRedisClient.isOpen = false;
+    mockRedisClient.isReady = false;
+
+    const startTime = Date.now();
+    const resultPromise = redisModule.waitForRedis();
+    
+    setTimeout(() => {
+      mockRedisClient.isOpen = true;
+      mockRedisClient.isReady = true;
+    }, 100);
+
+    await resultPromise;
+    const elapsed = Date.now() - startTime;
+
+    expect(elapsed).toBeGreaterThanOrEqual(100);
+    expect(elapsed).toBeLessThan(10000);
+  });
+});
+
+describe('cacheSet', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    redisModule = await import('../../infrastructure/database/redis/client');
+    mockRedisClient.isOpen = true;
+    mockRedisClient.isReady = true;
+  });
+
+  it('deve salvar string com TTL padrão', async () => {
+    mockRedisClient.set.mockResolvedValue('OK');
+
+    await redisModule.cacheSet('key1', 'value1');
+
+    expect(mockRedisClient.set).toHaveBeenCalledWith('key1', 'value1', { EX: 3600 });
+  });
+
+  it('deve salvar string com TTL customizado', async () => {
+    mockRedisClient.set.mockResolvedValue('OK');
+
+    await redisModule.cacheSet('key1', 'value1', 7200);
+
+    expect(mockRedisClient.set).toHaveBeenCalledWith('key1', 'value1', { EX: 7200 });
+  });
+
+  it('deve serializar objeto para JSON', async () => {
+    mockRedisClient.set.mockResolvedValue('OK');
+    const obj = { name: 'John', age: 30 };
+
+    await redisModule.cacheSet('user:1', obj);
+
+    expect(mockRedisClient.set).toHaveBeenCalledWith(
+      'user:1',
+      JSON.stringify(obj),
+      { EX: 3600 }
+    );
+  });
+
+  it('não deve executar quando Redis não estiver conectado', async () => {
+    mockRedisClient.isOpen = false;
+
+    await redisModule.cacheSet('key1', 'value1');
+
+    expect(mockRedisClient.set).not.toHaveBeenCalled();
+  });
+
+  it('deve tratar erro silenciosamente quando operação falhar', async () => {
+    mockRedisClient.set.mockRejectedValue(new Error('SET failed'));
+
+    // Não deve lançar erro
+    await expect(
+      redisModule.cacheSet('key1', 'value1')
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('cacheGet', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    redisModule = await import('../../infrastructure/database/redis/client');
+    mockRedisClient.isOpen = true;
+    mockRedisClient.isReady = true;
+  });
+
+  it('deve retornar valor quando chave existir', async () => {
+    mockRedisClient.get.mockResolvedValue('cached-value');
+
+    const result = await redisModule.cacheGet('key1');
+
+    expect(result).toBe('cached-value');
+    expect(mockRedisClient.get).toHaveBeenCalledWith('key1');
+  });
+
+  it('deve retornar null quando chave não existir', async () => {
+    mockRedisClient.get.mockResolvedValue(null);
+
+    const result = await redisModule.cacheGet('key-inexistente');
+
+    expect(result).toBeNull();
+  });
+
+  it('deve retornar null quando Redis não estiver conectado', async () => {
+    mockRedisClient.isOpen = false;
+
+    const result = await redisModule.cacheGet('key1');
+
+    expect(result).toBeNull();
+  });
+
+  it('deve retornar null quando operação falhar', async () => {
+    mockRedisClient.get.mockRejectedValue(new Error('GET failed'));
+
+    const result = await redisModule.cacheGet('key1');
+
+    expect(result).toBeNull();
   });
 });

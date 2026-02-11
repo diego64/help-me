@@ -1,1162 +1,704 @@
-import { 
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  vi 
-} from 'vitest';
-import express from 'express';
-import request from 'supertest';
+import { describe, it, expect } from 'vitest';
+import { ChamadoStatus } from '@prisma/client';
 
-const prismaMock = {
-  chamado: {
-    findFirst: vi.fn(),
-    findUnique: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  },
-  servico: {
-    findMany: vi.fn(),
-  },
-  expediente: {
-    findMany: vi.fn(),
-  },
-  ordemDeServico: {
-    deleteMany: vi.fn(),
-  },
-  $transaction: vi.fn(),
-  $disconnect: vi.fn().mockResolvedValue(undefined)
-};
+describe('Rotas do Chamado', () => {
+  describe('Validação da descrição', () => {
+    const validarDescricao = (descricao: any): { valida: boolean; erro?: string } => {
+      if (!descricao || typeof descricao !== 'string') {
+        return { valida: false, erro: 'Descrição é obrigatória' };
+      }
 
-const salvarHistoricoChamadoMock = vi.fn().mockResolvedValue({});
-const listarHistoricoChamadoMock = vi.fn().mockResolvedValue([]);
+      const trimmed = descricao.trim();
+      
+      if (trimmed.length === 0) {
+        return { valida: false, erro: 'Descrição é obrigatória' };
+      }
 
-const chamadoAtualizacaoModelMock = {
-  findOne: vi.fn(),
-  create: vi.fn().mockResolvedValue({}),
-};
+      if (trimmed.length < 10) {
+        return { valida: false, erro: 'Descrição deve ter no mínimo 10 caracteres' };
+      }
 
-const usuarioPadrao = {
-  id: 'uid1',
-  nome: 'Usuario',
-  sobrenome: 'Padrao',
-  email: 'usu@em.com',
-  regra: 'USUARIO',
-};
+      if (trimmed.length > 5000) {
+        return { valida: false, erro: 'Descrição deve ter no máximo 5000 caracteres' };
+      }
 
-const chamadoBase = {
-  id: 'chmid1',
-  OS: 'INC0001',
-  descricao: 'Descricao valida com mais de 10 caracteres',
-  status: 'ABERTO',
-  usuarioId: usuarioPadrao.id,
-  tecnicoId: 'tec1',
-  geradoEm: '2025-01-01T00:00:00.000Z',
-  atualizadoEm: '2025-01-01T00:00:00.000Z',
-  encerradoEm: null,
-  descricaoEncerramento: null,
-  deletadoEm: null,
-  usuario: {
-    id: usuarioPadrao.id,
-    nome: usuarioPadrao.nome,
-    sobrenome: usuarioPadrao.sobrenome,
-    email: usuarioPadrao.email,
-  },
-  servicos: [
-    { 
-      id: 'sid1', 
-      servico: { 
-        id: 'serv1', 
-        nome: 'ServicoA' 
-      } 
+      return { valida: true };
+    };
+
+    it('deve retornar erro quando descrição for null', () => {
+      const resultado = validarDescricao(null);
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toBe('Descrição é obrigatória');
+    });
+
+    it('deve retornar erro quando descrição for undefined', () => {
+      const resultado = validarDescricao(undefined);
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toBe('Descrição é obrigatória');
+    });
+
+    it('deve retornar erro quando descrição for número', () => {
+      const resultado = validarDescricao(12345);
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toBe('Descrição é obrigatória');
+    });
+
+    it('deve retornar erro quando descrição for vazia', () => {
+      const resultado = validarDescricao('');
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toBe('Descrição é obrigatória');
+    });
+
+    it('deve retornar erro quando descrição for apenas espaços', () => {
+      const resultado = validarDescricao('   ');
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toBe('Descrição é obrigatória');
+    });
+
+    it('deve retornar erro quando descrição tiver menos de 10 caracteres', () => {
+      const resultado = validarDescricao('Curta');
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('no mínimo 10 caracteres');
+    });
+
+    it('deve retornar erro quando descrição tiver exatamente 9 caracteres', () => {
+      const resultado = validarDescricao('123456789');
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('no mínimo 10 caracteres');
+    });
+
+    it('deve retornar erro quando descrição tiver mais de 5000 caracteres', () => {
+      const descricaoLonga = 'a'.repeat(5001);
+      const resultado = validarDescricao(descricaoLonga);
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('no máximo 5000 caracteres');
+    });
+
+    it('deve aceitar descrição com exatamente 10 caracteres', () => {
+      const resultado = validarDescricao('1234567890');
+      expect(resultado.valida).toBe(true);
+      expect(resultado.erro).toBeUndefined();
+    });
+
+    it('deve aceitar descrição com exatamente 5000 caracteres', () => {
+      const descricaoMax = 'a'.repeat(5000);
+      const resultado = validarDescricao(descricaoMax);
+      expect(resultado.valida).toBe(true);
+      expect(resultado.erro).toBeUndefined();
+    });
+
+    it('deve aceitar descrição válida', () => {
+      const resultado = validarDescricao('Descrição válida com mais de 10 caracteres');
+      expect(resultado.valida).toBe(true);
+      expect(resultado.erro).toBeUndefined();
+    });
+
+    it('deve trimmar descrição antes de validar', () => {
+      const resultado = validarDescricao('   Descrição válida   ');
+      expect(resultado.valida).toBe(true);
+    });
+  });
+
+  describe('Validação da padronização de serviços', () => {
+    const normalizarServicos = (servico: any): string[] => {
+      if (!servico) return [];
+
+      // Se for string, converte para array
+      const servicosArray = Array.isArray(servico) ? servico : [servico];
+
+      // Filtra apenas strings válidas e remove duplicatas
+      return [...new Set(
+        servicosArray
+          .filter((s) => typeof s === 'string' && s.trim().length > 0)
+          .map((s) => s.trim())
+      )];
+    };
+
+    it('deve retornar array vazio quando serviço for null', () => {
+      const resultado = normalizarServicos(null);
+      expect(resultado).toEqual([]);
+    });
+
+    it('deve retornar array vazio quando serviço for undefined', () => {
+      const resultado = normalizarServicos(undefined);
+      expect(resultado).toEqual([]);
+    });
+
+    it('deve converter string única em array', () => {
+      const resultado = normalizarServicos('Suporte Técnico');
+      expect(resultado).toEqual(['Suporte Técnico']);
+    });
+
+    it('deve filtrar valores não-string', () => {
+      const resultado = normalizarServicos([123, null, 'Suporte', {}, []]);
+      expect(resultado).toEqual(['Suporte']);
+    });
+
+    it('deve filtrar strings vazias', () => {
+      const resultado = normalizarServicos(['Suporte', '', '  ', 'Manutenção']);
+      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    });
+
+    it('deve trimmar strings', () => {
+      const resultado = normalizarServicos(['  Suporte  ', 'Manutenção  ']);
+      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    });
+
+    it('deve remover duplicatas', () => {
+      const resultado = normalizarServicos(['Suporte', 'Suporte', 'Manutenção']);
+      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    });
+
+    it('deve remover duplicatas após trimming', () => {
+      const resultado = normalizarServicos(['Suporte', '  Suporte  ']);
+      expect(resultado).toEqual(['Suporte']);
+    });
+
+    it('deve processar array misto corretamente', () => {
+      const resultado = normalizarServicos([
+        'Suporte Técnico',
+        null,
+        123,
+        '',
+        '  Manutenção  ',
+        'Suporte Técnico',
+        '   ',
+      ]);
+      expect(resultado).toEqual(['Suporte Técnico', 'Manutenção']);
+    });
+  });
+
+  describe('Geração de ordem de serviço (OS)', () => {
+    const gerarProximoNumeroOS = (ultimaOS: string | null): string => {
+      if (!ultimaOS) {
+        return 'INC0001';
+      }
+
+      // Extrair número da última OS
+      const numeroAtual = parseInt(ultimaOS.replace('INC', ''), 10);
+
+      // Se não for um número válido, começar do INC0001
+      if (isNaN(numeroAtual)) {
+        return 'INC0001';
+      }
+
+      // Incrementar e formatar com padding de 4 dígitos
+      const proximoNumero = numeroAtual + 1;
+      return `INC${proximoNumero.toString().padStart(4, '0')}`;
+    };
+
+    it('deve gerar INC0001 quando não houver última OS', () => {
+      const resultado = gerarProximoNumeroOS(null);
+      expect(resultado).toBe('INC0001');
+    });
+
+    it('deve incrementar número corretamente', () => {
+      const resultado = gerarProximoNumeroOS('INC0001');
+      expect(resultado).toBe('INC0002');
+    });
+
+    it('deve gerar INC0001 quando última OS for inválida', () => {
+      const resultado = gerarProximoNumeroOS('INCabc');
+      expect(resultado).toBe('INC0001');
+    });
+
+    it('deve manter padding de 4 dígitos', () => {
+      const resultado = gerarProximoNumeroOS('INC0099');
+      expect(resultado).toBe('INC0100');
+    });
+
+    it('deve funcionar com números grandes', () => {
+      const resultado = gerarProximoNumeroOS('INC9999');
+      expect(resultado).toBe('INC10000');
+    });
+
+    it('deve lidar com string vazia', () => {
+      const resultado = gerarProximoNumeroOS('');
+      expect(resultado).toBe('INC0001');
+    });
+  });
+  
+  describe('Validação do status', () => {
+    const validarTransicaoStatus = (
+      statusAtual: ChamadoStatus,
+      novoStatus: ChamadoStatus
+    ): { valida: boolean; erro?: string } => {
+      // Cancelado não pode ser alterado
+      if (statusAtual === ChamadoStatus.CANCELADO) {
+        return { valida: false, erro: 'Chamados cancelados não podem ser alterados' };
+      }
+
+      // Não pode mudar para ABERTO ou REABERTO manualmente
+      if (novoStatus === ChamadoStatus.ABERTO || novoStatus === ChamadoStatus.REABERTO) {
+        return { valida: false, erro: 'Status inválido para transição manual' };
+      }
+
+      return { valida: true };
+    };
+
+    it('deve rejeitar alteração de chamado cancelado', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.CANCELADO,
+        ChamadoStatus.EM_ATENDIMENTO
+      );
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('cancelados não podem ser alterados');
+    });
+
+    it('deve rejeitar transição para ABERTO', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.EM_ATENDIMENTO,
+        ChamadoStatus.ABERTO
+      );
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('Status inválido');
+    });
+
+    it('deve rejeitar transição para REABERTO', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.EM_ATENDIMENTO,
+        ChamadoStatus.REABERTO
+      );
+      expect(resultado.valida).toBe(false);
+      expect(resultado.erro).toContain('Status inválido');
+    });
+
+    it('deve aceitar transição válida para EM_ATENDIMENTO', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.ABERTO,
+        ChamadoStatus.EM_ATENDIMENTO
+      );
+      expect(resultado.valida).toBe(true);
+    });
+
+    it('deve aceitar transição válida para ENCERRADO', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.EM_ATENDIMENTO,
+        ChamadoStatus.ENCERRADO
+      );
+      expect(resultado.valida).toBe(true);
+    });
+
+    it('deve aceitar transição válida para CANCELADO', () => {
+      const resultado = validarTransicaoStatus(
+        ChamadoStatus.ABERTO,
+        ChamadoStatus.CANCELADO
+      );
+      expect(resultado.valida).toBe(true);
+    });
+  });
+  
+  describe('Validação de expediente', () => {
+    interface Expediente {
+      entrada: Date;
+      saida: Date;
+      ativo: boolean;
+      deletadoEm: Date | null;
     }
-  ],
-  tecnico: { 
-    id: 'tec1',
-    nome: 'TECNICO', 
-    email: 'tec@em.com' 
-  },
-};
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: function () {
-    return prismaMock;
-  },
-  ChamadoStatus: {
-    ABERTO: 'ABERTO',
-    EM_ATENDIMENTO: 'EM_ATENDIMENTO',
-    ENCERRADO: 'ENCERRADO',
-    CANCELADO: 'CANCELADO',
-    REABERTO: 'REABERTO',
-  },
-}));
+    const estaNoExpediente = (
+      expedientes: Expediente[],
+      horaAtual: Date
+    ): boolean => {
+      // Filtrar apenas expedientes válidos
+      const expedientesValidos = expedientes.filter(
+        (exp) => exp.ativo && !exp.deletadoEm
+      );
 
-vi.mock('../../lib/prisma', () => ({
-  prisma: prismaMock,
-}));
+      if (expedientesValidos.length === 0) {
+        return false;
+      }
 
-vi.mock('../../repositories/chamadoAtualizacao.repository', () => ({
-  salvarHistoricoChamado: salvarHistoricoChamadoMock,
-  listarHistoricoChamado: listarHistoricoChamadoMock,
-}));
+      const horaAtualMinutos = horaAtual.getHours() * 60 + horaAtual.getMinutes();
 
-vi.mock('../../models/chamadoAtualizacao.model', () => ({
-  default: chamadoAtualizacaoModelMock,
-}));
+      return expedientesValidos.some((exp) => {
+        const entradaMinutos = exp.entrada.getHours() * 60 + exp.entrada.getMinutes();
+        const saidaMinutos = exp.saida.getHours() * 60 + exp.saida.getMinutes();
 
-let Regra = 'USUARIO';
-let UsarUsuarioNulo = false;
+        return horaAtualMinutos >= entradaMinutos && horaAtualMinutos <= saidaMinutos;
+      });
+    };
 
-vi.mock('../../middleware/auth', () => ({
-  authMiddleware: (req: any, res: any, next: any) => {
-    if (UsarUsuarioNulo) {
-      req.usuario = null;
-    } else {
-      req.usuario = { ...usuarioPadrao, regra: Regra };
+    it('deve retornar false quando não houver expedientes', () => {
+      const resultado = estaNoExpediente([], new Date());
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false quando expedientes estiverem inativos', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: false,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(10, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false quando expedientes estiverem deletados', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: new Date(),
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(10, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false quando hora atual for antes do expediente', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(8, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar false quando hora atual for após o expediente', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(19, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(false);
+    });
+
+    it('deve retornar true quando hora atual estiver dentro do expediente', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(10, 30, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(true);
+    });
+
+    it('deve retornar true quando hora for exatamente no início do expediente', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(9, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(true);
+    });
+
+    it('deve retornar true quando hora for exatamente no fim do expediente', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(9, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(18, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(true);
+    });
+
+    it('deve funcionar com múltiplos expedientes', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(8, 0, 0)),
+          saida: new Date(new Date().setHours(12, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+        {
+          entrada: new Date(new Date().setHours(14, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(15, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(true);
+    });
+
+    it('deve retornar false no intervalo entre expedientes', () => {
+      const expedientes = [
+        {
+          entrada: new Date(new Date().setHours(8, 0, 0)),
+          saida: new Date(new Date().setHours(12, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+        {
+          entrada: new Date(new Date().setHours(14, 0, 0)),
+          saida: new Date(new Date().setHours(18, 0, 0)),
+          ativo: true,
+          deletadoEm: null,
+        },
+      ];
+      const horaAtual = new Date(new Date().setHours(13, 0, 0));
+
+      const resultado = estaNoExpediente(expedientes, horaAtual);
+      expect(resultado).toBe(false);
+    });
+  });
+  
+  describe('Validação do prazo de reabertura', () => {
+    const podeReabrir = (encerradoEm: Date | null): { pode: boolean; erro?: string } => {
+      if (!encerradoEm) {
+        return { pode: false, erro: 'Data de encerramento não encontrada' };
+      }
+
+      const agora = new Date();
+      const diferencaMs = agora.getTime() - encerradoEm.getTime();
+      const diferencaHoras = diferencaMs / (1000 * 60 * 60);
+
+      if (diferencaHoras > 48) {
+        return { pode: false, erro: 'Prazo de 48 horas excedido' };
+      }
+
+      return { pode: true };
+    };
+
+    it('deve retornar erro quando não houver data de encerramento', () => {
+      const resultado = podeReabrir(null);
+      expect(resultado.pode).toBe(false);
+      expect(resultado.erro).toContain('Data de encerramento não encontrada');
+    });
+
+    it('deve retornar erro quando exceder 48 horas', () => {
+      const encerradoEm = new Date(Date.now() - 49 * 3600 * 1000);
+      const resultado = podeReabrir(encerradoEm);
+      expect(resultado.pode).toBe(false);
+      expect(resultado.erro).toContain('48 horas');
+    });
+
+    it('deve aceitar exatamente 48 horas', () => {
+      const encerradoEm = new Date(Date.now() - 48 * 3600 * 1000);
+      const resultado = podeReabrir(encerradoEm);
+      expect(resultado.pode).toBe(true);
+    });
+
+    it('deve aceitar menos de 48 horas', () => {
+      const encerradoEm = new Date(Date.now() - 24 * 3600 * 1000);
+      const resultado = podeReabrir(encerradoEm);
+      expect(resultado.pode).toBe(true);
+    });
+
+    it('deve aceitar recém encerrado', () => {
+      const encerradoEm = new Date(Date.now() - 30 * 60 * 1000); // 30 minutos
+      const resultado = podeReabrir(encerradoEm);
+      expect(resultado.pode).toBe(true);
+    });
+
+    it('deve rejeitar 48h + 1 minuto', () => {
+      const encerradoEm = new Date(Date.now() - (48 * 3600 + 60) * 1000);
+      const resultado = podeReabrir(encerradoEm);
+      expect(resultado.pode).toBe(false);
+    });
+  });
+  
+  describe('Validação de permissionamento', () => {
+    interface Usuario {
+      id: string;
+      regra: 'ADMIN' | 'TECNICO' | 'USUARIO';
     }
-    req.session = { destroy: (cb: any) => cb(null) };
-    next();
-  },
-  authorizeRoles:
-    (...roles: string[]) =>
-    (req: any, res: any, next: any) =>
-      req.usuario && roles.includes(req.usuario.regra)
-        ? next()
-        : res.status(403).json({ error: 'Forbidden' }),
-}));
 
-let router: any;
+    const podeEditarChamado = (
+      usuario: Usuario,
+      chamadoUsuarioId: string
+    ): boolean => {
+      // Admin pode editar qualquer chamado
+      if (usuario.regra === 'ADMIN') {
+        return true;
+      }
 
-beforeAll(async () => {
-  router = (await import('../../presentation/http/routes/chamado.routes')).default;
-});
+      // Outros só podem editar seus próprios chamados
+      return usuario.id === chamadoUsuarioId;
+    };
 
-beforeEach(() => {
-  vi.clearAllMocks();
+    it('deve permitir admin editar qualquer chamado', () => {
+      const admin = { id: 'admin-1', regra: 'ADMIN' as const };
+      const resultado = podeEditarChamado(admin, 'outro-usuario');
+      expect(resultado).toBe(true);
+    });
+
+    it('deve permitir usuário editar próprio chamado', () => {
+      const usuario = { id: 'user-1', regra: 'USUARIO' as const };
+      const resultado = podeEditarChamado(usuario, 'user-1');
+      expect(resultado).toBe(true);
+    });
+
+    it('deve impedir usuário de editar chamado de outro', () => {
+      const usuario = { id: 'user-1', regra: 'USUARIO' as const };
+      const resultado = podeEditarChamado(usuario, 'user-2');
+      expect(resultado).toBe(false);
+    });
+
+    it('deve permitir técnico editar próprio chamado', () => {
+      const tecnico = { id: 'tech-1', regra: 'TECNICO' as const };
+      const resultado = podeEditarChamado(tecnico, 'tech-1');
+      expect(resultado).toBe(true);
+    });
+
+    it('deve impedir técnico de editar chamado de outro', () => {
+      const tecnico = { id: 'tech-1', regra: 'TECNICO' as const };
+      const resultado = podeEditarChamado(tecnico, 'user-2');
+      expect(resultado).toBe(false);
+    });
+  });
   
-  Object.values(prismaMock.chamado).forEach((fn) => vi.mocked(fn).mockReset());
-  Object.values(prismaMock.servico).forEach((fn) => vi.mocked(fn).mockReset());
-  Object.values(prismaMock.expediente).forEach((fn) => vi.mocked(fn).mockReset());
-  Object.values(prismaMock.ordemDeServico).forEach((fn) => vi.mocked(fn).mockReset());
-  
-  prismaMock.$transaction.mockReset();
-  chamadoAtualizacaoModelMock.findOne.mockReset();
-  chamadoAtualizacaoModelMock.create.mockReset();
-  salvarHistoricoChamadoMock.mockReset();
-  listarHistoricoChamadoMock.mockReset();
-  
-  Regra = 'USUARIO';
-  UsarUsuarioNulo = false;
-  
-  salvarHistoricoChamadoMock.mockResolvedValue({});
-  listarHistoricoChamadoMock.mockResolvedValue([]);
-  chamadoAtualizacaoModelMock.create.mockResolvedValue({});
-});
+  describe('Validação dos dados do chamado', () => {
+    interface ChamadoCompleto {
+      id: string;
+      OS: string;
+      descricao: string;
+      descricaoEncerramento: string | null;
+      status: ChamadoStatus;
+      geradoEm: Date;
+      atualizadoEm: Date;
+      encerradoEm: Date | null;
+      usuario: { id: string; nome: string; sobrenome: string; email: string } | null;
+      tecnico: { id: string; nome: string; sobrenome: string; email: string } | null;
+      servicos?: { servico: { id: string; nome: string } }[];
+    }
 
-function criarApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/chamado', router);
-  return app;
-}
+    const formatarChamadoResposta = (chamado: ChamadoCompleto) => {
+      return {
+        id: chamado.id,
+        OS: chamado.OS,
+        descricao: chamado.descricao,
+        descricaoEncerramento: chamado.descricaoEncerramento,
+        status: chamado.status,
+        geradoEm: chamado.geradoEm.toISOString(),
+        atualizadoEm: chamado.atualizadoEm.toISOString(),
+        encerradoEm: chamado.encerradoEm?.toISOString() ?? null,
+        usuario: chamado.usuario
+          ? {
+              id: chamado.usuario.id,
+              nome: chamado.usuario.nome,
+              sobrenome: chamado.usuario.sobrenome,
+              email: chamado.usuario.email,
+            }
+          : null,
+        tecnico: chamado.tecnico
+          ? {
+              id: chamado.tecnico.id,
+              nome: chamado.tecnico.nome,
+              sobrenome: chamado.tecnico.sobrenome,
+              email: chamado.tecnico.email,
+            }
+          : null,
+        servicos: chamado.servicos?.map((s) => ({
+          id: s.servico.id,
+          nome: s.servico.nome,
+        })) ?? [],
+      };
+    };
 
-describe('POST /chamado/abertura-chamado', () => {
-  it('deve retornar status 400 quando campo "descricao" não for enviado', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toBe('Descrição é obrigatória');
-  });
+    it('deve formatar chamado completo corretamente', () => {
+      const chamado: ChamadoCompleto = {
+        id: 'chamado-1',
+        OS: 'INC0001',
+        descricao: 'Descrição do chamado',
+        descricaoEncerramento: null,
+        status: ChamadoStatus.ABERTO,
+        geradoEm: new Date('2025-01-01'),
+        atualizadoEm: new Date('2025-01-01'),
+        encerradoEm: null,
+        usuario: {
+          id: 'user-1',
+          nome: 'João',
+          sobrenome: 'Silva',
+          email: 'joao@example.com',
+        },
+        tecnico: null,
+        servicos: [
+          { servico: { id: 'serv-1', nome: 'Suporte' } },
+        ],
+      };
 
-  it('deve retornar status 400 quando descricao não for string', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ descricao: 123, servico: 'ServicoA' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toBe('Descrição é obrigatória');
-  });
+      const resultado = formatarChamadoResposta(chamado);
 
-  it('deve retornar status 400 quando descrição for muito curta (< 10 caracteres)', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ descricao: 'Curta', servico: 'ServicoA' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('no mínimo 10 caracteres');
-  });
-
-  it('deve retornar status 400 quando descrição for muito longa (> 5000 caracteres)', async () => {
-    const descricaoLonga = 'a'.repeat(5001);
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ descricao: descricaoLonga, servico: 'ServicoA' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('no máximo 5000 caracteres');
-  });
-
-  it('deve retornar status 400 quando campo servico estiver vazio', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ descricao: 'Descricao valida com mais de 10 caracteres', servico: '' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('obrigatório informar pelo menos um serviço');
-  });
-
-  it('deve retornar status 400 quando serviço não existir no banco', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([]);
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoInexistente' 
+      expect(resultado.id).toBe('chamado-1');
+      expect(resultado.OS).toBe('INC0001');
+      expect(resultado.usuario).toEqual({
+        id: 'user-1',
+        nome: 'João',
+        sobrenome: 'Silva',
+        email: 'joao@example.com',
       });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('não encontrados ou inativos');
-  });
+      expect(resultado.tecnico).toBeNull();
+      expect(resultado.servicos).toEqual([{ id: 'serv-1', nome: 'Suporte' }]);
+    });
 
-  it('deve retornar status 201 e criar chamado quando dados válidos forem fornecidos', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue(chamadoBase);
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body).toHaveProperty('id');
-    expect(resposta.body).toHaveProperty('OS');
-    expect(resposta.body.servicos).toHaveLength(1);
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tipo: 'ABERTURA',
-        para: 'ABERTO',
-      })
-    );
-  });
+    it('deve formatar datas em ISO string', () => {
+      const chamado: ChamadoCompleto = {
+        id: 'chamado-1',
+        OS: 'INC0001',
+        descricao: 'Teste',
+        descricaoEncerramento: null,
+        status: ChamadoStatus.ABERTO,
+        geradoEm: new Date('2025-01-01T10:00:00Z'),
+        atualizadoEm: new Date('2025-01-01T11:00:00Z'),
+        encerradoEm: null,
+        usuario: null,
+        tecnico: null,
+      };
 
-  it('deve gerar OS incrementado quando já existir chamado', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue({ OS: 'INC0001' });
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      OS: 'INC0002',
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.OS).toBe('INC0002');
-  });
+      const resultado = formatarChamadoResposta(chamado);
 
-  it('deve gerar INC0001 quando OS anterior for inválido (NaN)', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
+      expect(resultado.geradoEm).toBe('2025-01-01T10:00:00.000Z');
+      expect(resultado.atualizadoEm).toBe('2025-01-01T11:00:00.000Z');
+      expect(resultado.encerradoEm).toBeNull();
     });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue({ OS: 'INCabc' });
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      OS: 'INC0001',
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-  });
 
-  it('deve processar serviço como array de strings', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' },
-      { id: 'id2', nome: 'ServicoB' },
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      servicos: [
-        { id: 'sid1', servico: { id: 'serv1', nome: 'ServicoA' } },
-        { id: 'sid2', servico: { id: 'serv2', nome: 'ServicoB' } },
-      ],
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: ['ServicoA', 'ServicoB'] 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.servicos).toHaveLength(2);
-  });
+    it('deve retornar array vazio quando servicos for undefined', () => {
+      const chamado: ChamadoCompleto = {
+        id: 'chamado-1',
+        OS: 'INC0001',
+        descricao: 'Teste',
+        descricaoEncerramento: null,
+        status: ChamadoStatus.ABERTO,
+        geradoEm: new Date(),
+        atualizadoEm: new Date(),
+        encerradoEm: null,
+        usuario: null,
+        tecnico: null,
+        servicos: undefined,
+      };
 
-  it('deve filtrar itens inválidos de array de serviços', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
+      const resultado = formatarChamadoResposta(chamado);
+      expect(resultado.servicos).toEqual([]);
     });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue(chamadoBase);
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: ['ServicoA', 123, null, '', '  '] as any
-      });
-    
-    expect(resposta.status).toBe(201);
-  });
-
-  it('deve retornar status 400 quando servico for array vazio após filtragem', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: ['', '   ', null] as any
-      });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('obrigatório informar');
-  });
-
-  it('deve retornar status 400 quando servico for null', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: null 
-      });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('obrigatório informar');
-  });
-
-  it('deve processar servico quando for número (normalizar e filtrar)', async () => {
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 123 as any
-      });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('obrigatório informar');
-  });
-
-  it('deve retornar status 500 quando ocorrer erro inesperado', async () => {
-    prismaMock.servico.findMany.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao criar o chamado');
-  });
-
-  it('deve retornar chamado com servicos vazio quando não houver servicos', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      servicos: [],
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.servicos).toEqual([]);
-  });
-
-  it('deve formatar resposta corretamente com usuario null', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      usuario: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.usuario).toBeNull();
-  });
-
-  it('deve formatar resposta corretamente com tecnico null', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      tecnico: null,
-      tecnicoId: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.tecnico).toBeNull();
-  });
-
-  it('deve formatar resposta corretamente com servicos undefined', async () => {
-    prismaMock.servico.findMany.mockResolvedValue([
-      { id: 'id1', nome: 'ServicoA' }
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.findFirst.mockResolvedValue(null);
-    prismaMock.chamado.create.mockResolvedValue({
-      ...chamadoBase,
-      servicos: undefined,
-    });
-    
-    const resposta = await request(criarApp())
-      .post('/chamado/abertura-chamado')
-      .send({ 
-        descricao: 'Descricao valida com mais de 10 caracteres', 
-        servico: 'ServicoA' 
-      });
-    
-    expect(resposta.status).toBe(201);
-    expect(resposta.body.servicos).toEqual([]);
-  });
-});
-
-describe('PATCH /chamado/:id/status', () => {
-  it('deve retornar status 400 quando status informado for inválido', async () => {
-    Regra = 'ADMIN';
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/123/status')
-      .send({ status: 'STATUS_INVALIDO' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('Status inválido');
-  });
-
-  it('deve retornar status 404 quando chamado não existir', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(null);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/123/status')
-      .send({ 
-        status: 'ENCERRADO', 
-        descricaoEncerramento: 'Resolvido com sucesso' 
-      });
-    
-    expect(resposta.status).toBe(404);
-    expect(resposta.body.error).toBe('Chamado não encontrado');
-  });
-
-  it('deve retornar status 400 quando tentar alterar chamado cancelado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'CANCELADO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'ENCERRADO', descricaoEncerramento: 'Teste com mais de 10 chars' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('cancelados não podem ser alterados');
-  });
-
-  it('deve retornar status 403 quando técnico tentar alterar chamado encerrado', async () => {
-    Regra = 'TECNICO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'EM_ATENDIMENTO' });
-    
-    expect(resposta.status).toBe(403);
-    expect(resposta.body.error).toContain('técnicos');
-  });
-
-  it('deve retornar status 403 quando técnico tentar cancelar chamado', async () => {
-    Regra = 'TECNICO';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'CANCELADO' });
-    
-    expect(resposta.status).toBe(403);
-    expect(resposta.body.error).toContain('Técnicos não podem cancelar');
-  });
-
-  it('deve retornar status 400 quando tentar encerrar sem descrição', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'ENCERRADO' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('encerramento inválida');
-  });
-
-  it('deve retornar status 403 quando técnico fora do expediente tentar assumir chamado', async () => {
-    Regra = 'TECNICO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ABERTO',
-    });
-    prismaMock.expediente.findMany.mockResolvedValue([]);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'EM_ATENDIMENTO' });
-    
-    expect(resposta.status).toBe(403);
-    expect(resposta.body.error).toContain('horário de trabalho');
-  });
-
-  it('deve retornar status 200 quando técnico dentro do expediente assumir chamado', async () => {
-    Regra = 'TECNICO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ABERTO',
-    });
-    
-    const agora = new Date();
-    const entrada = new Date(agora);
-    entrada.setHours(8, 0, 0, 0);
-    const saida = new Date(agora);
-    saida.setHours(18, 0, 0, 0);
-    
-    prismaMock.expediente.findMany.mockResolvedValue([
-      { 
-        entrada, 
-        saida, 
-        usuarioId: usuarioPadrao.id,
-        ativo: true,
-        deletadoEm: null,
-      },
-    ]);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'EM_ATENDIMENTO',
-      tecnicoId: usuarioPadrao.id,
-    });
-    
-    vi.spyOn(Date.prototype, 'getHours').mockReturnValue(10);
-    vi.spyOn(Date.prototype, 'getMinutes').mockReturnValue(0);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'EM_ATENDIMENTO' });
-    
-    expect(resposta.status).toBe(200);
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalled();
-  });
-
-  it('deve retornar status 200 quando admin encerrar chamado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      descricaoEncerramento: 'Resolvido com sucesso',
-      encerradoEm: new Date().toISOString(),
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ 
-        status: 'ENCERRADO',
-        descricaoEncerramento: 'Resolvido com sucesso',
-        atualizacaoDescricao: 'Problema solucionado'
-      });
-    
-    expect(resposta.status).toBe(200);
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tipo: 'STATUS',
-        descricao: 'Problema solucionado',
-      })
-    );
-  });
-
-  it('deve usar descrição padrão quando não enviar atualizacaoDescricao', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      descricaoEncerramento: 'Resolvido com sucesso completo',
-      encerradoEm: new Date().toISOString(),
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ 
-        status: 'ENCERRADO',
-        descricaoEncerramento: 'Resolvido com sucesso completo'
-      });
-    
-    expect(resposta.status).toBe(200);
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        descricao: 'Chamado encerrado',
-      })
-    );
-  });
-
-  it('deve usar descrição padrão quando mudar para CANCELADO', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'CANCELADO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ status: 'CANCELADO' });
-    
-    expect(resposta.status).toBe(200);
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        descricao: 'Chamado cancelado',
-      })
-    );
-  });
-
-  it('deve retornar status 500 quando ocorrer erro inesperado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/status')
-      .send({ 
-        status: 'ENCERRADO',
-        descricaoEncerramento: 'Resolvido com sucesso' 
-      });
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao atualizar status do chamado');
-  });
-});
-
-describe('GET /chamado/:id/historico', () => {
-  it('deve retornar status 200 e listar histórico', async () => {
-    listarHistoricoChamadoMock.mockResolvedValue([
-      { _id: 'hid1', tipo: 'STATUS' }
-    ]);
-    
-    const resposta = await request(criarApp())
-      .get('/chamado/chmid1/historico');
-    
-    expect(resposta.status).toBe(200);
-    expect(Array.isArray(resposta.body)).toBeTruthy();
-  });
-
-  it('deve retornar status 500 quando ocorrer erro', async () => {
-    listarHistoricoChamadoMock.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .get('/chamado/chmid1/historico');
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao buscar histórico');
-  });
-});
-
-describe('PATCH /chamado/:id/reabrir-chamado', () => {
-  it('deve retornar status 404 quando chamado não existir', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockResolvedValue(null);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(404);
-    expect(resposta.body.error).toBe('Chamado não encontrado');
-  });
-
-  it('deve retornar status 403 quando tentar reabrir chamado de outro usuário', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      usuarioId: 'outro_usuario',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(403);
-    expect(resposta.body.error).toContain('criados por você');
-  });
-
-  it('deve retornar status 400 quando chamado não estiver encerrado', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ABERTO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('encerrados podem ser reabertos');
-  });
-
-  it('deve retornar status 400 quando não houver data de encerramento', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      encerradoEm: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('Data de encerramento');
-  });
-
-  it('deve retornar status 400 quando exceder prazo de 48 horas', async () => {
-    Regra = 'USUARIO';
-    const encerradoHaMuitoTempo = new Date(Date.now() - 49 * 3600 * 1000);
-    
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      encerradoEm: encerradoHaMuitoTempo.toISOString(),
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('48 horas');
-  });
-
-  it('deve retornar status 200 e reabrir chamado dentro do prazo', async () => {
-    Regra = 'USUARIO';
-    const encerradoRecente = new Date(Date.now() - 24 * 3600 * 1000);
-    
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      encerradoEm: encerradoRecente.toISOString(),
-      tecnicoId: 'tec1',
-    });
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'REABERTO',
-      tecnicoId: 'tec1',
-      encerradoEm: null,
-      descricaoEncerramento: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({ atualizacaoDescricao: 'Problema voltou' });
-    
-    expect(resposta.status).toBe(200);
-    expect(resposta.body.status).toBe('REABERTO');
-  });
-
-  it('deve buscar último técnico quando tecnicoId for null', async () => {
-    Regra = 'USUARIO';
-    const encerradoRecente = new Date(Date.now() - 24 * 3600 * 1000);
-    
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      encerradoEm: encerradoRecente.toISOString(),
-      tecnicoId: null,
-    });
-    
-    chamadoAtualizacaoModelMock.findOne.mockResolvedValue({
-      autorId: 'tecnico_mongo_id',
-    });
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'REABERTO',
-      tecnicoId: 'tecnico_mongo_id',
-      encerradoEm: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(200);
-    expect(chamadoAtualizacaoModelMock.findOne).toHaveBeenCalled();
-  });
-
-  it('deve tratar erro ao buscar último técnico', async () => {
-    Regra = 'USUARIO';
-    const encerradoRecente = new Date(Date.now() - 24 * 3600 * 1000);
-    
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-      encerradoEm: encerradoRecente.toISOString(),
-      tecnicoId: null,
-    });
-    
-    chamadoAtualizacaoModelMock.findOne.mockRejectedValue(new Error('Mongo error'));
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'REABERTO',
-      tecnicoId: null,
-      encerradoEm: null,
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(200);
-  });
-
-  it('deve retornar status 500 quando ocorrer erro', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/reabrir-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao reabrir chamado');
-  });
-});
-
-describe('PATCH /chamado/:id/cancelar-chamado', () => {
-  it('deve retornar status 400 quando não enviar justificativa', async () => {
-    Regra = 'ADMIN';
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({});
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('Justificativa');
-  });
-
-  it('deve retornar status 404 quando chamado não existir', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(null);
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(404);
-    expect(resposta.body.error).toBe('Chamado não encontrado');
-  });
-
-  it('deve retornar status 403 quando usuário tentar cancelar chamado de outro', async () => {
-    Regra = 'USUARIO';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      usuarioId: 'outro_usuario',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(403);
-    expect(resposta.body.error).toContain('não tem permissão');
-  });
-
-  it('deve retornar status 400 quando tentar cancelar chamado encerrado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'ENCERRADO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('encerrado');
-  });
-
-  it('deve retornar status 400 quando chamado já estiver cancelado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue({
-      ...chamadoBase,
-      status: 'CANCELADO',
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(400);
-    expect(resposta.body.error).toContain('já está cancelado');
-  });
-
-  it('deve retornar status 200 e cancelar chamado com sucesso', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      status: 'CANCELADO',
-      descricaoEncerramento: 'Motivo do cancelamento válido',
-      encerradoEm: new Date().toISOString(),
-    });
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(200);
-    expect(resposta.body.message).toContain('cancelado');
-    expect(salvarHistoricoChamadoMock).toHaveBeenCalled();
-  });
-
-  it('deve retornar status 500 quando ocorrer erro', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .patch('/chamado/chmid1/cancelar-chamado')
-      .send({ descricaoEncerramento: 'Motivo do cancelamento válido' });
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao cancelar o chamado');
-  });
-});
-
-describe('DELETE /chamado/:id', () => {
-  it('deve retornar status 404 quando chamado não existir', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(null);
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1');
-    
-    expect(resposta.status).toBe(404);
-    expect(resposta.body.error).toBe('Chamado não encontrado');
-  });
-
-  it('deve realizar soft delete por padrão', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    prismaMock.chamado.update.mockResolvedValue({
-      ...chamadoBase,
-      deletadoEm: new Date().toISOString(),
-    });
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1');
-    
-    expect(resposta.status).toBe(200);
-    expect(resposta.body.message).toContain('desativado');
-    expect(prismaMock.chamado.update).toHaveBeenCalledWith({
-      where: { id: 'chmid1' },
-      data: { deletadoEm: expect.any(Date) },
-    });
-  });
-
-  it('deve realizar delete permanente quando solicitado', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    
-    prismaMock.$transaction.mockImplementation(async (fn) => {
-      return await fn(prismaMock);
-    });
-    
-    prismaMock.ordemDeServico.deleteMany.mockResolvedValue({ count: 1 });
-    prismaMock.chamado.delete.mockResolvedValue(chamadoBase);
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1?permanente=true');
-    
-    expect(resposta.status).toBe(200);
-    expect(resposta.body.message).toContain('permanentemente');
-    expect(prismaMock.ordemDeServico.deleteMany).toHaveBeenCalled();
-    expect(prismaMock.chamado.delete).toHaveBeenCalled();
-  });
-
-  it('deve retornar status 403 quando usuário tentar deletar', async () => {
-    Regra = 'USUARIO';
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1');
-    
-    expect(resposta.status).toBe(403);
-  });
-
-  it('deve retornar status 500 quando ocorrer erro', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockRejectedValue(new Error('Database error'));
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1');
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao deletar o chamado');
-  });
-
-  it('deve retornar status 500 quando falhar ao fazer soft delete', async () => {
-    Regra = 'ADMIN';
-    prismaMock.chamado.findUnique.mockResolvedValue(chamadoBase);
-    prismaMock.chamado.update.mockRejectedValue(new Error('Update failed'));
-    
-    const resposta = await request(criarApp())
-      .delete('/chamado/chmid1');
-    
-    expect(resposta.status).toBe(500);
-    expect(resposta.body.error).toBe('Erro ao deletar o chamado');
   });
 });

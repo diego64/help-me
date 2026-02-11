@@ -5,7 +5,7 @@ const options = {
     openapi: '3.0.0',
     info: {
       title: 'Help-me API',
-      version: '1.0.0',
+      version: '1.1.1',
       description: 'API de Helpdesk',
     },
     servers: [
@@ -24,7 +24,7 @@ const options = {
       },
     },
   },
-  apis: ['./src/routes/**/*.ts'],
+  apis: ['./src/presentation/http/routes/**/*.ts'],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

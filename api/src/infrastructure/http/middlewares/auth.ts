@@ -1,13 +1,5 @@
-import {
-  Request,
-  Response,
-  NextFunction
-} from 'express';
-import {
-  verifyToken,
-  TokenPayload,
-  extractTokenFromHeader
-} from '../../../shared/config/jwt';
+import { Request, Response, NextFunction } from 'express';
+import { verifyToken, TokenPayload, extractTokenFromHeader } from '../../../shared/config/jwt';
 import { Regra } from '@prisma/client';
 import { cacheGet } from '../../database/redis/client';
 
