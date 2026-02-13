@@ -2,9 +2,15 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken, TokenPayload, extractTokenFromHeader } from '../../../shared/config/jwt';
 import { Regra } from '@prisma/client';
 import { cacheGet } from '../../database/redis/client';
+import { prisma } from '../../database/prisma/client';
 
 export interface AuthRequest extends Request {
-  usuario?: TokenPayload;
+  usuario?: {
+    id: string;
+    nome: string;
+    email: string;
+    regra: string;
+  };
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -27,7 +33,35 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       }
     }
 
-    req.usuario = decoded;
+    const userId = decoded.id || decoded.userId; // ← Aceitar ambos para compatibilidade
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Token inválido: ID do usuário ausente.' });
+    }
+
+    // Buscar dados do usuário no banco de dados
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: userId }, // ← Usar userId extraído
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        regra: true,
+      },
+    });
+
+    if (!usuario) {
+      return res.status(401).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Atribuir ao todos os campos necessários
+    req.usuario = {
+      id: usuario.id,
+      nome: usuario.nome,
+      email: usuario.email,
+      regra: usuario.regra,
+    };
+
     return next();
   } catch (err: any) {
     console.error('authMiddleware error:', err);
