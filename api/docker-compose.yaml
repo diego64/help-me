@@ -81,62 +81,6 @@ services:
       - "com.helpme.environment=production"
 
   # ============================================
-  # BANCO DE DADOS - PostgreSQL (Teste)
-  # ============================================
-  postgresql_helpme_teste:
-    image: postgres:16
-    container_name: postgresql_helpme_teste
-    hostname: postgresql_helpme_teste
-    environment:
-      POSTGRES_USER: ${DB_USER_TESTE:-teste}
-      POSTGRES_PASSWORD: ${DB_PASSWORD_TESTE:-senha_teste}
-      POSTGRES_DB: ${DB_NAME_TESTE:-helpme-database-teste}
-      TZ: America/Sao_Paulo
-      PGTZ: America/Sao_Paulo
-    ports:
-      - "${DB_PORT_TESTE:-5433}:5432"
-    volumes:
-      - postgresql_data_teste:/var/lib/postgresql/data
-    networks:
-      - helpme_network
-    restart: unless-stopped
-    command:
-      - "postgres"
-      - "-c"
-      - "max_connections=50"
-      - "-c"
-      - "shared_buffers=128MB"
-      - "-c"
-      - "effective_cache_size=512MB"
-      - "-c"
-      - "work_mem=8MB"
-      - "-c"
-      - "timezone=America/Sao_Paulo"
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER_TESTE:-teste} -d ${DB_NAME_TESTE:-helpme-database-teste}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    labels:
-      - "com.helpme.service=database"
-      - "com.helpme.database.type=postgresql"
-      - "com.helpme.environment=test"
-
-  # ============================================
   # BANCO DE DADOS - MongoDB
   # ============================================
   mongodb_helpme:
@@ -184,54 +128,6 @@ services:
       - "com.helpme.service=database"
       - "com.helpme.database.type=mongodb"
       - "com.helpme.environment=production"
-
-  # ============================================
-  # BANCO DE DADOS - MongoDB (Teste)
-  # ============================================
-  mongodb_helpme_teste:
-    image: mongo:8.0
-    container_name: mongodb_helpme_teste
-    hostname: mongodb_helpme_teste
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME_TESTE}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD_TESTE}
-      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE_TESTE}
-      TZ: America/Sao_Paulo
-    command: mongod --bind_ip_all --auth
-    ports:
-      - "${MONGO_PORT_TESTE:-27018}:27017"
-    volumes:
-      - mongodb_teste_data:/data/db
-    networks:
-      - helpme_network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    healthcheck:
-      test: |
-        mongosh --quiet --username ${MONGO_INITDB_ROOT_USERNAME_TESTE:-teste} \
-          --password ${MONGO_INITDB_ROOT_PASSWORD_TESTE:-senha_teste} \
-          --authenticationDatabase admin \
-          --eval "db.adminCommand('ping')" > /dev/null || exit 1
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    labels:
-      - "com.helpme.service=database"
-      - "com.helpme.database.type=mongodb"
-      - "com.helpme.environment=test"
 
   # ============================================
   # MESSAGE BROKER - Kafka
@@ -833,6 +729,301 @@ services:
       - "com.helpme.monitoring.type=exporter"
       - "com.helpme.exporter.target=kafka"
 
+ # ============================================
+  # BANCO DE DADOS - PostgreSQL (Teste)
+  # ============================================
+  postgresql_helpme_teste:
+    image: postgres:16
+    container_name: postgresql_helpme_teste
+    hostname: postgresql_helpme_teste
+    environment:
+      POSTGRES_USER: ${DB_USER_TESTE:-teste}
+      POSTGRES_PASSWORD: ${DB_PASSWORD_TESTE:-senha_teste}
+      POSTGRES_DB: ${DB_NAME_TESTE:-helpme-database-teste}
+      TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
+    ports:
+      - "${DB_PORT_TESTE:-5434}:5432"
+    volumes:
+      - postgresql_data_teste:/var/lib/postgresql/data
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "effective_cache_size=512MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "timezone=America/Sao_Paulo"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER_TESTE:-teste} -d ${DB_NAME_TESTE:-helpme-database-teste}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=postgresql"
+      - "com.helpme.environment=test"
+
+  # ============================================
+  # BANCO DE DADOS - MongoDB (Teste)
+  # ============================================
+  mongodb_helpme_teste:
+    image: mongo:8.0
+    container_name: mongodb_helpme_teste
+    hostname: mongodb_helpme_teste
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME_TESTE}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD_TESTE}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE_TESTE}
+      TZ: America/Sao_Paulo
+    command: mongod --bind_ip_all --auth
+    ports:
+      - "${MONGO_PORT_TESTE:-27018}:27017"
+    volumes:
+      - mongodb_teste_data:/data/db
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: |
+        mongosh --quiet --username ${MONGO_INITDB_ROOT_USERNAME_TESTE:-teste} \
+          --password ${MONGO_INITDB_ROOT_PASSWORD_TESTE:-senha_teste} \
+          --authenticationDatabase admin \
+          --eval "db.adminCommand('ping')" > /dev/null || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=database"
+      - "com.helpme.database.type=mongodb"
+      - "com.helpme.environment=test"
+
+  # ============================================
+  # CACHE - Redis (Teste)
+  # ============================================
+  redis_helpme_teste:
+    image: redis:8.0
+    container_name: redis_helpme_teste
+    hostname: redis_helpme_teste
+    environment:
+      TZ: America/Sao_Paulo
+      REDIS_PASSWORD: ${REDIS_PASSWORD_TESTE:-}
+    command: >
+      sh -c '
+      if [ -z "$REDIS_PASSWORD_TESTE" ]; then
+        redis-server
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --appendonly no
+        --save ""
+      else
+        redis-server
+        --requirepass "$REDIS_PASSWORD_TESTE"
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --appendonly no
+        --save ""
+      fi
+      '
+    ports:
+      - "${REDIS_PORT_TESTE:-6380}:6379"
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=cache"
+      - "com.helpme.cache.type=redis"
+      - "com.helpme.environment=test"
+
+  # ============================================
+  # MESSAGE BROKER - Zookeeper (Teste)
+  # ============================================
+  zookeeper_helpme_teste:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper_helpme_teste
+    hostname: zookeeper_helpme_teste
+    environment:
+      ZOOKEEPER_CLIENT_PORT: ${ZOOKEEPER_CLIENT_PORT_TESTE:-2182}
+      ZOOKEEPER_TICK_TIME: ${ZOOKEEPER_TICK_TIME_TESTE:-2000}
+      TZ: America/Sao_Paulo
+    ports:
+      - '${ZOOKEEPER_PORT_TESTE:-2182}:2182'
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=zookeeper"
+      - "com.helpme.environment=test"
+
+  # ============================================
+  # MESSAGE BROKER - Kafka (Teste)
+  # ============================================
+  kafka_helpme_teste:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka_helpme_teste
+    hostname: kafka_helpme_teste
+    depends_on:
+      - zookeeper_helpme_teste
+    ports:
+      - '9094:9092'
+      - '9095:9093'
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper_helpme_teste:2182'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka_helpme_teste:9092,PLAINTEXT_HOST://localhost:9095
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 1
+      TZ: America/Sao_Paulo
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=messaging"
+      - "com.helpme.messaging.type=kafka"
+      - "com.helpme.environment=test"
+
+  # ============================================
+  # MONITORAMENTO - InfluxDB (Teste)
+  # ============================================
+  influxdb_helpme_teste:
+    image: influxdb:2.7-alpine
+    container_name: influxdb_helpme_teste
+    hostname: influxdb_helpme_teste
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME_TESTE:-teste}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD_TESTE:-senha_teste}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG_TESTE:-org_teste}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET_TESTE:-helpme_bucket_teste}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION_TESTE:-1d}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_ADMIN_TOKEN_TESTE:-TestToken123456}
+      INFLUXDB_HTTP_LOG_ENABLED: false
+      TZ: America/Sao_Paulo
+    ports:
+      - "${INFLUX_PORT_TESTE:-8087}:8086"
+    volumes:
+      - influxdb_data_teste:/var/lib/influxdb2
+      - influxdb_config_teste:/etc/influxdb2
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8086/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=timeseries"
+      - "com.helpme.environment=test"
+
 # ============================================
 # NETWORKS
 # ============================================
@@ -852,10 +1043,6 @@ volumes:
   postgresql_data:
     driver: local
 
-  postgresql_data_teste:
-    driver: local
-    name: postgresql_helpme_data_teste
-
   postgresql_backups:
     driver: local
     name: postgresql_helpme_backups
@@ -867,10 +1054,6 @@ volumes:
   mongodb_data:
     driver: local
     name: mongodb_helpme_data
-
-  mongodb_teste_data:
-    driver: local
-    name: mongodb_helpme_teste_data
 
   redis_data:
     driver: local
@@ -895,3 +1078,19 @@ volumes:
   prometheus_data:
     driver: local
     name: prometheus_helpme_data
+
+  postgresql_data_teste:
+    driver: local
+    name: postgresql_helpme_data_teste
+
+  mongodb_teste_data:
+    driver: local
+    name: mongodb_helpme_teste_data
+
+  influxdb_data_teste:
+    driver: local
+    name: influxdb_helpme_data_teste
+
+  influxdb_config_teste:
+    driver: local
+    name: influxdb_helpme_config_teste

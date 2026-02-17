@@ -15,8 +15,12 @@ let servidor: any;
     await prisma.$connect();
     logger.info('PostgreSQL conectado com sucesso');
 
-    await mongoose.connect(process.env.MONGO_INITDB_URI!);
-    logger.info('MongoDB conectado com sucesso');
+    const mongoUri = process.env.NODE_ENV === 'test'
+      ? process.env.MONGO_INITDB_URI_TESTE!
+      : process.env.MONGO_INITDB_URI!;
+    
+    await mongoose.connect(mongoUri);
+    logger.info({ ambiente: process.env.NODE_ENV }, 'MongoDB conectado com sucesso');
 
     await conectarKafkaProducer();
     logger.info('Kafka Producer conectado com sucesso!');
@@ -79,7 +83,7 @@ const progressiveShutdown = async (sinal: string) => {
         logger.info('Todas as conexões encerradas com sucesso');
         process.exit(0);
       } catch (erro) {
-        logger.error({ err: erro }, 'Erro durante desligamento gracioso');
+        logger.error({ err: erro }, 'Erro durante desligamento progressivo');
         process.exit(1);
       }
     });

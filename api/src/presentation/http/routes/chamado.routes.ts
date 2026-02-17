@@ -176,7 +176,7 @@ function formatarChamadoResposta(chamado: any) {
  * @swagger
  * tags:
  *   name: Chamados
- *   description: Gerenciamento de chamados de suporte
+ *   description: Gerenciamento de chamados
  */
 
 /**

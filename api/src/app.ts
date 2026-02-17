@@ -37,7 +37,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 8 * 60 * 60 * 1000, // 8 horas
+    maxAge: 8 * 60 * 60 * 1000,
     sameSite: 'lax'
   }
 }));
@@ -67,7 +67,6 @@ app.use('/api', routes);
 
 app.use((req: Request, res: Response) => {
   req.log.warn({ path: req.path, method: req.method }, 'Route not found');
-  
   res.status(404).json({
     success: false,
     error: 'Rota não encontrada',
@@ -81,7 +80,6 @@ app.use(errorLoggerMiddleware);
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const statusCode = err.status || err.statusCode || 500;
-
   res.status(statusCode).json({
     success: false,
     error: {

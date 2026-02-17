@@ -6,12 +6,12 @@ export default defineConfig({
     environment: 'node',
     setupFiles: [
       './vitest.setup.ts',
-      './src/__tests__/setup/mocks.ts'
+      './src/__tests__/unit/setup/mocks.ts'
     ],
     include: [
-      'src/__tests__/e2e/**/*.test.ts',
-      'src/__tests__/teste-de-carga/**/*.test.ts',
       'src/__tests__/unit/**/*.test.ts',
+      'src/__tests__/e2e/**/*.e2e.test.ts',
+      'src/__tests__/teste-de-carga/**/*.test.ts',
     ],
     exclude: [
       'node_modules/**',
