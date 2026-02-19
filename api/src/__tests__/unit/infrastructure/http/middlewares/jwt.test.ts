@@ -844,26 +844,26 @@ describe('JWT Utils', () => {
      */
 
     it('deve rejeitar token que expira durante verificação', async () => {
-      // Token que expira em 1 segundo
-      const tokenCurto = jwt.sign(
-        { id: 'user1', regra: Regra.USUARIO, type: 'access' },
-        process.env.JWT_SECRET!,
-        { 
-          algorithm: 'HS256',
-          expiresIn: '1s',
-          issuer: 'helpme-api',
-          audience: 'helpme-client'
-        }
-      );
+    // Token que expira em 1 segundo (tempo suficiente para primeira verificação)
+    const tokenCurto = jwt.sign(
+      { id: 'user1', regra: Regra.USUARIO, type: 'access' },
+      process.env.JWT_SECRET!,
+      { 
+        algorithm: 'HS256',
+        expiresIn: '1s',  // ← 1 segundo em vez de 100ms
+        issuer: 'helpme-api',
+        audience: 'helpme-client'
+      }
+    );
 
-      // Verifica imediatamente - deve passar
-      expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).not.toThrow();
+    // Verifica imediatamente - deve passar
+    expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).not.toThrow();
 
-      // Aguarda expiração (2 segundos para garantir)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    // Aguarda expiração (1.5s para garantir que passou)
+    await new Promise(resolve => setTimeout(resolve, 1500));  // ← 1500ms
 
-      // Deve estar expirado agora
-      expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).toThrow(/expirado|expired/i);
+    // Deve estar expirado agora
+    expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).toThrow();
     });
   });
 

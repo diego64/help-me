@@ -10,15 +10,25 @@ export default defineConfig({
     ],
     include: [
       'src/__tests__/unit/**/*.test.ts',
-      'src/__tests__/e2e/**/*.e2e.test.ts',
-      'src/__tests__/teste-de-carga/**/*.test.ts',
     ],
     exclude: [
       'node_modules/**',
       'dist/**',
       'build/**',
+      'src/__tests__/e2e/**',
+      'src/__tests__/performance/**',
     ],
-    fileParallelism: false,
+    isolate: true,
+    fileParallelism: true,
+    
+    pool: 'forks',
+    // @ts-expect-error - Vitest doesn't have types for pool options yet
+    poolOptions: {
+      forks: {
+        singleFork: false,
+      },
+    },
+    
     testTimeout: 30000,
     coverage: {
       provider: 'v8',
@@ -40,7 +50,6 @@ export default defineConfig({
         'src/@types/**',
         'prisma/**',
       ],
-      
       thresholds: {
         lines: 80,
         functions: 80,

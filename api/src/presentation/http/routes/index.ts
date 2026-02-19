@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Router as RouterType } from 'express';
 import adminRoutes from './admin.routes';
 import authRoutes from './auth.routes';
 import chamadoRoutes from './chamado.routes';
@@ -8,7 +9,7 @@ import servicoRoutes from './servico.routes';
 import tecnicoRoutes from './tecnico.routes';
 import usuarioRoutes from './usuario.routes';
 
-const router = Router();
+const router: RouterType = Router();
 
 // Rotas públicas
 router.use('/auth', authRoutes);
