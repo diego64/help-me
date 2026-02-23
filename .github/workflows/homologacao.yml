@@ -361,6 +361,9 @@ jobs:
           REDIS_PORT_TESTE=6380
           REDIS_MAX_MEMORY=256mb
           REDIS_MAXMEMORY_POLICY_TESTE=allkeys-lru
+          REDIS_HOST=localhost
+          REDIS_PORT=6380
+          REDIS_PASSWORD=
 
           # ==================== KAFKA ====================
           KAFKA_HOST_TESTE=localhost
@@ -547,7 +550,7 @@ jobs:
       - name: Resumo da release
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'END_SUMMARY'
-          # 🚀 Release v${{ needs.build.outputs.version }}
+          # Release v${{ needs.build.outputs.version }}
           
           ![Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
           ![Version](https://img.shields.io/badge/version-${{ needs.build.outputs.version }}-blue?style=flat-square)
