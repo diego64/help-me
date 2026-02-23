@@ -1,10 +1,10 @@
-import { prisma } from '../src/lib/prisma';
 import mongoose from 'mongoose';
+import { logger } from './shared/config/logger';
+import { prisma } from './infrastructure/database/prisma/client';
+import { redisClient } from './infrastructure/database/redis/client'
+import { conectarKafkaProducer, desconectarKafkaProducer } from './infrastructure/messaging/kafka/client';
+import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamadoConsumer';
 import app from './app';
-import { conectarKafkaProducer, desconectarKafkaProducer } from './services/kafka';
-import { startChamadoConsumer, stopChamadoConsumer } from './consumers/chamadoConsumer';
-import { logger } from './utils/logger';
-import { redisClient } from './services/redisClient';
 
 const PORT = process.env.PORT || 3000;
 
@@ -15,8 +15,12 @@ let servidor: any;
     await prisma.$connect();
     logger.info('PostgreSQL conectado com sucesso');
 
-    await mongoose.connect(process.env.MONGO_INITDB_URI!);
-    logger.info('MongoDB conectado com sucesso');
+    const mongoUri = process.env.NODE_ENV === 'test'
+      ? process.env.MONGO_INITDB_URI_TESTE!
+      : process.env.MONGO_INITDB_URI!;
+    
+    await mongoose.connect(mongoUri);
+    logger.info({ ambiente: process.env.NODE_ENV }, 'MongoDB conectado com sucesso');
 
     await conectarKafkaProducer();
     logger.info('Kafka Producer conectado com sucesso!');
@@ -79,7 +83,7 @@ const progressiveShutdown = async (sinal: string) => {
         logger.info('Todas as conexões encerradas com sucesso');
         process.exit(0);
       } catch (erro) {
-        logger.error({ err: erro }, 'Erro durante desligamento gracioso');
+        logger.error({ err: erro }, 'Erro durante desligamento progressivo');
         process.exit(1);
       }
     });
@@ -93,7 +97,6 @@ const progressiveShutdown = async (sinal: string) => {
     process.exit(0);
   }
 };
-
 
 process.on('SIGTERM', () => progressiveShutdown('SIGTERM'));
 process.on('SIGINT', () => progressiveShutdown('SIGINT'));

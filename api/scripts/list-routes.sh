@@ -18,7 +18,7 @@ find_project_root() {
 }
 
 PROJECT_ROOT=$(find_project_root "$SCRIPT_DIR")
-ROUTES_DIR="$PROJECT_ROOT/src/routes"
+ROUTES_DIR="$PROJECT_ROOT/src/presentation/http/routes"
 
 if [ ! -d "$ROUTES_DIR" ]; then
   echo "[ERROR] Pasta de rotas não encontrada: $ROUTES_DIR"
@@ -26,7 +26,9 @@ if [ ! -d "$ROUTES_DIR" ]; then
   echo "[INFO] Estrutura esperada:"
   echo "   $PROJECT_ROOT/"
   echo "   └── src/"
-  echo "       └── routes/"
+  echo "       └── presentation/"
+  echo "           └── http/"
+  echo "               └── routes/"
   echo ""
   exit 1
 fi

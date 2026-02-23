@@ -1,5 +1,14 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@tests/*": ["src/__tests__/*"],
+      "@application/*": ["src/application/*"],
+      "@infrastructure/*": ["src/infrastructure/*"],
+      "@presentation/*": ["src/presentation/*"],
+      "@shared/*": ["src/shared/*"],
+      "@templates/*": ["src/templates/*"],
+    },
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Node",
@@ -10,6 +19,6 @@
     "outDir": "dist",
     //"rootDir": "src"
   },
-  "include": ["src", "@types", "vitest.setup.ts"],
+  "include": ["src", "src/shared/@types", "vitest.setup.ts"],
   "exclude": ["node_modules"]
 }

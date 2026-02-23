@@ -1,12 +1,7 @@
-import {
-  PrismaClient,
-  Regra,
-  Setor,
-  ChamadoStatus
-} from '@prisma/client';
+import { PrismaClient, Regra, Setor, ChamadoStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
-import { hashPassword } from '../src/utils/password';
+import { hashPassword } from '../src/shared/config/password';
 
 const { Pool } = pkg;
 

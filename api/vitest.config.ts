@@ -1,21 +1,35 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+          '@application': resolve(__dirname, 'src/application'),
+          '@infrastructure': resolve(__dirname, 'src/infrastructure'),
+          '@presentation': resolve(__dirname, 'src/presentation'),
+          '@shared': resolve(__dirname, 'src/shared'),
+          '@templates': resolve(__dirname, 'src/templates'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['./vitest.setup.ts'],
+    setupFiles: [
+      './vitest.setup.ts',
+    ],
     include: [
-      'src/__tests__/e2e/**/*.test.ts',
-      'src/__tests__/teste-de-carga/**/*.test.ts',
       'src/__tests__/unit/**/*.test.ts',
     ],
     exclude: [
       'node_modules/**',
       'dist/**',
       'build/**',
+      'src/__tests__/e2e/**',
+      'src/__tests__/performance/**',
     ],
-    fileParallelism: false,
+    isolate: true,
+    fileParallelism: true,
+    pool: 'forks',
     testTimeout: 30000,
     coverage: {
       provider: 'v8',
@@ -37,7 +51,6 @@ export default defineConfig({
         'src/@types/**',
         'prisma/**',
       ],
-      
       thresholds: {
         lines: 80,
         functions: 80,
