@@ -550,7 +550,7 @@ jobs:
       - name: Resumo da release
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'END_SUMMARY'
-          # 🚀 Release v${{ needs.build.outputs.version }}
+          # Release v${{ needs.build.outputs.version }}
           
           ![Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
           ![Version](https://img.shields.io/badge/version-${{ needs.build.outputs.version }}-blue?style=flat-square)
@@ -632,13 +632,13 @@ jobs:
           ## Test Results
           
           ### Testes Unitários
-          - ✅ Executados com sucesso
-          - 📈 Coverage disponível nos artifacts
+          - [X] Executados com sucesso
+          - [X] Coverage disponível nos artifacts
           
           ### Testes E2E
-          - ✅ Todos os cenários validados
-          - 🗄️ Infraestrutura Docker provisionada automaticamente
-          - ⚡ Testes gerenciam seus próprios dados (sem overhead de seed)
+          - [X] Todos os cenários validados
+          - [X] Infraestrutura Docker provisionada automaticamente
+          - [X] Testes gerenciam seus próprios dados (sem overhead de seed)
           
           ---
           
