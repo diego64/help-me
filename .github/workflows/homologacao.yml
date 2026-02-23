@@ -552,10 +552,6 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << 'END_SUMMARY'
           # Release v${{ needs.build.outputs.version }}
           
-          ![Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
-          ![Version](https://img.shields.io/badge/version-${{ needs.build.outputs.version }}-blue?style=flat-square)
-          ![Docker](https://img.shields.io/badge/docker-published-2496ED?style=flat-square&logo=docker)
-          
           ---
           
           ## Build Information
@@ -613,7 +609,7 @@ jobs:
           | `latest` | Desenvolvimento | Rolling |
           | `homolog` | Homologação | Testing |
           | `sha-${GITHUB_SHA:0:7}` | Debug | Immutable |
-          | `build-${{ github.run_number }}` | 📊 Rastreamento | Immutable |
+          | `build-${{ github.run_number }}` | Rastreamento | Immutable |
           
           ---
           
