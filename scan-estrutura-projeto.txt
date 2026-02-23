@@ -176,19 +176,26 @@
 │   ├── src
 │   │   ├── __tests__
 │   │   │   ├── e2e
-│   │   │   │   ├── admin.routes.e2e.test.ts
-│   │   │   │   ├── app.e2e.test.ts
-│   │   │   │   ├── auth.e2e.test.ts
-│   │   │   │   ├── auth.routes.e2e.test.ts
-│   │   │   │   ├── chamado.routes.e2e.test.ts
-│   │   │   │   ├── chamadoAtualizacao.repository.e2e.test.ts
-│   │   │   │   ├── fila-de-chamados.routes.e2e.test.ts
-│   │   │   │   ├── jwt.e2e.test.ts
-│   │   │   │   ├── kafka.e2e.test.ts
-│   │   │   │   ├── redis.e2e.test.ts
-│   │   │   │   ├── servico.routes.e2e.test.ts
-│   │   │   │   ├── tecnico.routes.e2e.test.ts
-│   │   │   │   └── usuario.routes.e2e.test.ts
+│   │   │   │   ├── admin
+│   │   │   │   │   └── crud.e2e.test.ts
+│   │   │   │   ├── auth
+│   │   │   │   │   ├── login.e2e.test.ts
+│   │   │   │   │   └── refresh-token.e2e.test.ts
+│   │   │   │   ├── chamados
+│   │   │   │   │   └── crud.e2e.test.ts
+│   │   │   │   ├── fila-de-chamados
+│   │   │   │   │   └── fila.e2e.test.ts
+│   │   │   │   ├── servicos
+│   │   │   │   │   └── servicos.e2e.test.ts
+│   │   │   │   ├── setup
+│   │   │   │   │   ├── global-setup.ts
+│   │   │   │   │   ├── test.database.ts
+│   │   │   │   │   ├── test.environment.ts
+│   │   │   │   │   └── test.helpers.ts
+│   │   │   │   ├── tecnicos
+│   │   │   │   │   └── crud.e2e.test.ts
+│   │   │   │   └── usuarios
+│   │   │   │       └── crud.e2e.test.ts
 │   │   │   ├── performance
 │   │   │   │   ├── carga
 │   │   │   │   │   └── carga.js
@@ -233,24 +240,38 @@
 │   │   │   │   │   └── stress.js
 │   │   │   │   └── .env.k6
 │   │   │   └── unit
-│   │   │       ├── admin.routes.test.ts
-│   │   │       ├── app.test.ts
-│   │   │       ├── auth.routes.test.ts
-│   │   │       ├── auth.test.ts
-│   │   │       ├── chamado.routes.test.ts
-│   │   │       ├── chamado.service.test.ts
-│   │   │       ├── chamadoAtualizacao.repository.test.ts
-│   │   │       ├── chamadoConsumer.test.ts
-│   │   │       ├── emailService.test.ts
-│   │   │       ├── fila-de-chamados.routes.test.ts
-│   │   │       ├── jwt.test.ts
-│   │   │       ├── kafka.test.ts
-│   │   │       ├── password.test.ts
-│   │   │       ├── prisma.test.ts
-│   │   │       ├── redis.test.ts
-│   │   │       ├── servico.routes.test.ts
-│   │   │       ├── tecnico.routes.test.ts
-│   │   │       └── usuario.routes.test.ts
+│   │   │       ├── application
+│   │   │       │   ├── chamado.service.test.ts
+│   │   │       │   └── emailService.test.ts
+│   │   │       ├── domain
+│   │   │       │   └── atualizacao.chamado.repository.test.ts
+│   │   │       ├── infrastructure
+│   │   │       │   ├── database
+│   │   │       │   │   ├── prisma.test.ts
+│   │   │       │   │   └── redis.test.ts
+│   │   │       │   ├── http
+│   │   │       │   │   ├── middlewares
+│   │   │       │   │   │   ├── auth.routes.test.ts
+│   │   │       │   │   │   ├── auth.test.ts
+│   │   │       │   │   │   ├── error-logger.middleware.test.ts
+│   │   │       │   │   │   ├── jwt.test.ts
+│   │   │       │   │   │   ├── password.test.ts
+│   │   │       │   │   │   ├── rate-limit.middleware.test.ts
+│   │   │       │   │   │   └── request-logger.middleware.test.ts
+│   │   │       │   │   └── routes
+│   │   │       │   │       ├── admin.routes.test.ts
+│   │   │       │   │       ├── chamado.routes.test.ts
+│   │   │       │   │       ├── fila-de-chamados.routes.test.ts
+│   │   │       │   │       ├── servico.routes.test.ts
+│   │   │       │   │       ├── tecnico.routes.test.ts
+│   │   │       │   │       └── usuario.routes.test.ts
+│   │   │       │   └── messaging
+│   │   │       │       ├── chamadoConsumer.test.ts
+│   │   │       │       └── kafka.test.ts
+│   │   │       ├── setup
+│   │   │       │   └── mocks.ts
+│   │   │       └── shared
+│   │   │           └── app.test.ts
 │   │   ├── application
 │   │   │   └── use-cases
 │   │   │       └── chamado
@@ -290,6 +311,7 @@
 │   │   │           ├── envio-email-teste.routes.ts
 │   │   │           ├── fila-de-chamados.routes.ts
 │   │   │           ├── index.ts
+│   │   │           ├── kafka.routes.ts
 │   │   │           ├── servico.routes.ts
 │   │   │           ├── tecnico.routes.ts
 │   │   │           └── usuario.routes.ts
@@ -315,16 +337,16 @@
 │   ├── .env.test
 │   ├── .gitignore
 │   ├── Dockerfile
-│   ├── docker-compose.test.yml
 │   ├── docker-compose.yaml
 │   ├── package.json
 │   ├── pnpm-lock.yaml
 │   ├── prisma.config.ts
 │   ├── tsconfig.json
+│   ├── vitest.config.e2e.ts
 │   ├── vitest.config.ts
 │   └── vitest.setup.ts
 ├── LICENSE
 ├── README.md
 └── scan-estrutura-projeto.txt
 
-94 directories, 234 files
+112 directories, 238 files
