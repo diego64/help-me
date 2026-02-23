@@ -532,7 +532,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload resultados do Trivy
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           category: trivy-docker-scan
@@ -691,15 +691,7 @@ jobs:
           4. **Documentação**: Atualizar changelog com as mudanças desta versão
           
           ---
-          
-          <div align="center">
-          
-          ** Pipeline Executada com Sucesso! **
-          
-          [![View Workflow](https://img.shields.io/badge/View-Workflow-blue?style=for-the-badge&logo=github)](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          [![Docker Hub](https://img.shields.io/badge/Docker-Hub-2496ED?style=for-the-badge&logo=docker)](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-          
-          </div>
+
           END_SUMMARY
 
   github-release:
@@ -874,16 +866,7 @@ jobs:
           cat >> release_notes.md << 'RELEASE_END'
           
           ---
-          
-          <div align="center">
-          
-          **Made with by the Help-Me Team**
-          
-          [![Docker Pulls](https://img.shields.io/docker/pulls/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api?style=flat-square)](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-          [![GitHub Stars](https://img.shields.io/github/stars/${{ github.repository }}?style=flat-square)](https://github.com/${{ github.repository }}/stargazers)
-          [![License](https://img.shields.io/github/license/${{ github.repository }}?style=flat-square)](https://github.com/${{ github.repository }}/blob/main/LICENSE)
-          
-          </div>
+
           RELEASE_END
           
           sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" release_notes.md
