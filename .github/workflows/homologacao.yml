@@ -273,42 +273,147 @@ jobs:
       - name: Instalar dependências
         working-directory: ./api
         run: pnpm install --frozen-lockfile
-      
-      - name: Preparar e subir infraestrutura de testes
+
+      - name: Criar .env para docker-compose
+        working-directory: ./api
+        run: |
+          cat > .env << 'EOF'
+          DB_USER_TESTE=teste
+          DB_PASSWORD_TESTE=senha_teste
+          DB_NAME_TESTE=helpme_database_teste
+          DB_PORT_TESTE=5434
+          MONGO_INITDB_ROOT_USERNAME_TESTE=teste
+          MONGO_INITDB_ROOT_PASSWORD_TESTE=senha_teste
+          MONGO_INITDB_DATABASE_TESTE=helpme_mongo_teste
+          MONGO_PORT_TESTE=27018
+          REDIS_PASSWORD_TESTE=
+          REDIS_PORT_TESTE=6380
+          ZOOKEEPER_CLIENT_PORT_TESTE=2181
+          ZOOKEEPER_PORT_TESTE=2182
+          INFLUX_USERNAME_TESTE=teste
+          INFLUX_PASSWORD_TESTE=senha_teste123
+          INFLUX_BUCKET_TESTE=helpme_bucket_teste
+          INFLUX_RETENTION_TESTE=1d
+          INFLUX_ADMIN_TOKEN_TESTE=TestToken123456
+          INFLUX_PORT_TESTE=8087
+          EOF
+
+      - name: Subir infraestrutura de testes
         working-directory: ./api
         timeout-minutes: 8
         run: |
-          #!/bin/bash
           set -e
-          
-          echo "=== PREPARAÇÃO E SUBIDA DA INFRAESTRUTURA ==="
-          
-          docker compose -f docker-compose.test.yml down -v --remove-orphans --timeout 10 2>/dev/null || true
-          
-          CONTAINERS=$(docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | wc -l)
-          if [ "$CONTAINERS" -gt 0 ]; then
-            docker ps -aq --filter "label=project=helpme" --filter "label=env=test" | xargs -r docker rm -f 2>/dev/null || true
-          fi
-          
-          docker compose -f docker-compose.test.yml pull --quiet
-          docker compose -f docker-compose.test.yml up -d
-          
-          echo "Aguardando inicialização dos serviços (60s)..."
-          sleep 60
-          
-          docker compose -f docker-compose.test.yml ps
+          echo "=== SUBINDO SERVIÇOS DE TESTE ==="
 
-      - name: Criar/sobrescrever .env.test
+          docker compose -f docker-compose.yaml up -d \
+            postgresql_helpme_teste \
+            mongodb_helpme_teste \
+            redis_helpme_teste \
+            zookeeper_helpme_teste \
+            kafka_helpme_teste \
+            influxdb_helpme_teste
+
+          echo "Aguardando inicialização dos serviços (90s)..."
+          sleep 90
+
+          docker compose -f docker-compose.yaml ps \
+            postgresql_helpme_teste \
+            mongodb_helpme_teste \
+            redis_helpme_teste \
+            kafka_helpme_teste
+
+      - name: Criar .env.test
         working-directory: ./api
         run: |
           cat > .env.test << 'EOF'
+          # ==================== AMBIENTE DE TESTE ====================
           NODE_ENV=test
-          DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public
-          MONGO_INITDB_URI=mongodb://teste:senha_teste@localhost:27018/helpme_mongo_teste?authSource=admin
-          REDIS_URL=redis://localhost:6379
-          KAFKA_BROKERS=localhost:9093
-          JWT_SECRET=test-jwt-secret-key-minimum-32-chars-required-here-12345
-          JWT_REFRESH_SECRET=test-refresh-secret-minimum-32-chars-required-abcd
+
+          # ==================== BANCO DE DADOS (PRINCIPAL) ====================
+          DB_USER=teste
+          DB_PASSWORD=senha_teste
+          DB_NAME=helpme_database_teste
+          DB_HOST=localhost
+          DB_PORT=5433
+          DB_MAX_CONNECTIONS=50
+          DB_SHARED_BUFFERS=128MB
+          DB_EFFECTIVE_CACHE_SIZE=512MB
+          POSTGRESQL_WORK_MEM=8MB
+          DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
+
+          # ==================== BANCO DE DADOS (HISTÓRICO) ====================
+          MONGO_INITDB_ROOT_USERNAME_TESTE=teste
+          MONGO_INITDB_ROOT_PASSWORD_TESTE=senha
+          MONGO_INITDB_DATABASE_TESTE=helpme_mongo_teste
+          MONGO_HOST_TESTE=localhost
+          MONGO_PORT_TESTE=27018
+          MONGO_INITDB_URI_TESTE=mongodb://teste:senha@localhost:27018/helpme_mongo_teste?authSource=admin
+
+          # ==================== JWT ====================
+          JWT_SECRET=chavesecretadeteste123
+          JWT_REFRESH_SECRET=refreshsegredodeteste456
+          JWT_EXPIRATION=8h
+          JWT_REFRESH_EXPIRATION=7d
+
+          # ==================== REDIS ====================
+          REDIS_PASSWORD_TESTE=
+          REDIS_HOST_TESTE=localhost
+          REDIS_PORT_TESTE=6380
+          REDIS_MAX_MEMORY=256mb
+          REDIS_MAXMEMORY_POLICY_TESTE=allkeys-lru
+
+          # ==================== KAFKA ====================
+          KAFKA_HOST_TESTE=localhost
+          KAFKA_PORT_TESTE=9095
+          KAFKA_BROKER_URL_TESTE=localhost:9095
+          KAFKAJS_NO_PARTITIONER_WARNING_TESTE=1
+
+          # ==================== ZOOKEEPER ====================
+          ZOOKEEPER_HOST_TESTE=localhost
+          ZOOKEEPER_CLIENT_PORT_TESTE=2182
+          ZOOKEEPER_TICK_TIME_TESTE=2000
+
+          # ==================== INFLUXDB ====================
+          INFLUX_USERNAME_TESTE=teste
+          INFLUX_PASSWORD_TESTE=senha_teste
+          INFLUX_ORG_TESTE=org_teste
+          INFLUX_BUCKET_TESTE=helpme_bucket_teste
+          INFLUX_RETENTION_TESTE=1d
+          INFLUX_ADMIN_TOKEN_TESTE=TestToken123456
+          INFLUX_HOST_TESTE=localhost
+          INFLUX_PORT_TESTE=8087
+          INFLUX_URL_TESTE=http://localhost:8087
+
+          # ==================== EMAIL SMTP ====================
+          SMTP_HOST_TESTE=sandbox.smtp.mailtrap.io
+          SMTP_PORT_TESTE=2525
+          SMTP_USER_TESTE=e0f224ffc3cf93
+          SMTP_PASS_TESTE=3263bb9ce3c328
+          SMTP_FROM_TESTE=test@helpme.com
+
+          # ==================== URL BASE ====================
+          API_BASE_URL_TESTE=http://localhost:3333
+          API_HOST_TESTE=0.0.0.0
+          API_PORT_TESTE=3333
+
+          # ==================== DADOS PARA TESTES ====================
+          ADMIN_EMAIL_TESTE=admin@helpme.com
+          ADMIN_PASSWORD_TESTE=Admin123!
+          USER_EMAIL_TESTE=user@helpme.com
+          USER_PASSWORD_TESTE=User123!
+          TECNICO_EMAIL_TESTE=tecnico@helpme.com
+          TECNICO_PASSWORD_TESTE=Tecnico123!
+
+          # ==================== CONFIGURAÇÕES DE TESTE ====================
+          TEST_TIMEOUT=30000
+          TEST_CONCURRENCY=1
+          SKIP_SEED=false
+          SKIP_MIGRATIONS=false
+
+          # ==================== LOGGING ====================
+          LOG_LEVEL=debug
+          LOG_DIR=./logs
+          LOG_FILE=test.log
           EOF
 
       - name: Gerar Prisma Client
@@ -340,15 +445,19 @@ jobs:
         working-directory: ./api
         if: failure()
         run: |
-          docker compose -f docker-compose.test.yml logs --tail=100 postgres || true
-          docker compose -f docker-compose.test.yml logs --tail=100 mongodb || true
-          docker compose -f docker-compose.test.yml logs --tail=100 redis || true
-          docker compose -f docker-compose.test.yml logs --tail=100 kafka || true
+          docker compose -f docker-compose.yaml logs --tail=100 postgresql_helpme_teste || true
+          docker compose -f docker-compose.yaml logs --tail=100 mongodb_helpme_teste || true
+          docker compose -f docker-compose.yaml logs --tail=100 redis_helpme_teste || true
+          docker compose -f docker-compose.yaml logs --tail=100 kafka_helpme_teste || true
 
-      - name: Derrubar infraestrutura
-        working-directory: ./api 
+      - name: Derrubar infraestrutura de testes
+        working-directory: ./api
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v --timeout 30
+        run: |
+          docker compose -f docker-compose.yaml down \
+            --volumes \
+            --timeout 30 \
+            2>/dev/null || true
 
   release:
     name: Push Docker Image
@@ -520,13 +629,13 @@ jobs:
           ## Test Results
           
           ### Testes Unitários
-          - ✅ Executados com sucesso
-          - 📈 Coverage disponível nos artifacts
+          - [X] Executados com sucesso
+          - [X] Coverage disponível nos artifacts
           
           ### Testes E2E
-          - ✅ Todos os cenários validados
-          - 🗄️ Infraestrutura Docker provisionada automaticamente
-          - ⚡ Testes gerenciam seus próprios dados (sem overhead de seed)
+          - [X] Todos os cenários validados
+          - [X] Infraestrutura Docker provisionada automaticamente
+          - [X] Testes gerenciam seus próprios dados (sem overhead de seed)
           
           ---
           
@@ -781,7 +890,7 @@ jobs:
           sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" release_notes.md
           sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" release_notes.md
           
-          echo "✅ Release notes geradas!"
+          echo "Release notes geradas!"
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
