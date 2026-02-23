@@ -1,9 +1,9 @@
 import { Router, Response } from 'express';
 import { ChamadoStatus } from '@prisma/client';
-import { getStringParamRequired } from '../../../shared/utils/request-params';
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { producer } from '../../../infrastructure/messaging/kafka/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
+import { getStringParamRequired } from '@shared/utils/request-params';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { producer } from '@infrastructure/messaging/kafka/client';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
 
 export const router: Router = Router();
 

@@ -1,6 +1,6 @@
 import AtualizacaoDoChamado from '../database/mongodb/atualizacao.chamado.model';
-import type { HistoricoChamadoInput, HistoricoChamadoDocument } from '../../shared/@types/historicoChamado';
-import { logger } from '../../shared/config/logger';
+import type { HistoricoChamadoInput, HistoricoChamadoDocument } from '@shared/@types/historicoChamado';
+import { logger } from '@shared/config/logger';
 
 export class RepositoryError extends Error {
   constructor(

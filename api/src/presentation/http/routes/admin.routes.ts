@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { hashPassword } from '../../../shared/config/password';
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
-import { getStringParam, getStringParamRequired, getNumberParamClamped } from '../../../shared/utils/request-params';
+import { hashPassword } from '@shared/config/password';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { getStringParam, getStringParamRequired, getNumberParamClamped } from '@shared/utils/request-params';
 
 export const router: Router = Router();
 

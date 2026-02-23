@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 /**
  * Standard error interface following industry best practices

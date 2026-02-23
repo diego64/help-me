@@ -61,7 +61,15 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      defaultModelsExpandDepth: -1, // segurança extra no UI
+    },
+  }),
+);
 
 app.use('/api', routes);
 

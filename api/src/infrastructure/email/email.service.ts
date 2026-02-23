@@ -1,5 +1,5 @@
 import nodemailer, { Transporter, SendMailOptions } from 'nodemailer';
-import { logger } from '../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 export class EmailServiceError extends Error {
   constructor(

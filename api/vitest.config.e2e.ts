@@ -2,6 +2,16 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+      '@application': resolve(__dirname, 'src/application'),
+      '@infrastructure': resolve(__dirname, 'src/infrastructure'),
+      '@presentation': resolve(__dirname, 'src/presentation'),
+      '@shared': resolve(__dirname, 'src/shared'),
+      '@templates': resolve(__dirname, 'src/templates'),
+    },
+  },
   test: {
     name: 'e2e',
     globals: true,
@@ -74,12 +84,5 @@ export default defineConfig({
     
     // Retry em caso de falha (útil para testes E2E instáveis)
     retry: process.env.CI ? 2 : 0,
-  },
-  
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, './src'),
-      '@tests': resolve(__dirname, './src/__tests__'),
-    },
   },
 });

@@ -14,7 +14,7 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
-vi.mock('../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -51,7 +51,7 @@ describe('Email Service', () => {
 
   describe('createEmailTransporter', () => {
     it('deve criar transporter com configurações corretas do ambiente', async () => {
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith({
         host: 'smtp.test.com',
@@ -67,7 +67,7 @@ describe('Email Service', () => {
     it('deve criar transporter com porta como número', async () => {
       process.env.SMTP_PORT = '465';
 
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -79,7 +79,7 @@ describe('Email Service', () => {
     it('deve criar transporter com secure true quando SMTP_SECURE for "true"', async () => {
       process.env.SMTP_SECURE = 'true';
 
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -91,7 +91,7 @@ describe('Email Service', () => {
     it('deve criar transporter com secure false quando SMTP_SECURE não for "true"', async () => {
       process.env.SMTP_SECURE = 'false';
 
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -104,7 +104,7 @@ describe('Email Service', () => {
       delete process.env.SMTP_HOST;
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('Variáveis de ambiente SMTP ausentes');
     });
 
@@ -112,7 +112,7 @@ describe('Email Service', () => {
       delete process.env.SMTP_PORT;
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PORT');
     });
 
@@ -120,7 +120,7 @@ describe('Email Service', () => {
       delete process.env.SMTP_USER;
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_USER');
     });
 
@@ -128,7 +128,7 @@ describe('Email Service', () => {
       delete process.env.SMTP_PASS;
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PASS');
     });
 
@@ -137,11 +137,11 @@ describe('Email Service', () => {
       delete process.env.SMTP_PORT;
 
       const { EmailServiceError } = await import(
-        '../../../infrastructure/email/email.service'
+        '@infrastructure/email/email.service'
       ).catch(e => ({ EmailServiceError: e.constructor }));
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow();
     });
 
@@ -149,7 +149,7 @@ describe('Email Service', () => {
       process.env.SMTP_PORT = 'invalid';
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PORT inválida');
     });
 
@@ -157,7 +157,7 @@ describe('Email Service', () => {
       process.env.SMTP_PORT = '0';
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PORT inválida');
     });
 
@@ -165,7 +165,7 @@ describe('Email Service', () => {
       process.env.SMTP_PORT = '-1';
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PORT inválida');
     });
 
@@ -173,14 +173,14 @@ describe('Email Service', () => {
       process.env.SMTP_PORT = '65536';
 
       await expect(async () => {
-        await import('../../../infrastructure/email/email.service');
+        await import('@infrastructure/email/email.service');
       }).rejects.toThrow('SMTP_PORT inválida');
     });
 
     it('deve aceitar porta 1 como válida', async () => {
       process.env.SMTP_PORT = '1';
 
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -192,7 +192,7 @@ describe('Email Service', () => {
     it('deve aceitar porta 65535 como válida', async () => {
       process.env.SMTP_PORT = '65535';
 
-      await import('../../../infrastructure/email/email.service');
+      await import('@infrastructure/email/email.service');
 
       expect(nodemailer.createTransport).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -211,7 +211,7 @@ describe('Email Service', () => {
       };
       sendMailMock.mockResolvedValue(mockResponse);
 
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       const destinatario = 'recipient@test.com';
       const assunto = 'Teste de Email';
@@ -234,7 +234,7 @@ describe('Email Service', () => {
 
       sendMailMock.mockResolvedValue({ messageId: 'test-id', accepted: [], rejected: [] });
 
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       await sendEmail('test@test.com', 'Assunto', '<p>Conteúdo</p>');
 
@@ -247,7 +247,7 @@ describe('Email Service', () => {
 
     it('deve enviar email com múltiplos destinatários', async () => {
       sendMailMock.mockResolvedValue({ messageId: 'test-id', accepted: [], rejected: [] });
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       const destinatarios = 'user1@test.com, user2@test.com, user3@test.com';
       const assunto = 'Email para múltiplos destinatários';
@@ -265,7 +265,7 @@ describe('Email Service', () => {
 
     it('deve enviar email com HTML complexo', async () => {
       sendMailMock.mockResolvedValue({ messageId: 'test-id', accepted: [], rejected: [] });
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       const htmlComplexo = `
         <!DOCTYPE html>
@@ -296,7 +296,7 @@ describe('Email Service', () => {
 
     it('deve enviar email com HTML vazio', async () => {
       sendMailMock.mockResolvedValue({ messageId: 'test-id', accepted: [], rejected: [] });
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       await sendEmail('user@test.com', 'Assunto Vazio', '');
 
@@ -309,7 +309,7 @@ describe('Email Service', () => {
 
     it('deve enviar email com subject vazio', async () => {
       sendMailMock.mockResolvedValue({ messageId: 'test-id', accepted: [], rejected: [] });
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       await sendEmail('user@test.com', '', '<p>Conteúdo</p>');
 
@@ -333,7 +333,7 @@ describe('Email Service', () => {
       };
       sendMailMock.mockResolvedValue(mockResponse);
 
-      const { sendEmail } = await import('../../../infrastructure/email/email.service');
+      const { sendEmail } = await import('@infrastructure/email/email.service');
 
       const resultado = await sendEmail('user@test.com', 'Teste Completo', '<p>Teste</p>');
 
@@ -346,7 +346,7 @@ describe('Email Service', () => {
     describe('Validações', () => {
       it('deve lançar erro quando destinatário for null', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(sendEmail(null as any, 'Assunto', '<p>HTML</p>')).rejects.toThrow(
@@ -359,7 +359,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando destinatário for undefined', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(
@@ -369,7 +369,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando destinatário não for string', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(sendEmail(123 as any, 'Assunto', '<p>HTML</p>')).rejects.toThrow(
@@ -379,7 +379,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando destinatário estiver vazio', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(sendEmail('', 'Assunto', '<p>HTML</p>')).rejects.toThrow(
@@ -389,7 +389,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando destinatário for apenas espaços', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(sendEmail('   ', 'Assunto', '<p>HTML</p>')).rejects.toThrow(
@@ -399,7 +399,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando email for inválido', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(
@@ -408,7 +408,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando email não tiver @', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(sendEmail('emailsemarroba', 'Assunto', '<p>HTML</p>')).rejects.toThrow(
           'Email inválido'
@@ -416,7 +416,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando email não tiver domínio', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(sendEmail('email@', 'Assunto', '<p>HTML</p>')).rejects.toThrow(
           'Email inválido'
@@ -424,7 +424,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando um dos múltiplos emails for inválido', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(
           sendEmail('valid@test.com, invalid-email', 'Assunto', '<p>HTML</p>')
@@ -433,7 +433,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando subject for null', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(
@@ -445,7 +445,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando subject for undefined', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(
           sendEmail('test@test.com', undefined as any, '<p>HTML</p>')
@@ -453,7 +453,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando subject não for string', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(sendEmail('test@test.com', 123 as any, '<p>HTML</p>')).rejects.toThrow(
           'Assunto deve ser uma string'
@@ -462,7 +462,7 @@ describe('Email Service', () => {
 
       it('deve lançar erro quando html for null', async () => {
         const { sendEmail, EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(
@@ -474,7 +474,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando html for undefined', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(
           sendEmail('test@test.com', 'Assunto', undefined as any)
@@ -482,7 +482,7 @@ describe('Email Service', () => {
       });
 
       it('deve lançar erro quando html não for string', async () => {
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(sendEmail('test@test.com', 'Assunto', 123 as any)).rejects.toThrow(
           'Conteúdo HTML deve ser uma string'
@@ -496,7 +496,7 @@ describe('Email Service', () => {
         sendMailMock.mockRejectedValue(erro);
 
         const { sendEmail, EmailServiceError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         const erroCapturado = await sendEmail(
@@ -516,7 +516,7 @@ describe('Email Service', () => {
         sendMailMock.mockRejectedValue(erro);
 
         const { sendEmail, EmailServiceError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         await expect(sendEmail('test@test.com', 'Assunto', '<p>Teste</p>')).rejects.toThrow(
@@ -528,7 +528,7 @@ describe('Email Service', () => {
         const erro = new Error('Recipient address rejected');
         sendMailMock.mockRejectedValue(erro);
 
-        const { sendEmail } = await import('../../../infrastructure/email/email.service');
+        const { sendEmail } = await import('@infrastructure/email/email.service');
 
         await expect(sendEmail('test@test.com', 'Assunto', '<p>Teste</p>')).rejects.toThrow(
           'Falha ao enviar email'
@@ -542,7 +542,7 @@ describe('Email Service', () => {
       verifyMock.mockResolvedValue(true);
 
       const { verifyEmailTransporter } = await import(
-        '../../../infrastructure/email/email.service'
+        '@infrastructure/email/email.service'
       );
 
       const resultado = await verifyEmailTransporter();
@@ -556,7 +556,7 @@ describe('Email Service', () => {
       verifyMock.mockRejectedValue(erro);
 
       const { verifyEmailTransporter, EmailServiceError } = await import(
-        '../../../infrastructure/email/email.service'
+        '@infrastructure/email/email.service'
       );
 
       const erroCapturado = await verifyEmailTransporter().catch(e => e);
@@ -572,7 +572,7 @@ describe('Email Service', () => {
     describe('EmailServiceError', () => {
       it('deve criar erro com todas as propriedades', async () => {
         const { EmailServiceError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         const originalError = new Error('Original');
@@ -586,7 +586,7 @@ describe('Email Service', () => {
 
       it('deve criar erro sem originalError', async () => {
         const { EmailServiceError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         const erro = new EmailServiceError('Mensagem', 'CODE');
@@ -598,7 +598,7 @@ describe('Email Service', () => {
     describe('EmailValidationError', () => {
       it('deve criar erro com todas as propriedades', async () => {
         const { EmailValidationError } = await import(
-          '../../../infrastructure/email/email.service'
+          '@infrastructure/email/email.service'
         );
 
         const erro = new EmailValidationError('Email inválido', 'to');

@@ -11,20 +11,20 @@ const prismaMock = {
   $disconnect: vi.fn().mockResolvedValue(undefined),
 };
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: prismaMock,
 }));
 
 const verifyPasswordMock = vi.fn();
 
-vi.mock('../../../../../shared/config/password', () => ({
+vi.mock('@shared/config/password', () => ({
   verifyPassword: verifyPasswordMock,
 }));
 
 const generateTokenPairMock = vi.fn();
 const verifyTokenMock = vi.fn();
 
-vi.mock('../../../../../shared/config/jwt', () => ({
+vi.mock('@shared/config/jwt', () => ({
   generateTokenPair: generateTokenPairMock,
   verifyToken: verifyTokenMock,
 }));
@@ -39,7 +39,7 @@ vi.mock('jsonwebtoken', () => ({
 const cacheSetMock = vi.fn();
 const cacheGetMock = vi.fn();
 
-vi.mock('../../../../../infrastructure/database/redis/client', () => ({
+vi.mock('@infrastructure/database/redis/client', () => ({
   cacheSet: cacheSetMock,
   cacheGet: cacheGetMock,
 }));
@@ -47,7 +47,7 @@ vi.mock('../../../../../infrastructure/database/redis/client', () => ({
 let authMiddlewareEnabled = true;
 let currentUser: any = null;
 
-vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
+vi.mock('@infrastructure/http/middlewares/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     if (!authMiddlewareEnabled) {
       return res.status(401).json({ error: 'Não autorizado.' });
@@ -91,7 +91,7 @@ let app: Express;
 let authRouter: any;
 
 beforeAll(async () => {
-  const routerModule = await import('../../../../../presentation/http/routes/auth.routes');
+  const routerModule = await import('@presentation/http/routes/auth.routes');
   authRouter = routerModule.default || routerModule.router;
 });
 

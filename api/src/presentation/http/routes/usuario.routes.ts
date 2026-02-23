@@ -2,11 +2,11 @@ import path from 'path';
 import { Router, Response } from 'express';
 import multer from 'multer';
 import { Setor, Regra } from '@prisma/client';
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
-import { cacheSet, cacheGet, cacheDel } from '../../../infrastructure/database/redis/client';
-import { hashPassword } from '../../../shared/config/password';
-import { getStringParam, getStringParamRequired, getNumberParamClamped, getBooleanParam } from '../../../shared/utils/request-params';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { cacheSet, cacheGet, cacheDel } from '@infrastructure/database/redis/client';
+import { hashPassword } from '@shared/config/password';
+import { getStringParam, getStringParamRequired, getNumberParamClamped, getBooleanParam } from '@shared/utils/request-params';
 
 export const router: Router = Router();
 

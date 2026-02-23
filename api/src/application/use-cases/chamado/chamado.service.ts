@@ -1,6 +1,6 @@
-import { HistoricoChamadoInput } from '../../../shared/@types/historicoChamado';
-import { salvarHistoricoChamado, listarHistoricoChamado, } from '../../../infrastructure/repositories/atualizacao.chamado.repository';
-import { logger } from '../../../shared/config/logger';
+import { HistoricoChamadoInput } from '@shared/@types/historicoChamado';
+import { salvarHistoricoChamado, listarHistoricoChamado } from '@infrastructure/repositories/atualizacao.chamado.repository';
+import { logger } from '@shared/config/logger';
 
 // Erros personalizados do serviço de histórico
 export class HistoricoChamadoError extends Error {

@@ -16,11 +16,11 @@ const prismaMock = {
   },
 };
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
+vi.mock('@infrastructure/http/middlewares/auth', () => ({
   authMiddleware: (req: any, res: Response, next: NextFunction) => {
     req.usuario = {
       id: 'test-user-id',
@@ -46,7 +46,7 @@ vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
   AuthRequest: class {},
 }));
 
-const { default: servicoRoutes } = await import('../../../../../presentation/http/routes/servico.routes');
+const { default: servicoRoutes } = await import('@presentation/http/routes/servico.routes');
 
 const servicoBase = {
   id: 'serv-123',

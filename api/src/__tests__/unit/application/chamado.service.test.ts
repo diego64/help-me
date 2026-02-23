@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { registrarAcaoNoHistorico, buscarHistorico, HistoricoChamadoError } from '../../../application/use-cases/chamado/chamado.service';
-import { salvarHistoricoChamado, listarHistoricoChamado } from '../../../infrastructure/repositories/atualizacao.chamado.repository';
-import { HistoricoChamadoInput } from '../../../shared/@types/historicoChamado';
-import { logger } from '../../../shared/config/logger';
+import { registrarAcaoNoHistorico, buscarHistorico, HistoricoChamadoError } from '@application/use-cases/chamado/chamado.service';
+import { salvarHistoricoChamado, listarHistoricoChamado } from '@infrastructure/repositories/atualizacao.chamado.repository';
+import { HistoricoChamadoInput } from '@shared/@types/historicoChamado';
+import { logger } from '@shared/config/logger';
 
-vi.mock('../../../infrastructure/repositories/atualizacao.chamado.repository', () => ({
+vi.mock('@infrastructure/repositories/atualizacao.chamado.repository', () => ({
   salvarHistoricoChamado: vi.fn(),
   listarHistoricoChamado: vi.fn(),
 }));
 
-vi.mock('../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),

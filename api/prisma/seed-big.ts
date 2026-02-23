@@ -15,7 +15,6 @@ const pool = new Pool({
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-// Configurações dos outros bancos
 const MONGODB_URI = process.env.MONGO_INITDB_URI || 
   `mongodb://${process.env.MONGO_INITDB_ROOT_USERNAME}:${process.env.MONGO_INITDB_ROOT_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_INITDB_DATABASE}?authSource=admin`;
 
@@ -23,25 +22,18 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const KAFKA_ENABLED = process.env.KAFKA_ENABLED !== 'false';
 const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || process.env.KAFKA_BROKER_URL || 'localhost:9093').split(',');
 
-// Constantes
-const TOTAL_CHAMADOS = 5000;
-const BATCH_SIZE = 100; // Processar em lotes de 100
-
-// Função para gerar hash de senha usando PBKDF2-SHA512
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
   return `${salt}:${hash}`;
 }
 
-// Função para gerar número de OS único
 function gerarOS(index: number): string {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
   return `OS-${timestamp}-${index}-${random}`;
 }
 
-// Função para gerar data aleatória dentro de um range
 function gerarDataAleatoria(diasAtras: number): Date {
   const hoje = new Date();
   const diasAleatorios = Math.floor(Math.random() * diasAtras);
@@ -49,23 +41,19 @@ function gerarDataAleatoria(diasAtras: number): Date {
   return data;
 }
 
-// Função para adicionar horas/minutos aleatórios a uma data
 function adicionarTempoAleatorio(data: Date, horasMin: number, horasMax: number): Date {
   const horas = Math.random() * (horasMax - horasMin) + horasMin;
   return new Date(data.getTime() + horas * 60 * 60 * 1000);
 }
 
-// Função para gerar requestId único
 function gerarRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Função para gerar IP aleatório
 function gerarIP(): string {
   return `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
 }
 
-// Função para gerar User-Agent aleatório
 function gerarUserAgent(): string {
   const browsers = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
@@ -76,31 +64,40 @@ function gerarUserAgent(): string {
   return browsers[Math.floor(Math.random() * browsers.length)];
 }
 
-async function main() {
-  console.log(`[INFO] 🌱 Iniciando seed com ${TOTAL_CHAMADOS.toLocaleString('pt-BR')} chamados...\n`);
+let contadores = {
+  systemLogs: 0,
+  auditLogs: 0,
+  eventosKafka: 0,
+  chamadosRedis: 0,
+  usuariosRedis: 0,
+};
 
-  console.log('[INFO] Conectando aos bancos de dados...');
-  
-  // MongoDB
+async function main() {
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🌱 SEED BIG HELP-ME');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+
+  console.log('[1/8] Conectando aos bancos de dados...\n');
+
+  console.log('Conectando ao MongoDB...');
   const mongoClient = new MongoClient(MONGODB_URI);
   await mongoClient.connect();
   const mongodb = mongoClient.db(process.env.MONGO_INITDB_DATABASE || 'helpme-mongo');
-  console.log('[INFO] MongoDB conectado');
-
-  // Redis
+  console.log('MongoDB conectado');
+ 
+  console.log('Conectando ao Redis...');
   const redis = createClient({ url: REDIS_URL });
   await redis.connect();
-  console.log('[INFO] Redis conectado');
+  console.log('Redis conectado');
 
-  // Kafka (opcional)
   let kafkaProducer: any = null;
   let kafkaConnected = false;
 
   if (KAFKA_ENABLED) {
     try {
-      console.log(`[INFO] Tentando conectar ao Kafka em: ${KAFKA_BROKERS.join(', ')}`);
+      console.log(`Tentando conectar ao Kafka em: ${KAFKA_BROKERS.join(', ')}...`);
       const kafka = new Kafka({
-        clientId: 'helpme-seed-5k',
+        clientId: 'helpme-seed',
         brokers: KAFKA_BROKERS,
         retry: {
           retries: 3,
@@ -110,48 +107,55 @@ async function main() {
         requestTimeout: 5000,
       });
       
-      kafkaProducer = kafka.producer({
-        maxInFlightRequests: 5,
-        idempotent: true,
-      });
+      kafkaProducer = kafka.producer();
       await kafkaProducer.connect();
       kafkaConnected = true;
-      console.log('[INFO] Kafka conectado');
+      console.log('Kafka conectado');
     } catch (error) {
-      console.log('[AVISO] Kafka não disponível - continuando sem eventos Kafka');
+      console.log('Kafka não disponível - continuando sem eventos');
       kafkaConnected = false;
     }
   } else {
-    console.log('[INFO] Kafka desabilitado');
+    console.log('Kafka desabilitado via variável de ambiente');
   }
 
   console.log();
 
-  console.log('[INFO] Limpando dados existentes...');
+  console.log('[2/8] Limpando dados existentes...\n');
   
-  // PostgreSQL
+  console.log('PostgreSQL:');
   await prisma.ordemDeServico.deleteMany();
+  console.log('1 - Ordens de Serviço removidas');
   await prisma.chamado.deleteMany();
+  console.log('2 - Chamados removidos');
   await prisma.expediente.deleteMany();
+  console.log('3 - Expedientes removidos');
   await prisma.servico.deleteMany();
+  console.log('4 - Serviços removidos');
   await prisma.usuario.deleteMany();
-  console.log('[INFO] PostgreSQL limpo');
+  console.log('5 - Usuários removidos');
 
-  // MongoDB
+  console.log('MongoDB:');
   const mongoCollections = await mongodb.listCollections().toArray();
   for (const collection of mongoCollections) {
+    const count = await mongodb.collection(collection.name).countDocuments();
     await mongodb.collection(collection.name).deleteMany({});
+    console.log(`${collection.name} limpo (${count} documentos removidos)`);
   }
-  console.log('[INFO] MongoDB limpo');
 
-  // Redis
+  console.log('Redis:');
+  const redisKeys = await redis.keys('*');
   await redis.flushAll();
-  console.log('[INFO] Redis limpo\n');
+  console.log(`Redis limpo (${redisKeys.length} chaves removidas)`);
 
-  console.log('[INFO] Criando usuários...');
+  console.log();
+
+  console.log('[3/8] Criando usuários...\n');
 
   const senhaHash = hashPassword('Senha@123');
+  const setoresDisponiveis = Object.values(Setor);
 
+  console.log('Criando Admin...');
   const admin = await prisma.usuario.create({
     data: {
       nome: 'Admin',
@@ -165,12 +169,12 @@ async function main() {
       ativo: true,
     },
   });
+  console.log('Admin criado');
 
-  // Técnicos (50 técnicos para suportar 5k chamados)
+  console.log('Criando 20 técnicos...');
   const tecnicos: Usuario[] = [];
-  const setoresDisponiveis = Object.values(Setor);
 
-  for (let i = 1; i <= 50; i++) {
+  for (let i = 1; i <= 20; i++) {
     const tecnico = await prisma.usuario.create({
       data: {
         nome: `Técnico`,
@@ -186,7 +190,6 @@ async function main() {
     });
     tecnicos.push(tecnico);
 
-    // Adicionar técnico no Redis (cache de usuários online)
     await redis.hSet(`user:${tecnico.id}`, {
       id: tecnico.id,
       nome: `${tecnico.nome} ${tecnico.sobrenome}`,
@@ -195,11 +198,14 @@ async function main() {
       setor: tecnico.setor || '',
       online: Math.random() > 0.3 ? 'true' : 'false',
     });
+    contadores.usuariosRedis++;
   }
+  console.log('20 técnicos criados e cacheados no Redis');
 
-  // Usuários comuns (250 usuários)
+  console.log('Criando 100 usuários...');
   const usuarios: Usuario[] = [];
-  for (let i = 1; i <= 250; i++) {
+  
+  for (let i = 1; i <= 100; i++) {
     const usuario = await prisma.usuario.create({
       data: {
         nome: `Usuário`,
@@ -215,15 +221,16 @@ async function main() {
     });
     usuarios.push(usuario);
   }
+  console.log('100 usuários criados');
 
-  console.log(`[INFO] Criados: 1 Admin, ${tecnicos.length} Técnicos, ${usuarios.length} Usuários\n`);
+  console.log(`Total: 121 usuários (1 admin + 20 técnicos + 100 usuários)\n`);
 
-  console.log('[INFO] Criando expedientes para técnicos...');
 
-  // Criar expedientes em lote
-  const expedientes = [];
+  console.log('[4/8] Criando expedientes para técnicos...\n');
+
+  let totalExpedientes = 0;
   for (const tecnico of tecnicos) {
-    for (let dia = 0; dia < 60; dia++) {
+    for (let dia = 0; dia < 30; dia++) {
       const dataExpediente = new Date();
       dataExpediente.setDate(dataExpediente.getDate() - dia);
       dataExpediente.setHours(8, 0, 0, 0);
@@ -232,24 +239,21 @@ async function main() {
       const saida = new Date(dataExpediente);
       saida.setHours(17, 0, 0, 0);
 
-      expedientes.push({
-        usuarioId: tecnico.id,
-        entrada,
-        saida,
-        ativo: true,
+      await prisma.expediente.create({
+        data: {
+          usuarioId: tecnico.id,
+          entrada,
+          saida,
+          ativo: true,
+        },
       });
+      totalExpedientes++;
     }
   }
 
-  // Inserir expedientes em lotes
-  for (let i = 0; i < expedientes.length; i += BATCH_SIZE) {
-    const batch = expedientes.slice(i, i + BATCH_SIZE);
-    await prisma.expediente.createMany({ data: batch });
-  }
+  console.log(`${totalExpedientes} expedientes criados (30 dias × 20 técnicos)\n`);
 
-  console.log(`[INFO] ${expedientes.length} Expedientes criados\n`);
-
-  console.log('[INFO] Criando serviços...');
+  console.log('[5/8] Criando serviços...\n');
 
   const servicosData = [
     { nome: 'Instalação de Software', descricao: 'Instalação e configuração de softwares' },
@@ -267,11 +271,6 @@ async function main() {
     { nome: 'Atualização de Sistema', descricao: 'Atualização de sistemas operacionais' },
     { nome: 'Criação de Usuário', descricao: 'Criação de contas de usuário' },
     { nome: 'Configuração de Periféricos', descricao: 'Configuração de dispositivos periféricos' },
-    { nome: 'Instalação de Antivírus', descricao: 'Instalação e configuração de antivírus' },
-    { nome: 'Configuração de Firewall', descricao: 'Configuração de regras de firewall' },
-    { nome: 'Migração de Dados', descricao: 'Migração de dados entre sistemas' },
-    { nome: 'Configuração de Servidor', descricao: 'Configuração de servidores' },
-    { nome: 'Auditoria de Segurança', descricao: 'Auditoria de segurança da informação' },
   ];
 
   const servicos: Servico[] = [];
@@ -286,24 +285,91 @@ async function main() {
     servicos.push(servico);
   }
 
-  console.log(`[INFO] ${servicos.length} Serviços criados\n`);
+  console.log(`${servicos.length} serviços criados\n`);
 
-  console.log(`[INFO] Criando ${TOTAL_CHAMADOS.toLocaleString('pt-BR')} chamados com fluxo completo...\n`);
+  async function criarLog(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    message: string,
+    metadata: Record<string, any>
+  ) {
+    try {
+      const result = await mongodb.collection('system_logs').insertOne({
+        timestamp: new Date(),
+        level,
+        service: 'api',
+        message,
+        metadata,
+      });
+      contadores.systemLogs++;
+      return result.insertedId;
+    } catch (error) {
+      console.error(`Erro ao criar log no MongoDB:`, error);
+    }
+  }
 
+  async function criarAuditoria(
+    userId: string,
+    action: string,
+    resource: string,
+    resourceId: string,
+    changes?: Record<string, any>
+  ) {
+    try {
+      const result = await mongodb.collection('audit_logs').insertOne({
+        timestamp: new Date(),
+        userId,
+        action,
+        resource,
+        resourceId,
+        changes,
+        ipAddress: gerarIP(),
+        userAgent: gerarUserAgent(),
+      });
+      contadores.auditLogs++;
+      return result.insertedId;
+    } catch (error) {
+      console.error(`Erro ao criar auditoria no MongoDB:`, error);
+    }
+  }
+
+  async function publicarEvento(topic: string, evento: any) {
+    if (kafkaConnected && kafkaProducer) {
+      try {
+        await kafkaProducer.send({
+          topic,
+          messages: [
+            {
+              key: evento.chamadoId || evento.id,
+              value: JSON.stringify(evento),
+              timestamp: Date.now().toString(),
+            },
+          ],
+        });
+        contadores.eventosKafka++;
+      } catch (error) {
+        // Silenciar erros do Kafka
+      }
+    }
+  }
+
+  console.log('[6/8] Criando 1000 chamados com fluxo completo...\n');
+
+  const totalChamados = 1000;
   const distribuicao = {
-    ABERTO: Math.floor(TOTAL_CHAMADOS * 0.15),
-    EM_ATENDIMENTO: Math.floor(TOTAL_CHAMADOS * 0.05),
-    ENCERRADO: Math.floor(TOTAL_CHAMADOS * 0.20),
-    CANCELADO: Math.floor(TOTAL_CHAMADOS * 0.30),
-    REABERTO: Math.floor(TOTAL_CHAMADOS * 0.30),
+    ABERTO: Math.floor(totalChamados * 0.15),           // 150
+    EM_ATENDIMENTO: Math.floor(totalChamados * 0.05),   // 50
+    ENCERRADO: Math.floor(totalChamados * 0.20),        // 200
+    CANCELADO: Math.floor(totalChamados * 0.30),        // 300
+    REABERTO: Math.floor(totalChamados * 0.30),         // 300
   };
 
-  console.log('[INFO] Distribuição de chamados:');
-  console.log(`   ABERTO: ${distribuicao.ABERTO.toLocaleString('pt-BR')} (15%)`);
-  console.log(`   EM_ATENDIMENTO: ${distribuicao.EM_ATENDIMENTO.toLocaleString('pt-BR')} (5%)`);
-  console.log(`   ENCERRADO: ${distribuicao.ENCERRADO.toLocaleString('pt-BR')} (20%)`);
-  console.log(`   CANCELADO: ${distribuicao.CANCELADO.toLocaleString('pt-BR')} (30%)`);
-  console.log(`   REABERTO: ${distribuicao.REABERTO.toLocaleString('pt-BR')} (30%)\n`);
+  console.log('   Distribuição planejada:');
+  console.log(`      • ABERTO: ${distribuicao.ABERTO} (15%)`);
+  console.log(`      • EM_ATENDIMENTO: ${distribuicao.EM_ATENDIMENTO} (5%)`);
+  console.log(`      • ENCERRADO: ${distribuicao.ENCERRADO} (20%)`);
+  console.log(`      • CANCELADO: ${distribuicao.CANCELADO} (30%)`);
+  console.log(`      • REABERTO: ${distribuicao.REABERTO} (30%)`);
+  console.log();
 
   const descricoesChamados = [
     'Computador não liga',
@@ -326,16 +392,6 @@ async function main() {
     'Servidor fora do ar',
     'Disco rígido cheio',
     'Atualização necessária',
-    'Rede sem conexão',
-    'Arquivo corrompido',
-    'Licença expirada',
-    'Acesso negado',
-    'Performance degradada',
-    'Erro de autenticação',
-    'Certificado digital vencido',
-    'Sistema de backup offline',
-    'Integração com API falhando',
-    'Dashboard não carrega',
   ];
 
   const descricoesEncerramento = [
@@ -349,11 +405,6 @@ async function main() {
     'Vírus removido. Antivírus atualizado.',
     'Impressora configurada corretamente.',
     'Acesso VPN restabelecido.',
-    'Driver atualizado. Dispositivo funcionando.',
-    'Cache limpo. Performance normalizada.',
-    'Permissões ajustadas. Acesso liberado.',
-    'Certificado renovado com sucesso.',
-    'Serviço reiniciado. Sistema operacional.',
   ];
 
   const descricoesCancelamento = [
@@ -363,155 +414,20 @@ async function main() {
     'Equipamento será substituído.',
     'Fora do escopo do suporte.',
     'Usuário não disponível para atendimento.',
-    'Requisição inválida.',
-    'Será tratado em manutenção programada.',
-    'Transferido para equipe externa.',
-    'Aguardando aprovação de compra.',
   ];
 
   let chamadoIndex = 0;
-
-  // Buffers para operações em lote
-  let mongoLogsBuffer: any[] = [];
-  let mongoAuditsBuffer: any[] = [];
-  let kafkaMessagesBuffer: any[] = [];
-  let redisCommandsBuffer: any[] = [];
-
-  async function flushMongoLogs() {
-    if (mongoLogsBuffer.length > 0) {
-      await mongodb.collection('system_logs').insertMany(mongoLogsBuffer);
-      mongoLogsBuffer = [];
-    }
-  }
-
-  async function flushMongoAudits() {
-    if (mongoAuditsBuffer.length > 0) {
-      await mongodb.collection('audit_logs').insertMany(mongoAuditsBuffer);
-      mongoAuditsBuffer = [];
-    }
-  }
-
-  async function flushKafkaMessages() {
-    if (kafkaConnected && kafkaProducer && kafkaMessagesBuffer.length > 0) {
-      try {
-        const messagesByTopic: Record<string, any[]> = {};
-        
-        for (const msg of kafkaMessagesBuffer) {
-          if (!messagesByTopic[msg.topic]) {
-            messagesByTopic[msg.topic] = [];
-          }
-          messagesByTopic[msg.topic].push(msg.message);
-        }
-
-        for (const [topic, messages] of Object.entries(messagesByTopic)) {
-          await kafkaProducer.send({ topic, messages });
-        }
-        
-        kafkaMessagesBuffer = [];
-      } catch (error) {
-        kafkaMessagesBuffer = [];
-      }
-    }
-  }
-
-  async function flushRedisCommands() {
-    if (redisCommandsBuffer.length > 0) {
-      const pipeline = redis.multi();
-      
-      for (const cmd of redisCommandsBuffer) {
-        switch (cmd.type) {
-          case 'hSet':
-            pipeline.hSet(cmd.key, cmd.data);
-            break;
-          case 'lPush':
-            pipeline.lPush(cmd.key, cmd.value);
-            break;
-          case 'hIncrBy':
-            pipeline.hIncrBy(cmd.key, cmd.field, cmd.increment);
-            break;
-        }
-      }
-      
-      await pipeline.exec();
-      redisCommandsBuffer = [];
-    }
-  }
-
-  async function criarLog(
-    level: 'info' | 'warn' | 'error' | 'debug',
-    message: string,
-    metadata: Record<string, any>
-  ) {
-    mongoLogsBuffer.push({
-      timestamp: new Date(),
-      level,
-      service: 'api',
-      message,
-      metadata,
-    });
-
-    if (mongoLogsBuffer.length >= BATCH_SIZE) {
-      await flushMongoLogs();
-    }
-  }
-
-  async function criarAuditoria(
-    userId: string,
-    action: string,
-    resource: string,
-    resourceId: string,
-    changes?: Record<string, any>
-  ) {
-    mongoAuditsBuffer.push({
-      timestamp: new Date(),
-      userId,
-      action,
-      resource,
-      resourceId,
-      changes,
-      ipAddress: gerarIP(),
-      userAgent: gerarUserAgent(),
-    });
-
-    if (mongoAuditsBuffer.length >= BATCH_SIZE) {
-      await flushMongoAudits();
-    }
-  }
-
-  async function publicarEvento(topic: string, evento: any) {
-    if (kafkaConnected && kafkaProducer) {
-      kafkaMessagesBuffer.push({
-        topic,
-        message: {
-          key: evento.chamadoId || evento.id,
-          value: JSON.stringify(evento),
-          timestamp: Date.now().toString(),
-        },
-      });
-
-      if (kafkaMessagesBuffer.length >= BATCH_SIZE) {
-        await flushKafkaMessages();
-      }
-    }
-  }
-
-  function adicionarRedisCommand(cmd: any) {
-    redisCommandsBuffer.push(cmd);
-  }
 
   async function criarChamadosComStatus(
     status: ChamadoStatus,
     quantidade: number
   ) {
-    const startIndex = chamadoIndex;
-    console.log(`[INFO] Processando ${quantidade.toLocaleString('pt-BR')} chamados com status ${status}...`);
-
     for (let i = 0; i < quantidade; i++) {
       chamadoIndex++;
       
       const usuario = usuarios[Math.floor(Math.random() * usuarios.length)];
       const descricao = descricoesChamados[Math.floor(Math.random() * descricoesChamados.length)];
-      const geradoEm = gerarDataAleatoria(120);
+      const geradoEm = gerarDataAleatoria(90);
       
       let tecnicoId: string | null = null;
       let encerradoEm: Date | null = null;
@@ -562,7 +478,6 @@ async function main() {
         },
       });
 
-      // Criar ordens de serviço
       const numServicos = Math.floor(Math.random() * 3) + 1;
       const servicosSelecionados = new Set<string>();
 
@@ -571,17 +486,18 @@ async function main() {
         servicosSelecionados.add(servico.id);
       }
 
-      const ordensData = Array.from(servicosSelecionados).map(servicoId => ({
-        chamadoId: chamado.id,
-        servicoId,
-        geradoEm: chamado.geradoEm,
-      }));
-
-      await prisma.ordemDeServico.createMany({ data: ordensData });
+      for (const servicoId of servicosSelecionados) {
+        await prisma.ordemDeServico.create({
+          data: {
+            chamadoId: chamado.id,
+            servicoId,
+            geradoEm: chamado.geradoEm,
+          },
+        });
+      }
 
       const requestId = gerarRequestId();
 
-      // Logs e auditorias
       await criarLog('info', `Chamado ${chamado.OS} criado`, {
         chamadoId: chamado.id,
         usuarioId: usuario.id,
@@ -605,25 +521,17 @@ async function main() {
         timestamp: geradoEm.toISOString(),
       });
 
-      // Redis em buffer
-      adicionarRedisCommand({
-        type: 'hSet',
-        key: `chamado:${chamado.id}`,
-        data: {
-          id: chamado.id,
-          OS: chamado.OS,
-          status: chamado.status,
-          usuarioId: usuario.id,
-          descricao: chamado.descricao,
-        },
+      await redis.hSet(`chamado:${chamado.id}`, {
+        id: chamado.id,
+        OS: chamado.OS,
+        status: chamado.status,
+        usuarioId: usuario.id,
+        descricao: chamado.descricao,
       });
+      contadores.chamadosRedis++;
 
       if (status === ChamadoStatus.ABERTO) {
-        adicionarRedisCommand({
-          type: 'lPush',
-          key: 'chamados:abertos',
-          value: chamado.id,
-        });
+        await redis.lPush('chamados:abertos', chamado.id);
       }
       
       if (status === ChamadoStatus.EM_ATENDIMENTO && tecnico) {
@@ -649,16 +557,10 @@ async function main() {
           timestamp: atribuidoEm.toISOString(),
         });
 
-        adicionarRedisCommand({
-          type: 'lPush',
-          key: `tecnico:${tecnico.id}:chamados`,
-          value: chamado.id,
-        });
+        await redis.lPush(`tecnico:${tecnico.id}:chamados`, chamado.id);
       }
 
       if (status === ChamadoStatus.ENCERRADO && tecnico && encerradoEm) {
-        const atribuidoEm = adicionarTempoAleatorio(geradoEm, 0.5, 2);
-
         await criarLog('info', `Chamado ${chamado.OS} atribuído`, {
           chamadoId: chamado.id,
           tecnicoId: tecnico.id,
@@ -690,18 +592,8 @@ async function main() {
           timestamp: encerradoEm.toISOString(),
         });
 
-        adicionarRedisCommand({
-          type: 'hSet',
-          key: `chamado:${chamado.id}`,
-          data: { status: 'ENCERRADO' },
-        });
-
-        adicionarRedisCommand({
-          type: 'hIncrBy',
-          key: 'stats:chamados',
-          field: 'encerrados',
-          increment: 1,
-        });
+        await redis.hSet(`chamado:${chamado.id}`, 'status', 'ENCERRADO');
+        await redis.hIncrBy('stats:chamados', 'encerrados', 1);
       }
 
       if (status === ChamadoStatus.CANCELADO && encerradoEm) {
@@ -725,11 +617,7 @@ async function main() {
           timestamp: encerradoEm.toISOString(),
         });
 
-        adicionarRedisCommand({
-          type: 'hSet',
-          key: `chamado:${chamado.id}`,
-          data: { status: 'CANCELADO' },
-        });
+        await redis.hSet(`chamado:${chamado.id}`, 'status', 'CANCELADO');
       }
 
       if (status === ChamadoStatus.REABERTO && tecnico) {
@@ -759,42 +647,15 @@ async function main() {
           timestamp: reabertoEm.toISOString(),
         });
 
-        adicionarRedisCommand({
-          type: 'hSet',
-          key: `chamado:${chamado.id}`,
-          data: { status: 'REABERTO' },
-        });
-
-        adicionarRedisCommand({
-          type: 'lPush',
-          key: 'chamados:reabertos',
-          value: chamado.id,
-        });
+        await redis.hSet(`chamado:${chamado.id}`, 'status', 'REABERTO');
+        await redis.lPush('chamados:reabertos', chamado.id);
       }
 
-      // Flush buffers a cada BATCH_SIZE chamados
-      if ((i + 1) % BATCH_SIZE === 0) {
-        await flushMongoLogs();
-        await flushMongoAudits();
-        await flushKafkaMessages();
-        await flushRedisCommands();
-      }
-
-      if ((chamadoIndex - startIndex) % 250 === 0) {
-        console.log(`    ${chamadoIndex.toLocaleString('pt-BR')}/${TOTAL_CHAMADOS.toLocaleString('pt-BR')} chamados criados...`);
+      if (chamadoIndex % 100 === 0) {
+        console.log(`   Progresso: ${chamadoIndex}/${totalChamados} chamados criados...`);
       }
     }
-
-    // Flush final para este status
-    await flushMongoLogs();
-    await flushMongoAudits();
-    await flushKafkaMessages();
-    await flushRedisCommands();
-
-    console.log(`[INFO] ✓ ${quantidade.toLocaleString('pt-BR')} chamados ${status} processados\n`);
   }
-
-  const tempoInicio = Date.now();
 
   await criarChamadosComStatus(ChamadoStatus.ABERTO, distribuicao.ABERTO);
   await criarChamadosComStatus(ChamadoStatus.EM_ATENDIMENTO, distribuicao.EM_ATENDIMENTO);
@@ -802,75 +663,114 @@ async function main() {
   await criarChamadosComStatus(ChamadoStatus.CANCELADO, distribuicao.CANCELADO);
   await criarChamadosComStatus(ChamadoStatus.REABERTO, distribuicao.REABERTO);
 
-  const tempoTotal = ((Date.now() - tempoInicio) / 1000 / 60).toFixed(2);
+  console.log(`Todos os ${totalChamados} chamados criados!\n`);
 
-  console.log(`[INFO] Todos os chamados criados em ${tempoTotal} minutos!\n`);
-  console.log('[INFO] Estatísticas finais:\n');
-  
+  console.log('[7/8] Coletando estatísticas finais...\n');
+
   const stats = await prisma.chamado.groupBy({
     by: ['status'],
     _count: true,
   });
 
-  console.log('PostgreSQL:');
-  for (const stat of stats) {
-    const porcentagem = ((stat._count / TOTAL_CHAMADOS) * 100).toFixed(1);
-    console.log(`   ${stat.status}: ${stat._count.toLocaleString('pt-BR')} (${porcentagem}%)`);
-  }
-
   const totalUsuarios = await prisma.usuario.count();
   const totalServicos = await prisma.servico.count();
-  const totalExpedientes = await prisma.expediente.count();
+  const totalChamadosDB = await prisma.chamado.count();
+  const totalExpedientesDB = await prisma.expediente.count();
   const totalOrdens = await prisma.ordemDeServico.count();
 
-  console.log(`\n   Usuários: ${totalUsuarios.toLocaleString('pt-BR')}`);
-  console.log(`   Serviços: ${totalServicos.toLocaleString('pt-BR')}`);
-  console.log(`   Chamados: ${TOTAL_CHAMADOS.toLocaleString('pt-BR')}`);
-  console.log(`   Ordens de Serviço: ${totalOrdens.toLocaleString('pt-BR')}`);
-  console.log(`   Expedientes: ${totalExpedientes.toLocaleString('pt-BR')}`);
+  console.log('PostgreSQL:');
+  console.log(`Usuários: ${totalUsuarios}`);
+  console.log(`Serviços: ${totalServicos}`);
+  console.log(`Chamados: ${totalChamadosDB}`);
+  for (const stat of stats) {
+    const porcentagem = ((stat._count / totalChamadosDB) * 100).toFixed(1);
+    console.log(`- ${stat.status}: ${stat._count} (${porcentagem}%)`);
+  }
+  console.log(`Ordens de Serviço: ${totalOrdens}`);
+  console.log(`Expedientes: ${totalExpedientesDB}`);
 
   const totalLogs = await mongodb.collection('system_logs').countDocuments();
   const totalAudits = await mongodb.collection('audit_logs').countDocuments();
   
-  console.log(`\nMongoDB:`);
-  console.log(`   System Logs: ${totalLogs.toLocaleString('pt-BR')}`);
-  console.log(`   Audit Logs: ${totalAudits.toLocaleString('pt-BR')}`);
+  console.log(`MongoDB:`);
+  console.log(`system_logs: ${totalLogs}`);
+  console.log(`audit_logs: ${totalAudits}`);
 
   const chamadosAbertos = await redis.lLen('chamados:abertos');
   const chamadosReabertos = await redis.lLen('chamados:reabertos');
+  const keysRedis = await redis.keys('*');
   
-  console.log(`\nRedis:`);
-  console.log(`   Chamados em cache: ${TOTAL_CHAMADOS.toLocaleString('pt-BR')}`);
-  console.log(`   Fila de abertos: ${chamadosAbertos.toLocaleString('pt-BR')}`);
-  console.log(`   Fila de reabertos: ${chamadosReabertos.toLocaleString('pt-BR')}`);
+  console.log(`Redis:`);
+  console.log(`Total de chaves: ${keysRedis.length}`);
+  console.log(`Chamados em cache: ${contadores.chamadosRedis}`);
+  console.log(`Usuários em cache: ${contadores.usuariosRedis}`);
+  console.log(`Fila de abertos: ${chamadosAbertos}`);
+  console.log(`Fila de reabertos: ${chamadosReabertos}`);
 
   if (kafkaConnected) {
-    console.log(`\nKafka:`);
-    console.log(`   Eventos publicados com sucesso`);
+    console.log(`Kafka:`);
+    console.log(`Eventos publicados: ${contadores.eventosKafka}`);
   } else {
-    console.log(`\nKafka:`);
-    console.log(`   Não conectado (seed executado sem eventos Kafka)`);
+    console.log(`Kafka:`);
+    console.log(`Não conectado (seed executado sem eventos)`);
   }
 
-  console.log('\n[INFO] 🌱 Seed completo concluído com sucesso!');
-  console.log(`[INFO] Tempo total de execução: ${tempoTotal} minutos`);
-  console.log('\n[INFO] Credenciais de acesso:');
-  console.log('   Admin: admin@helpme.com | Senha@123');
-  console.log('   Técnico: tecnico1@helpme.com | Senha@123');
-  console.log('   Usuário: usuario1@helpme.com | Senha@123\n');
+  console.log();
 
-  console.log('[INFO] Desconectando bancos de dados...');
+  console.log('[8/8] Validando população dos bancos...\n');
+
+  let tudoOk = true;
+
+  if (totalChamadosDB !== totalChamados) {
+    console.log(`PostgreSQL: esperado ${totalChamados} chamados, encontrado ${totalChamadosDB}`);
+    tudoOk = false;
+  } else {
+    console.log('PostgreSQL: todos os dados foram criados corretamente');
+  }
+
+  if (totalLogs === 0 || totalAudits === 0) {
+    console.log(`MongoDB: system_logs=${totalLogs}, audit_logs=${totalAudits}`);
+    tudoOk = false;
+  } else {
+    console.log('MongoDB: logs e auditorias foram criados corretamente');
+  }
+
+  if (contadores.chamadosRedis !== totalChamados) {
+    console.log(`Redis: esperado ${totalChamados} chamados em cache, encontrado ${contadores.chamadosRedis}`);
+    tudoOk = false;
+  } else {
+    console.log('Redis: todos os chamados foram cacheados corretamente');
+  }
+
+  console.log();
+
+  if (tudoOk) {
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🌱 SEED COMPLETO EXECUTADO COM SUCESSO!');
+    console.log('═══════════════════════════════════════════════════════════════');
+  } else {
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🌱  SEED COMPLETO COM ALGUNS AVISOS');
+    console.log('═══════════════════════════════════════════════════════════════');
+  }
+
+  console.log('Credenciais de acesso:');
+  console.log('Admin:   admin@helpme.com | Senha@123');
+  console.log('Técnico: tecnico1@helpme.com | Senha@123');
+  console.log('Usuário: usuario1@helpme.com | Senha@123');
+
+  console.log('Desconectando bancos de dados...');
   await mongoClient.close();
   await redis.quit();
   if (kafkaConnected && kafkaProducer) {
     await kafkaProducer.disconnect();
   }
-  console.log('[INFO] Desconexões concluídas\n');
+  console.log('Desconexões concluídas\n');
 }
 
 main()
   .catch((e) => {
-    console.error('[ERROR] Erro ao executar seed:', e);
+    console.error('\n ERRO FATAL ao executar seed:', e);
     process.exit(1);
   })
   .finally(async () => {

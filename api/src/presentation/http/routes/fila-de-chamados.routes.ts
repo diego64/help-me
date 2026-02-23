@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
-import { prisma } from '../../../infrastructure/database/prisma/client';
+import { prisma } from '@infrastructure/database/prisma/client';
 import { ChamadoStatus } from '@prisma/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
 
 export const router: Router = Router();
 

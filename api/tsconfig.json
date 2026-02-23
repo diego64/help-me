@@ -1,5 +1,14 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@tests/*": ["src/__tests__/*"],
+      "@application/*": ["src/application/*"],
+      "@infrastructure/*": ["src/infrastructure/*"],
+      "@presentation/*": ["src/presentation/*"],
+      "@shared/*": ["src/shared/*"],
+      "@templates/*": ["src/templates/*"],
+    },
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Node",

@@ -5,7 +5,7 @@ vi.mock('redis', () => ({
   createClient: vi.fn(),
 }));
 
-vi.mock('../../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('../../../../shared/config/logger', () => ({
   },
 }));
 
-import { logger } from '../../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 describe('Redis Client - Cobertura Completa', () => {
   let mockRedisClient: any;
@@ -71,7 +71,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith({
           url: 'redis://localhost:6379/0',
@@ -90,7 +90,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(mockRedisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
         expect(mockRedisClient.on).toHaveBeenCalledWith('connect', expect.any(Function));
@@ -112,7 +112,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith({
           url: 'redis://:custom_password@redis-server:6380/2',
@@ -135,7 +135,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -151,7 +151,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -167,7 +167,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -183,7 +183,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(createClient).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -201,7 +201,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(mockRedisClient.connect).not.toHaveBeenCalled();
       });
@@ -213,7 +213,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         expect(mockRedisClient.connect).toHaveBeenCalledTimes(1);
       });
@@ -226,7 +226,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         await new Promise((resolve) => setImmediate(resolve));
 
@@ -244,7 +244,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        await import('../../../../infrastructure/database/redis/client');
+        await import('@infrastructure/database/redis/client');
 
         await new Promise((resolve) => setImmediate(resolve));
 
@@ -261,7 +261,7 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
     });
 
     it('deve logar quando evento "connect" for disparado', () => {
@@ -340,7 +340,7 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       reconnectStrategy = callArgs.socket.reconnectStrategy;
@@ -424,7 +424,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheSet = module.cacheSet;
     });
 
@@ -588,7 +588,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheGet = module.cacheGet;
     });
 
@@ -693,7 +693,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheDel = module.cacheDel;
     });
 
@@ -797,7 +797,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheDelPattern = module.cacheDelPattern;
     });
 
@@ -897,7 +897,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheExists = module.cacheExists;
     });
 
@@ -965,7 +965,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheExpire = module.cacheExpire;
     });
 
@@ -1039,7 +1039,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheTTL = module.cacheTTL;
     });
 
@@ -1111,7 +1111,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheIncr = module.cacheIncr;
     });
 
@@ -1210,7 +1210,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheDecr = module.cacheDecr;
     });
 
@@ -1309,7 +1309,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       cacheFlush = module.cacheFlush;
     });
 
@@ -1372,7 +1372,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       isRedisConnected = module.isRedisConnected;
       waitForRedis = module.waitForRedis;
       cacheInfo = module.cacheInfo;
@@ -1499,7 +1499,7 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockClear();
         (createClient as any).mockReturnValue(mockRedisClient);
 
-        const module = await import('../../../../infrastructure/database/redis/client');
+        const module = await import('@infrastructure/database/redis/client');
         const info = await module.cacheInfo();
 
         expect(info.host).toBe('custom-redis');
@@ -1583,7 +1583,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      const module = await import('../../../../infrastructure/database/redis/client');
+      const module = await import('@infrastructure/database/redis/client');
       disconnectRedis = module.disconnectRedis;
     });
 
@@ -1660,7 +1660,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com reconexão durante operação', async () => {
-      const { cacheSet } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheSet } = await import('@infrastructure/database/redis/client');
 
       mockRedisClient.isOpen = false;
       await cacheSet('teste', 'valor');
@@ -1673,7 +1673,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com múltiplas operações simultâneas', async () => {
       const { cacheSet, cacheGet, cacheExists } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       mockRedisClient.set.mockResolvedValue('OK');
@@ -1694,7 +1694,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com valores especiais no cache', async () => {
-      const { cacheSet } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheSet } = await import('@infrastructure/database/redis/client');
 
       // Testa null - será serializado como objeto
       await cacheSet('special', null as any);
@@ -1742,7 +1742,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com objetos circulares sem lançar erro', async () => {
-      const { cacheSet } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheSet } = await import('@infrastructure/database/redis/client');
 
       const circular: any = { a: 1 };
       circular.self = circular;
@@ -1762,7 +1762,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com TTL negativo', async () => {
-      const { cacheExpire } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheExpire } = await import('@infrastructure/database/redis/client');
 
       mockRedisClient.expire.mockResolvedValue(1);
 
@@ -1773,7 +1773,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com chaves vazias', async () => {
       const { cacheSet, cacheGet, cacheDel } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       await cacheSet('', 'valor');
@@ -1788,7 +1788,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com padrões vazios no delPattern', async () => {
       const { cacheDelPattern } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       mockRedisClient.keys.mockResolvedValue([]);
@@ -1801,7 +1801,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve manter consistência em operações sequenciais', async () => {
       const { cacheSet, cacheGet, cacheIncr, cacheDel } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       mockRedisClient.set.mockResolvedValue('OK');
@@ -1833,7 +1833,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com valores muito grandes', async () => {
-      const { cacheSet } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheSet } = await import('@infrastructure/database/redis/client');
 
       const valorGrande = 'x'.repeat(1000000); // 1MB
       await cacheSet('big-value', valorGrande);
@@ -1847,7 +1847,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com muitas chaves no delPattern', async () => {
       const { cacheDelPattern } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       const chavesGrandes = Array.from({ length: 10000 }, (_, i) => `key:${i}`);
@@ -1861,7 +1861,7 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com TTL muito longo', async () => {
-      const { cacheSet } = await import('../../../../infrastructure/database/redis/client');
+      const { cacheSet } = await import('@infrastructure/database/redis/client');
 
       const umAno = 31536000; // segundos em um ano
       await cacheSet('long-ttl', 'valor', umAno);
@@ -1875,7 +1875,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com incrementos/decrementos grandes', async () => {
       const { cacheIncr, cacheDecr } = await import(
-        '../../../../infrastructure/database/redis/client'
+        '@infrastructure/database/redis/client'
       );
 
       mockRedisClient.incrBy.mockResolvedValue(1000000);
@@ -1895,7 +1895,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.socket.connectTimeout).toBe(5000);
@@ -1906,7 +1906,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.commandsQueueMaxLength).toBe(1000);
@@ -1917,7 +1917,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.disableOfflineQueue).toBe(false);
@@ -1933,7 +1933,7 @@ describe('Redis Client - Cobertura Completa', () => {
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
 
-      await import('../../../../infrastructure/database/redis/client');
+      await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.url).toBe(

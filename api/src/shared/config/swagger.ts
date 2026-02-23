@@ -27,4 +27,11 @@ const options = {
   apis: ['./src/presentation/http/routes/**/*.ts'],
 };
 
-export const swaggerSpec = swaggerJsdoc(options);
+const spec = swaggerJsdoc(options) as Record<string, any>;
+
+// Remove a seção schemas
+if (spec.components?.schemas) {
+  delete spec.components.schemas;
+}
+
+export const swaggerSpec = spec;

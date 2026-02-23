@@ -1,5 +1,5 @@
 import { Kafka, Producer, logLevel, LogEntry } from 'kafkajs';
-import { logger } from '../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 const ignoreMessages = [
   'The group is rebalancing, so a rejoin is needed'

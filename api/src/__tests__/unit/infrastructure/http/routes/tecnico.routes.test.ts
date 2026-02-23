@@ -25,19 +25,19 @@ const prismaMock = {
 
 const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../../../../utils/password', () => ({
+vi.mock('@utils/password', () => ({
   hashPassword: hashPasswordMock,
 }));
 
-vi.mock('../../../../../shared/config/password', () => ({
+vi.mock('@shared/config/password', () => ({
   hashPassword: hashPasswordMock,
 }));
 
-vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
+vi.mock('@infrastructure/http/middlewares/auth', () => ({
   authMiddleware: (req: any, res: Response, next: NextFunction) => {
     req.usuario = {
       id: currentUserId,
@@ -104,7 +104,7 @@ vi.mock('@prisma/client', () => ({
   },
 }));
 
-const { default: tecnicoRoutes } = await import('../../../../../presentation/http/routes/tecnico.routes');
+const { default: tecnicoRoutes } = await import('@presentation/http/routes/tecnico.routes');
 
 const tecnicoBase = {
   id: 'tec1',

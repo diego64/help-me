@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { salvarHistoricoChamado, listarHistoricoChamado, RepositoryError } from '../../../infrastructure/repositories/atualizacao.chamado.repository';
-import AtualizacaoDoChamado from '../../../infrastructure/database/mongodb/atualizacao.chamado.model';
-import { HistoricoChamadoInput } from '../../../shared/@types/historicoChamado';
-import { logger } from '../../../shared/config/logger';
+import { salvarHistoricoChamado, listarHistoricoChamado, RepositoryError } from '@infrastructure/repositories/atualizacao.chamado.repository';
+import AtualizacaoDoChamado from '@infrastructure/database/mongodb/atualizacao.chamado.model';
+import { HistoricoChamadoInput } from '@shared/@types/historicoChamado';
+import { logger } from '@shared/config/logger';
 
-vi.mock('../../../infrastructure/database/mongodb/atualizacao.chamado.model', () => ({
+vi.mock('@infrastructure/database/mongodb/atualizacao.chamado.model', () => ({
   default: {
     create: vi.fn(),
     find: vi.fn(),
   },
 }));
 
-vi.mock('../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),

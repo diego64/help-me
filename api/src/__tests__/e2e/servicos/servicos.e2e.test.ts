@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../../../app';
-import { prisma } from '../../../infrastructure/database/prisma/client';
+import { prisma } from '@infrastructure/database/prisma/client';
 import { createAuthenticatedClient, extractErrorMessage } from '../setup/test.helpers';
 
 describe('E2E: Serviços', () => {

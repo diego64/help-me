@@ -1,12 +1,21 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+          '@application': resolve(__dirname, 'src/application'),
+          '@infrastructure': resolve(__dirname, 'src/infrastructure'),
+          '@presentation': resolve(__dirname, 'src/presentation'),
+          '@shared': resolve(__dirname, 'src/shared'),
+          '@templates': resolve(__dirname, 'src/templates'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',
     setupFiles: [
       './vitest.setup.ts',
-      './src/__tests__/unit/setup/mocks.ts'
     ],
     include: [
       'src/__tests__/unit/**/*.test.ts',
@@ -20,15 +29,7 @@ export default defineConfig({
     ],
     isolate: true,
     fileParallelism: true,
-    
     pool: 'forks',
-    // @ts-expect-error - Vitest doesn't have types for pool options yet
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      },
-    },
-    
     testTimeout: 30000,
     coverage: {
       provider: 'v8',

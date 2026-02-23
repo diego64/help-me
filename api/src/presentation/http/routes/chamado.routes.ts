@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { ChamadoStatus } from '@prisma/client';
-import { getStringParamRequired } from '../../../shared/utils/request-params';
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
-import { salvarHistoricoChamado, listarHistoricoChamado } from '../../../infrastructure/repositories/atualizacao.chamado.repository';
-import ChamadoAtualizacaoModel from '../../../infrastructure/database/mongodb/atualizacao.chamado.model';
+import { getStringParamRequired } from '@shared/utils/request-params';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { salvarHistoricoChamado, listarHistoricoChamado } from '@infrastructure/repositories/atualizacao.chamado.repository';
+import ChamadoAtualizacaoModel from '@infrastructure/database/mongodb/atualizacao.chamado.model';
 
 export const router: Router = Router();
 

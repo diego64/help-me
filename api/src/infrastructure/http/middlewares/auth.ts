@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, TokenPayload, extractTokenFromHeader } from '../../../shared/config/jwt';
+import { verifyToken, TokenPayload, extractTokenFromHeader } from '@shared/config/jwt';
 import { Regra } from '@prisma/client';
-import { cacheGet } from '../../database/redis/client';
-import { prisma } from '../../database/prisma/client';
+import { cacheGet } from '@infrastructure/database/redis/client';
+import { prisma } from '@infrastructure/database/prisma/client';
 
 export interface AuthRequest extends Request {
   usuario?: {

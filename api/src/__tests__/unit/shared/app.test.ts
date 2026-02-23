@@ -20,7 +20,7 @@ vi.mock('connect-redis', () => ({
   },
 }));
 
-vi.mock('../../../infrastructure/database/redis/client', () => ({
+vi.mock('@infrastructure/database/redis/client', () => ({
   redisClient: {
     connect: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +29,7 @@ vi.mock('../../../infrastructure/database/redis/client', () => ({
   },
 }));
 
-vi.mock('../../../shared/config/swagger', () => ({
+vi.mock('@shared/config/swagger', () => ({
   swaggerSpec: {
     openapi: '3.0.0',
     info: { title: 'Help-Me API', version: '1.1.1' },
@@ -37,25 +37,25 @@ vi.mock('../../../shared/config/swagger', () => ({
   },
 }));
 
-vi.mock('../../../infrastructure/database/mongodb/atualizacao.chamado.model', () => ({
+vi.mock('@infrastructure/database/mongodb/atualizacao.chamado.model', () => ({
   default: {},
 }));
 
-vi.mock('../../../infrastructure/repositories/atualizacao.chamado.repository', () => ({
+vi.mock('@infrastructure/repositories/atualizacao.chamado.repository', () => ({
   AtualizacaoChamadoRepository: vi.fn().mockImplementation(() => ({
     criar: vi.fn().mockResolvedValue(undefined),
     buscarPorChamadoId: vi.fn().mockResolvedValue([]),
   })),
 }));
 
-vi.mock('../../../infrastructure/email/email.service', () => ({
+vi.mock('@infrastructure/email/email.service', () => ({
   emailService: {
     enviarEmailChamadoAberto: vi.fn().mockResolvedValue(undefined),
     enviarEmailChamadoEncerrado: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
-vi.mock('../../../infrastructure/messaging/kafka/client', () => ({
+vi.mock('@infrastructure/messaging/kafka/client', () => ({
   kafka: {
     producer: vi.fn().mockReturnValue({
       connect: vi.fn(),
@@ -71,7 +71,7 @@ vi.mock('../../../infrastructure/messaging/kafka/client', () => ({
   },
 }));
 
-vi.mock('../../../infrastructure/messaging/kafka/consumers/chamadoConsumer', () => ({
+vi.mock('@infrastructure/messaging/kafka/consumers/chamadoConsumer', () => ({
   chamadoConsumer: { iniciar: vi.fn().mockResolvedValue(undefined) },
 }));
 
@@ -86,7 +86,7 @@ const mockRequestLogger = vi.fn((req: any, res: any, next: any) => {
   next();
 });
 
-vi.mock('../../../infrastructure/http/middlewares/request-logger.middleware', () => ({
+vi.mock('@infrastructure/http/middlewares/request-logger.middleware', () => ({
   requestLoggerMiddleware: mockRequestLogger,
 }));
 
@@ -94,7 +94,7 @@ const mockErrorLogger = vi.fn((err: any, req: any, res: any, next: any) => {
   next(err);
 });
 
-vi.mock('../../../infrastructure/http/middlewares/error-logger.middleware', () => ({
+vi.mock('@infrastructure/http/middlewares/error-logger.middleware', () => ({
   errorLoggerMiddleware: mockErrorLogger,
 }));
 
@@ -105,7 +105,7 @@ const mockRoutes = vi.fn((req: any, res: any, next: any) => {
   next();
 });
 
-vi.mock('../../../presentation/http/routes', () => ({
+vi.mock('@presentation/http/routes', () => ({
   default: mockRoutes,
 }));
 

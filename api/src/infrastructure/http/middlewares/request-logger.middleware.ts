@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
-import { logger } from '../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 /**
  * 

@@ -1,9 +1,9 @@
 import fs from 'fs';
 import handlebars from 'handlebars';
 import { Consumer, EachMessagePayload } from 'kafkajs';
-import { logger } from '../../../../shared/config/logger';
-import { kafka } from '../client';
-import { transporter } from '../../../email/email.service';
+import { logger } from '@shared/config/logger';
+import { kafka } from '@infrastructure/messaging/kafka/client';
+import { transporter } from '@infrastructure/email/email.service';
 
 export class ConsumerError extends Error {
   constructor(

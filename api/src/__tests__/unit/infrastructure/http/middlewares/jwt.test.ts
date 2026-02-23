@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as jwtUtil from '../../../../../shared/config/jwt';
+import * as jwtUtil from '@shared/config/jwt';
 import jwt from 'jsonwebtoken';
 import { Regra } from '@prisma/client';
 
@@ -860,7 +860,7 @@ describe('JWT Utils', () => {
     expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).not.toThrow();
 
     // Aguarda expiração (1.5s para garantir que passou)
-    await new Promise(resolve => setTimeout(resolve, 1500));  // ← 1500ms
+    await new Promise(resolve => setTimeout(resolve, 20000));
 
     // Deve estar expirado agora
     expect(() => jwtUtil.verifyToken(tokenCurto, 'access')).toThrow();

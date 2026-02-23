@@ -9,7 +9,7 @@ const mockLoggerFunctions = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('../../../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: mockLoggerFunctions,
 }));
 
@@ -28,7 +28,7 @@ import {
   RateLimitError,
   ServiceUnavailableError,
   AppError,
-} from '../../../../../infrastructure/http/middlewares/error-logger.middleware';
+} from '@infrastructure/http/middlewares/error-logger.middleware';
 
 describe('Error Handler Middleware', () => {
   let mockRequest: Partial<Request>;

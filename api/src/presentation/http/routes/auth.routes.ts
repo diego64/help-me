@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { verifyPassword } from '../../../shared/config/password';
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { generateTokenPair, verifyToken } from '../../../shared/config/jwt';
-import { authMiddleware, AuthRequest } from '../../../infrastructure/http/middlewares/auth';
-import { cacheSet, cacheGet } from '../../../infrastructure/database/redis/client';
+import { verifyPassword } from '@shared/config/password';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { generateTokenPair, verifyToken } from '@shared/config/jwt';
+import { authMiddleware, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { cacheSet, cacheGet } from '@infrastructure/database/redis/client';
 
 export const router: Router = Router();
 

@@ -15,17 +15,17 @@ const prismaMock = {
   $disconnect: vi.fn().mockResolvedValue(undefined),
 };
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: prismaMock,
 }));
 
 const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
 
-vi.mock('../../../../../shared/config/password', () => ({
+vi.mock('@shared/config/password', () => ({
   hashPassword: hashPasswordMock,
 }));
 
-vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
+vi.mock('@infrastructure/http/middlewares/auth', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.usuario = { id: 'auth-user-id', regra: 'ADMIN' };
     next();
@@ -66,7 +66,7 @@ let app: Express;
 let adminRouter: any;
 
 beforeAll(async () => {
-  const routerModule = await import('../../../../../presentation/http/routes/admin.routes');
+  const routerModule = await import('@presentation/http/routes/admin.routes');
   adminRouter = routerModule.default || routerModule.router;
 });
 

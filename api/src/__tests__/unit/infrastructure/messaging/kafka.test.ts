@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { logLevel, LogEntry } from 'kafkajs';
-import { kafka, producer, conectarKafkaProducer, desconectarKafkaProducer, getKafkaConfig, getProducerInstanceForTest, customLogCreator, isKafkaConnected, sendMessage } from '../../../../infrastructure/messaging/kafka/client';
+import { kafka, producer, conectarKafkaProducer, desconectarKafkaProducer, getKafkaConfig, getProducerInstanceForTest, customLogCreator, isKafkaConnected, sendMessage } from '@infrastructure/messaging/kafka/client';
 
-vi.mock('../../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock('../../../../shared/config/logger', () => ({
   }
 }));
 
-import { logger } from '../../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 describe('Kafka Client', () => {
   let originalBrokerUrl: string | undefined;

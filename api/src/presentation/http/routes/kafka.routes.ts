@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { conectarKafkaProducer, desconectarKafkaProducer, isKafkaConnected, sendMessage, getKafkaConfig } from '../../../infrastructure/messaging/kafka/client';
-import { authMiddleware, authorizeRoles } from '../../../infrastructure/http/middlewares/auth';
+import { conectarKafkaProducer, desconectarKafkaProducer, isKafkaConnected, sendMessage, getKafkaConfig } from '@infrastructure/messaging/kafka/client';
+import { authMiddleware, authorizeRoles } from '@infrastructure/http/middlewares/auth';
 
 export const router: Router = Router();
 

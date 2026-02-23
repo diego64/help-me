@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
-import { requestLoggerMiddleware } from '../../../../../infrastructure/http/middlewares/request-logger.middleware';
-import { logger } from '../../../../../shared/config/logger';
+import { requestLoggerMiddleware } from '@infrastructure/http/middlewares/request-logger.middleware';
+import { logger } from '@shared/config/logger';
 
 const MOCK_REQUEST_ID = 'mock-request-id-12345';
 const MOCK_USER_ID = 'user-abc-123';

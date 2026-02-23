@@ -1,20 +1,20 @@
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
-import { Response, NextFunction } from 'express';
-import { authMiddleware, authorizeRoles, AuthRequest } from '../../../../../infrastructure/http/middlewares/auth';
-import { extractTokenFromHeader, verifyToken } from '../../../../../shared/config/jwt';
-import { cacheGet } from '../../../../../infrastructure/database/redis/client';
-import { prisma } from '../../../../../infrastructure/database/prisma/client';
+import { Response } from 'express';
+import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { extractTokenFromHeader, verifyToken } from '@shared/config/jwt';
+import { cacheGet } from '@infrastructure/database/redis/client';
+import { prisma } from '@infrastructure/database/prisma/client';
 
-vi.mock('../../../../../shared/config/jwt', () => ({
+vi.mock('@shared/config/jwt', () => ({
   extractTokenFromHeader: vi.fn(),
   verifyToken: vi.fn(),
 }));
 
-vi.mock('../../../../../infrastructure/database/redis/client', () => ({
+vi.mock('@infrastructure/database/redis/client', () => ({
   cacheGet: vi.fn(),
 }));
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: { usuario: { findUnique: vi.fn() } },
 }));
 

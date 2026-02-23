@@ -20,11 +20,11 @@ const consoleSpy = {
   error: vi.spyOn(console, 'error').mockImplementation(() => {}),
 };
 
-vi.mock('../../../../../infrastructure/database/prisma/client', () => ({
+vi.mock('@infrastructure/database/prisma/client', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../../../../infrastructure/http/middlewares/auth', () => ({
+vi.mock('@infrastructure/http/middlewares/auth', () => ({
   authMiddleware: vi.fn((req: any, res: any, next: any) => {
     req.usuario = { id: authState.id, regra: authState.regra };
     next();
@@ -202,7 +202,7 @@ const chamadoDeletado = {
 let router: any;
 
 beforeAll(async () => {
-  router = (await import('../../../../../presentation/http/routes/fila-de-chamados.routes')).default;
+  router = (await import('@presentation/http/routes/fila-de-chamados.routes')).default;
 });
 
 beforeEach(() => {

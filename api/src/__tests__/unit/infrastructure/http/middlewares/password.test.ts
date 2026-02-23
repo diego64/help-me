@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
-import { hashPassword, verifyPassword, precisaRehash, gerarSenhaSegura, validarForcaSenha, CONFIGURACAO_SENHA } from '../../../../../shared/config/password';
+import { hashPassword, verifyPassword, precisaRehash, gerarSenhaSegura, validarForcaSenha, CONFIGURACAO_SENHA } from '@shared/config/password';
 
 describe('Password Utility', () => {
   describe('hashPassword', () => {

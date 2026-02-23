@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, beforeEach } from 'vitest';
 import { cleanDatabase, seedBasicData } from './test.database';
-import { logger } from '../../../shared/config/logger';
+import { logger } from '@shared/config/logger';
 
 beforeAll(async () => {
   if (process.env.SILENT_TESTS === 'true') {

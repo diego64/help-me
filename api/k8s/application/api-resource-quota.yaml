@@ -15,4 +15,4 @@ spec:
     matchExpressions:
     - operator: In
       scopeName: PriorityClass
-      values: ["high"]
+      values: ["helpme-high-priority"]

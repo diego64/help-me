@@ -29,6 +29,7 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: helpme-api
+      priorityClassName: helpme-high-priority
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -89,7 +90,7 @@ spec:
       
       # Executar migrations
       - name: run-migrations
-        image: diegoferreira/helpme-api:latest  # Substituir com sua imagem
+        image: diegoferreira/helpme-api:latest
         command: ["npm", "run", "migrate:deploy"]
         envFrom:
         - configMapRef:
@@ -99,7 +100,7 @@ spec:
       
       containers:
       - name: helpme-api
-        image: diegoferreira/helpme-api:latest  # Substituir com sua imagem
+        image: diegoferreira/helpme-api:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
@@ -169,7 +170,6 @@ spec:
       - name: uploads
         emptyDir: {}
       
-      # Affinity para distribuir pods em diferentes nodes
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

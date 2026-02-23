@@ -6,19 +6,19 @@ import { EachMessagePayload } from 'kafkajs';
 vi.mock('fs');
 vi.mock('handlebars');
 
-vi.mock('../../../../infrastructure/messaging/kafka/client', () => ({
+vi.mock('@infrastructure/messaging/kafka/client', () => ({
   kafka: {
     consumer: vi.fn(),
   },
 }));
 
-vi.mock('../../../../infrastructure/email/email.service', () => ({
+vi.mock('@infrastructure/email/email.service', () => ({
   transporter: {
     sendMail: vi.fn(),
   },
 }));
 
-vi.mock('../../../../shared/config/logger', () => ({
+vi.mock('@shared/config/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -40,11 +40,11 @@ import {
   TemplateError,
   EmailError,
   ChamadoData,
-} from '../../../../infrastructure/messaging/kafka/consumers/chamadoConsumer';
+} from '@infrastructure/messaging/kafka/consumers/chamadoConsumer';
 
-import { kafka } from '../../../../infrastructure/messaging/kafka/client';
-import { transporter } from '../../../../infrastructure/email/email.service';
-import { logger } from '../../../../shared/config/logger';
+import { kafka } from '@infrastructure/messaging/kafka/client';
+import { transporter } from '@infrastructure/email/email.service';
+import { logger } from '@shared/config/logger';
 
 const createMockPayload = (
   data: any,

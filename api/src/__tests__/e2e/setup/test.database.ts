@@ -1,6 +1,6 @@
-import { prisma } from '../../../infrastructure/database/prisma/client';
-import { redisClient } from '../../../infrastructure/database/redis/client';
-import { hashPassword } from '../../../shared/config/password';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { redisClient } from '@infrastructure/database/redis/client';
+import { hashPassword } from '@shared/config/password';
 import type { Usuario, Regra } from '@prisma/client';
 import { MongoClient } from 'mongodb';
 
