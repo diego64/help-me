@@ -566,18 +566,6 @@ jobs:
           | **Workflow** | [`${{ github.workflow }}`](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
           | **Data/Hora** | `$(date -u +"%Y-%m-%d %H:%M:%S UTC")` |
           
-          END_SUMMARY
-          
-          if [ -n "${{ inputs.version-override }}" ]; then
-            echo "| **Estratégia** | Manual Override |" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ inputs.bump-type }}" != "none" ]; then
-            echo "| **Estratégia** | Auto-increment (\`${{ inputs.bump-type }}\`) |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| **Estratégia** | package.json |" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          cat >> $GITHUB_STEP_SUMMARY << 'END_SUMMARY'
-          
           ---
           
           ## Docker Images
