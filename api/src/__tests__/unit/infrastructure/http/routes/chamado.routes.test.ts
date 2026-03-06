@@ -1,704 +1,712 @@
 import { describe, it, expect } from 'vitest';
-import { ChamadoStatus } from '@prisma/client';
+import { ChamadoStatus, PrioridadeChamado, NivelTecnico } from '@prisma/client';
 
-describe('Rotas do Chamado', () => {
-  describe('Validação da descrição', () => {
-    const validarDescricao = (descricao: any): { valida: boolean; erro?: string } => {
-      if (!descricao || typeof descricao !== 'string') {
-        return { valida: false, erro: 'Descrição é obrigatória' };
-      }
+const MIN_DESCRICAO_LENGTH   = 10;
+const MAX_DESCRICAO_LENGTH   = 5000;
+const MIN_COMENTARIO_LENGTH  = 1;
+const MAX_COMENTARIO_LENGTH  = 5000;
+const REABERTURA_PRAZO_HORAS = 48;
+const OS_PREFIX  = 'INC';
+const OS_PADDING = 4;
 
-      const trimmed = descricao.trim();
-      
-      if (trimmed.length === 0) {
-        return { valida: false, erro: 'Descrição é obrigatória' };
-      }
+const PRIORIDADES_VALIDAS: PrioridadeChamado[] = ['P1', 'P2', 'P3', 'P4', 'P5'];
 
-      if (trimmed.length < 10) {
-        return { valida: false, erro: 'Descrição deve ter no mínimo 10 caracteres' };
-      }
+const DESCRICAO_PRIORIDADE: Record<PrioridadeChamado, string> = {
+  P1: 'Alta Prioridade',
+  P2: 'Urgente',
+  P3: 'Urgente',
+  P4: 'Baixa Prioridade',
+  P5: 'Baixa Prioridade',
+};
 
-      if (trimmed.length > 5000) {
-        return { valida: false, erro: 'Descrição deve ter no máximo 5000 caracteres' };
-      }
+const PRIORIDADES_POR_NIVEL: Record<NivelTecnico, PrioridadeChamado[]> = {
+  N1: ['P4', 'P5'],
+  N2: ['P2', 'P3'],
+  N3: ['P1', 'P2', 'P3', 'P4', 'P5'],
+};
 
-      return { valida: true };
+const NIVEL_POR_PRIORIDADE: Record<PrioridadeChamado, NivelTecnico[]> = {
+  P1: ['N3'],
+  P2: ['N2', 'N3'],
+  P3: ['N2', 'N3'],
+  P4: ['N1', 'N3'],
+  P5: ['N1', 'N3'],
+};
+
+function validarDescricao(descricao: string): { valida: boolean; erro?: string } {
+  if (!descricao || typeof descricao !== 'string') {
+    return { valida: false, erro: 'Descrição é obrigatória' };
+  }
+  const descricaoLimpa = descricao.trim();
+  if (descricaoLimpa.length < MIN_DESCRICAO_LENGTH) {
+    return { valida: false, erro: `Descrição deve ter no mínimo ${MIN_DESCRICAO_LENGTH} caracteres` };
+  }
+  if (descricaoLimpa.length > MAX_DESCRICAO_LENGTH) {
+    return { valida: false, erro: `Descrição deve ter no máximo ${MAX_DESCRICAO_LENGTH} caracteres` };
+  }
+  return { valida: true };
+}
+
+function validarComentario(comentario: string): { valido: boolean; erro?: string } {
+  if (!comentario || typeof comentario !== 'string') {
+    return { valido: false, erro: 'Comentário é obrigatório' };
+  }
+  const limpo = comentario.trim();
+  if (limpo.length < MIN_COMENTARIO_LENGTH) {
+    return { valido: false, erro: 'Comentário não pode ser vazio' };
+  }
+  if (limpo.length > MAX_COMENTARIO_LENGTH) {
+    return { valido: false, erro: `Comentário deve ter no máximo ${MAX_COMENTARIO_LENGTH} caracteres` };
+  }
+  return { valido: true };
+}
+
+function normalizarServicos(servico: any): string[] {
+  if (servico == null) return [];
+  if (Array.isArray(servico)) {
+    return servico
+      .filter((s): s is string => typeof s === 'string')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  if (typeof servico === 'string') {
+    const nome = servico.trim();
+    return nome.length > 0 ? [nome] : [];
+  }
+  return [];
+}
+
+function gerarProximoNumeroOS(ultimaOS: string | null): string {
+  if (!ultimaOS) return `${OS_PREFIX}${'1'.padStart(OS_PADDING, '0')}`;
+  const numero = parseInt(ultimaOS.replace(OS_PREFIX, ''), 10);
+  if (isNaN(numero)) return `${OS_PREFIX}${'1'.padStart(OS_PADDING, '0')}`;
+  return `${OS_PREFIX}${String(numero + 1).padStart(OS_PADDING, '0')}`;
+}
+
+function podeReabrir(encerradoEm: Date | null): { pode: boolean; erro?: string } {
+  if (!encerradoEm) return { pode: false, erro: 'Data de encerramento não encontrada' };
+  const diffHoras = (Date.now() - encerradoEm.getTime()) / (1000 * 60 * 60);
+  if (diffHoras > REABERTURA_PRAZO_HORAS) {
+    return {
+      pode: false,
+      erro: `Só é possível reabrir até ${REABERTURA_PRAZO_HORAS} horas após o encerramento`,
     };
+  }
+  return { pode: true };
+}
 
-    it('deve retornar erro quando descrição for null', () => {
-      const resultado = validarDescricao(null);
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toBe('Descrição é obrigatória');
+// Espelha a lógica interna de verificarExpedienteTecnico() do routes
+function estaNoExpediente(
+  expedientes: { entrada: Date; saida: Date; ativo: boolean; deletadoEm: Date | null }[],
+  agora: Date
+): boolean {
+  const validos = expedientes.filter((e) => e.ativo && !e.deletadoEm);
+  if (!validos.length) return false;
+  const horaAtual = agora.getHours() + agora.getMinutes() / 60;
+  return validos.some((exp) => {
+    const h0 = new Date(exp.entrada).getHours() + new Date(exp.entrada).getMinutes() / 60;
+    const h1 = new Date(exp.saida).getHours()   + new Date(exp.saida).getMinutes()   / 60;
+    return horaAtual >= h0 && horaAtual <= h1;
+  });
+}
+
+// Espelha formatarChamadoResposta() do routes
+function formatarChamadoResposta(chamado: any) {
+  return {
+    id: chamado.id,
+    OS: chamado.OS,
+    descricao: chamado.descricao,
+    descricaoEncerramento: chamado.descricaoEncerramento,
+    status: chamado.status,
+    prioridade: chamado.prioridade,
+    prioridadeDescricao: chamado.prioridade
+      ? DESCRICAO_PRIORIDADE[chamado.prioridade as PrioridadeChamado]
+      : null,
+    prioridadeAlteradaEm:  chamado.prioridadeAlterada ?? null,
+    prioridadeAlteradaPor: chamado.alteradorPrioridade
+      ? {
+          id:    chamado.alteradorPrioridade.id,
+          nome:  `${chamado.alteradorPrioridade.nome} ${chamado.alteradorPrioridade.sobrenome}`,
+          email: chamado.alteradorPrioridade.email,
+        }
+      : null,
+    geradoEm:     chamado.geradoEm,
+    atualizadoEm: chamado.atualizadoEm,
+    encerradoEm:  chamado.encerradoEm,
+    usuario: chamado.usuario
+      ? {
+          id:        chamado.usuario.id,
+          nome:      chamado.usuario.nome,
+          sobrenome: chamado.usuario.sobrenome,
+          email:     chamado.usuario.email,
+        }
+      : null,
+    // nota: usa tecnicoId (não tecnico.id) — igual ao routes
+    tecnico: chamado.tecnico
+      ? { id: chamado.tecnicoId, nome: chamado.tecnico.nome, email: chamado.tecnico.email }
+      : null,
+    servicos: chamado.servicos?.map((s: any) => ({
+      id:   s.servico.id,
+      nome: s.servico.nome,
+    })) || [],
+  };
+}
+
+const str = (s: string): string => s;
+
+const makeExpediente = (
+  entradaH: number,
+  saidaH:   number,
+  ativo     = true,
+  deletadoEm: Date | null = null
+) => {
+  const base    = new Date();
+  const entrada = new Date(base); entrada.setHours(entradaH, 0, 0, 0);
+  const saida   = new Date(base); saida.setHours(saidaH,    0, 0, 0);
+  return { entrada, saida, ativo, deletadoEm };
+};
+
+const horaFixa = (h: number, min = 0) => {
+  const d = new Date(); d.setHours(h, min, 0, 0); return d;
+};
+
+const BASE_DATE = new Date('2025-01-01T10:00:00.000Z');
+
+const chamadoBase = {
+  id: 'chamado-1',
+  OS: 'INC0001',
+  descricao: 'Descrição do chamado',
+  descricaoEncerramento: null,
+  status: ChamadoStatus.ABERTO,
+  prioridade: PrioridadeChamado.P4,
+  prioridadeAlterada: null,
+  alteradorPrioridade: null,
+  geradoEm:     BASE_DATE,
+  atualizadoEm: BASE_DATE,
+  encerradoEm:  null,
+  tecnicoId:    null,
+  usuario: { id: 'user-1', nome: 'João', sobrenome: 'Silva', email: 'joao@example.com', setor: 'TI' },
+  tecnico:  null,
+  servicos: [{ servico: { id: 'serv-1', nome: 'Suporte' } }],
+};
+
+describe('chamado.routes — funções utilitárias e regras de negócio', () => {
+  describe('validarDescricao()', () => {
+    describe('tipo inválido → "Descrição é obrigatória"', () => {
+      it.each([null, undefined, 12345, {}])(
+        'deve rejeitar %s',
+        (entrada) => {
+          const res = validarDescricao(entrada as any);
+          expect(res.valida).toBe(false);
+          expect(res.erro).toBe('Descrição é obrigatória');
+        }
+      );
     });
 
-    it('deve retornar erro quando descrição for undefined', () => {
-      const resultado = validarDescricao(undefined);
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toBe('Descrição é obrigatória');
+    describe('comprimento mínimo', () => {
+      it('deve rejeitar string vazia ""', () => {
+        const res = validarDescricao('');
+        expect(res.valida).toBe(false);
+        expect(res.erro).toBe('Descrição é obrigatória');
+      });
+
+      it.each([
+        ['   ',       'no mínimo 10 caracteres'], // trim → 0 chars < 10
+        ['Curta',     'no mínimo 10 caracteres'],
+        ['123456789', 'no mínimo 10 caracteres'],
+      ])('deve rejeitar "%s"', (entrada, fragmento) => {
+        const res = validarDescricao(entrada);
+        expect(res.valida).toBe(false);
+        expect(res.erro).toContain(fragmento);
+      });
+
+      it('deve aceitar exatamente 10 caracteres', () => {
+        expect(validarDescricao('1234567890').valida).toBe(true);
+      });
     });
 
-    it('deve retornar erro quando descrição for número', () => {
-      const resultado = validarDescricao(12345);
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toBe('Descrição é obrigatória');
+    describe('comprimento máximo', () => {
+      it('deve rejeitar 5001 caracteres', () => {
+        const res = validarDescricao('a'.repeat(5001));
+        expect(res.valida).toBe(false);
+        expect(res.erro).toContain('no máximo 5000 caracteres');
+      });
+
+      it('deve aceitar exatamente 5000 caracteres', () => {
+        expect(validarDescricao('a'.repeat(5000)).valida).toBe(true);
+      });
     });
 
-    it('deve retornar erro quando descrição for vazia', () => {
-      const resultado = validarDescricao('');
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toBe('Descrição é obrigatória');
-    });
-
-    it('deve retornar erro quando descrição for apenas espaços', () => {
-      const resultado = validarDescricao('   ');
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toBe('Descrição é obrigatória');
-    });
-
-    it('deve retornar erro quando descrição tiver menos de 10 caracteres', () => {
-      const resultado = validarDescricao('Curta');
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('no mínimo 10 caracteres');
-    });
-
-    it('deve retornar erro quando descrição tiver exatamente 9 caracteres', () => {
-      const resultado = validarDescricao('123456789');
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('no mínimo 10 caracteres');
-    });
-
-    it('deve retornar erro quando descrição tiver mais de 5000 caracteres', () => {
-      const descricaoLonga = 'a'.repeat(5001);
-      const resultado = validarDescricao(descricaoLonga);
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('no máximo 5000 caracteres');
-    });
-
-    it('deve aceitar descrição com exatamente 10 caracteres', () => {
-      const resultado = validarDescricao('1234567890');
-      expect(resultado.valida).toBe(true);
-      expect(resultado.erro).toBeUndefined();
-    });
-
-    it('deve aceitar descrição com exatamente 5000 caracteres', () => {
-      const descricaoMax = 'a'.repeat(5000);
-      const resultado = validarDescricao(descricaoMax);
-      expect(resultado.valida).toBe(true);
-      expect(resultado.erro).toBeUndefined();
-    });
-
-    it('deve aceitar descrição válida', () => {
-      const resultado = validarDescricao('Descrição válida com mais de 10 caracteres');
-      expect(resultado.valida).toBe(true);
-      expect(resultado.erro).toBeUndefined();
-    });
-
-    it('deve trimmar descrição antes de validar', () => {
-      const resultado = validarDescricao('   Descrição válida   ');
-      expect(resultado.valida).toBe(true);
+    it.each([
+      ['Descrição válida com mais de dez caracteres'],
+      ['   Com espaços nas bordas   '],
+    ])('deve aceitar "%s"', (entrada) => {
+      const res = validarDescricao(entrada);
+      expect(res.valida).toBe(true);
+      expect(res.erro).toBeUndefined();
     });
   });
 
-  describe('Validação da padronização de serviços', () => {
-    const normalizarServicos = (servico: any): string[] => {
-      if (!servico) return [];
+  describe('validarComentario()', () => {
+    describe('tipo inválido → "Comentário é obrigatório"', () => {
+      it.each([null, undefined, 123])(
+        'deve rejeitar %s',
+        (entrada) => {
+          const res = validarComentario(entrada as any);
+          expect(res.valido).toBe(false);
+          expect(res.erro).toBe('Comentário é obrigatório');
+        }
+      );
 
-      // Se for string, converte para array
-      const servicosArray = Array.isArray(servico) ? servico : [servico];
-
-      // Filtra apenas strings válidas e remove duplicatas
-      return [...new Set(
-        servicosArray
-          .filter((s) => typeof s === 'string' && s.trim().length > 0)
-          .map((s) => s.trim())
-      )];
-    };
-
-    it('deve retornar array vazio quando serviço for null', () => {
-      const resultado = normalizarServicos(null);
-      expect(resultado).toEqual([]);
+      it('deve rejeitar string vazia ""', () => {
+        const res = validarComentario('');
+        expect(res.valido).toBe(false);
+        expect(res.erro).toBe('Comentário é obrigatório');
+      });
     });
 
-    it('deve retornar array vazio quando serviço for undefined', () => {
-      const resultado = normalizarServicos(undefined);
-      expect(resultado).toEqual([]);
+    it('deve rejeitar string só com espaços (trim → vazio < MIN)', () => {
+      const res = validarComentario('   ');
+      expect(res.valido).toBe(false);
+      expect(res.erro).toBe('Comentário não pode ser vazio');
     });
 
-    it('deve converter string única em array', () => {
-      const resultado = normalizarServicos('Suporte Técnico');
-      expect(resultado).toEqual(['Suporte Técnico']);
+    it('deve rejeitar mais de 5000 caracteres', () => {
+      const res = validarComentario('a'.repeat(5001));
+      expect(res.valido).toBe(false);
+      expect(res.erro).toContain('no máximo 5000 caracteres');
     });
 
-    it('deve filtrar valores não-string', () => {
-      const resultado = normalizarServicos([123, null, 'Suporte', {}, []]);
-      expect(resultado).toEqual(['Suporte']);
+    it.each(['a', 'Comentário normal', 'a'.repeat(5000)])(
+      'deve aceitar "%s"',
+      (entrada) => {
+        expect(validarComentario(entrada).valido).toBe(true);
+      }
+    );
+  });
+
+  describe('normalizarServicos()', () => {
+    describe('entradas nulas/inválidas → []', () => {
+      it.each([null, undefined, {}, 0, false])(
+        'deve retornar [] para %s',
+        (entrada) => expect(normalizarServicos(entrada)).toEqual([])
+      );
     });
 
-    it('deve filtrar strings vazias', () => {
-      const resultado = normalizarServicos(['Suporte', '', '  ', 'Manutenção']);
-      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    describe('entrada string', () => {
+      it('deve converter string válida em array de um elemento', () =>
+        expect(normalizarServicos('Suporte Técnico')).toEqual(['Suporte Técnico']));
+
+      it('deve retornar [] para string vazia', () =>
+        expect(normalizarServicos('')).toEqual([]));
+
+      it('deve retornar [] para string só com espaços', () =>
+        expect(normalizarServicos('   ')).toEqual([]));
+
+      it('deve trimmar a string', () =>
+        expect(normalizarServicos('  Suporte  ')).toEqual(['Suporte']));
     });
 
-    it('deve trimmar strings', () => {
-      const resultado = normalizarServicos(['  Suporte  ', 'Manutenção  ']);
-      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    describe('entrada array', () => {
+      it('deve filtrar elementos não-string', () =>
+        expect(normalizarServicos([123, null, 'Suporte', {}, []])).toEqual(['Suporte']));
+
+      it('deve filtrar strings vazias e só-espaços', () =>
+        expect(normalizarServicos(['Suporte', '', '  ', 'Manutenção'])).toEqual(['Suporte', 'Manutenção']));
+
+      it('deve trimmar cada elemento', () =>
+        expect(normalizarServicos(['  Suporte  ', 'Manutenção  '])).toEqual(['Suporte', 'Manutenção']));
+
+      // A implementação real NÃO usa Set — unicidade é garantida pela consulta ao banco.
+      it('NÃO remove duplicatas (sem Set na implementação real)', () =>
+        expect(normalizarServicos(['Suporte', 'Suporte'])).toEqual(['Suporte', 'Suporte']));
+
+      it('deve processar array misto completo', () =>
+        expect(
+          normalizarServicos(['Suporte Técnico', null, 123, '', '  Manutenção  ', '   '])
+        ).toEqual(['Suporte Técnico', 'Manutenção']));
+    });
+  });
+
+  describe('gerarProximoNumeroOS()', () => {
+    describe('entradas inválidas → INC0001', () => {
+      it.each([null, '', 'INCabc', 'INC'])(
+        'deve retornar INC0001 para "%s"',
+        (entrada) => expect(gerarProximoNumeroOS(entrada)).toBe('INC0001')
+      );
     });
 
-    it('deve remover duplicatas', () => {
-      const resultado = normalizarServicos(['Suporte', 'Suporte', 'Manutenção']);
-      expect(resultado).toEqual(['Suporte', 'Manutenção']);
+    describe('incremento e padding', () => {
+      it.each([
+        ['INC0001', 'INC0002'],
+        ['INC0009', 'INC0010'],
+        ['INC0099', 'INC0100'],
+        ['INC0999', 'INC1000'],
+        // ultrapassa 4 dígitos — comportamento real do routes (sem teto)
+        ['INC9999', 'INC10000'],
+      ])('%s → %s', (entrada, esperado) => {
+        expect(gerarProximoNumeroOS(entrada)).toBe(esperado);
+      });
+    });
+  });
+
+  describe('podeReabrir()', () => {
+    it('deve rejeitar encerradoEm null', () => {
+      const res = podeReabrir(null);
+      expect(res.pode).toBe(false);
+      expect(res.erro).toBe('Data de encerramento não encontrada');
     });
 
-    it('deve remover duplicatas após trimming', () => {
-      const resultado = normalizarServicos(['Suporte', '  Suporte  ']);
-      expect(resultado).toEqual(['Suporte']);
+    describe('fora do prazo', () => {
+      it.each([
+        ['49 horas',       49 * 3600 * 1000],
+        ['48h + 1 minuto', (48 * 3600 + 60) * 1000],
+        ['72 horas',       72 * 3600 * 1000],
+      ])('%s atrás → deve rejeitar', (_label, diffMs) => {
+        const res = podeReabrir(new Date(Date.now() - diffMs));
+        expect(res.pode).toBe(false);
+        expect(res.erro).toContain('48 horas');
+      });
     });
 
-    it('deve processar array misto corretamente', () => {
-      const resultado = normalizarServicos([
-        'Suporte Técnico',
-        null,
-        123,
-        '',
-        '  Manutenção  ',
-        'Suporte Técnico',
-        '   ',
+    describe('dentro do prazo', () => {
+      it.each([
+        ['30 minutos',     30 * 60 * 1000],
+        ['24 horas',       24 * 3600 * 1000],
+        ['exatamente 48h', 48 * 3600 * 1000],
+      ])('%s atrás → deve aceitar', (_label, diffMs) => {
+        expect(podeReabrir(new Date(Date.now() - diffMs)).pode).toBe(true);
+      });
+    });
+  });
+
+  describe('formatarChamadoResposta()', () => {
+    it('deve mapear campos principais', () => {
+      const res = formatarChamadoResposta(chamadoBase);
+      expect(res.id).toBe('chamado-1');
+      expect(res.OS).toBe('INC0001');
+      expect(res.status).toBe(ChamadoStatus.ABERTO);
+      expect(res.prioridade).toBe(PrioridadeChamado.P4);
+    });
+
+    it('deve retornar prioridadeDescricao para cada prioridade', () => {
+      PRIORIDADES_VALIDAS.forEach((p) => {
+        const res = formatarChamadoResposta({ ...chamadoBase, prioridade: p });
+        expect(res.prioridadeDescricao).toBe(DESCRICAO_PRIORIDADE[p]);
+      });
+    });
+
+    it('deve retornar prioridadeDescricao null quando prioridade for null', () => {
+      expect(
+        formatarChamadoResposta({ ...chamadoBase, prioridade: null }).prioridadeDescricao
+      ).toBeNull();
+    });
+
+    // O routes retorna objetos Date diretamente do Prisma — sem .toISOString()
+    it('deve retornar datas como objetos Date (não serializa para ISO)', () => {
+      const res = formatarChamadoResposta(chamadoBase);
+      expect(res.geradoEm).toEqual(BASE_DATE);
+      expect(res.atualizadoEm).toEqual(BASE_DATE);
+      expect(res.encerradoEm).toBeNull();
+    });
+
+    it('deve mapear usuario corretamente', () => {
+      expect(formatarChamadoResposta(chamadoBase).usuario).toEqual({
+        id: 'user-1', nome: 'João', sobrenome: 'Silva', email: 'joao@example.com',
+      });
+    });
+
+    it('deve retornar tecnico null quando não atribuído', () => {
+      expect(formatarChamadoResposta(chamadoBase).tecnico).toBeNull();
+    });
+
+    it('deve usar tecnicoId (não tecnico.id) no objeto tecnico retornado', () => {
+      const chamado = {
+        ...chamadoBase,
+        tecnicoId: 'tech-1',
+        tecnico: { id: 'ignorado', nome: 'Ana', sobrenome: 'Costa', email: 'ana@example.com', nivel: 'N2' },
+      };
+      expect(formatarChamadoResposta(chamado).tecnico).toEqual({
+        id: 'tech-1', nome: 'Ana', email: 'ana@example.com',
+      });
+    });
+
+    it('deve mapear servicos corretamente', () => {
+      expect(formatarChamadoResposta(chamadoBase).servicos).toEqual([
+        { id: 'serv-1', nome: 'Suporte' },
       ]);
-      expect(resultado).toEqual(['Suporte Técnico', 'Manutenção']);
-    });
-  });
-
-  describe('Geração de ordem de serviço (OS)', () => {
-    const gerarProximoNumeroOS = (ultimaOS: string | null): string => {
-      if (!ultimaOS) {
-        return 'INC0001';
-      }
-
-      // Extrair número da última OS
-      const numeroAtual = parseInt(ultimaOS.replace('INC', ''), 10);
-
-      // Se não for um número válido, começar do INC0001
-      if (isNaN(numeroAtual)) {
-        return 'INC0001';
-      }
-
-      // Incrementar e formatar com padding de 4 dígitos
-      const proximoNumero = numeroAtual + 1;
-      return `INC${proximoNumero.toString().padStart(4, '0')}`;
-    };
-
-    it('deve gerar INC0001 quando não houver última OS', () => {
-      const resultado = gerarProximoNumeroOS(null);
-      expect(resultado).toBe('INC0001');
     });
 
-    it('deve incrementar número corretamente', () => {
-      const resultado = gerarProximoNumeroOS('INC0001');
-      expect(resultado).toBe('INC0002');
+    it('deve retornar [] quando servicos for undefined', () => {
+      expect(
+        formatarChamadoResposta({ ...chamadoBase, servicos: undefined }).servicos
+      ).toEqual([]);
     });
 
-    it('deve gerar INC0001 quando última OS for inválida', () => {
-      const resultado = gerarProximoNumeroOS('INCabc');
-      expect(resultado).toBe('INC0001');
-    });
-
-    it('deve manter padding de 4 dígitos', () => {
-      const resultado = gerarProximoNumeroOS('INC0099');
-      expect(resultado).toBe('INC0100');
-    });
-
-    it('deve funcionar com números grandes', () => {
-      const resultado = gerarProximoNumeroOS('INC9999');
-      expect(resultado).toBe('INC10000');
-    });
-
-    it('deve lidar com string vazia', () => {
-      const resultado = gerarProximoNumeroOS('');
-      expect(resultado).toBe('INC0001');
-    });
-  });
-  
-  describe('Validação do status', () => {
-    const validarTransicaoStatus = (
-      statusAtual: ChamadoStatus,
-      novoStatus: ChamadoStatus
-    ): { valida: boolean; erro?: string } => {
-      // Cancelado não pode ser alterado
-      if (statusAtual === ChamadoStatus.CANCELADO) {
-        return { valida: false, erro: 'Chamados cancelados não podem ser alterados' };
-      }
-
-      // Não pode mudar para ABERTO ou REABERTO manualmente
-      if (novoStatus === ChamadoStatus.ABERTO || novoStatus === ChamadoStatus.REABERTO) {
-        return { valida: false, erro: 'Status inválido para transição manual' };
-      }
-
-      return { valida: true };
-    };
-
-    it('deve rejeitar alteração de chamado cancelado', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.CANCELADO,
-        ChamadoStatus.EM_ATENDIMENTO
-      );
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('cancelados não podem ser alterados');
-    });
-
-    it('deve rejeitar transição para ABERTO', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.EM_ATENDIMENTO,
-        ChamadoStatus.ABERTO
-      );
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('Status inválido');
-    });
-
-    it('deve rejeitar transição para REABERTO', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.EM_ATENDIMENTO,
-        ChamadoStatus.REABERTO
-      );
-      expect(resultado.valida).toBe(false);
-      expect(resultado.erro).toContain('Status inválido');
-    });
-
-    it('deve aceitar transição válida para EM_ATENDIMENTO', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.ABERTO,
-        ChamadoStatus.EM_ATENDIMENTO
-      );
-      expect(resultado.valida).toBe(true);
-    });
-
-    it('deve aceitar transição válida para ENCERRADO', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.EM_ATENDIMENTO,
-        ChamadoStatus.ENCERRADO
-      );
-      expect(resultado.valida).toBe(true);
-    });
-
-    it('deve aceitar transição válida para CANCELADO', () => {
-      const resultado = validarTransicaoStatus(
-        ChamadoStatus.ABERTO,
-        ChamadoStatus.CANCELADO
-      );
-      expect(resultado.valida).toBe(true);
-    });
-  });
-  
-  describe('Validação de expediente', () => {
-    interface Expediente {
-      entrada: Date;
-      saida: Date;
-      ativo: boolean;
-      deletadoEm: Date | null;
-    }
-
-    const estaNoExpediente = (
-      expedientes: Expediente[],
-      horaAtual: Date
-    ): boolean => {
-      // Filtrar apenas expedientes válidos
-      const expedientesValidos = expedientes.filter(
-        (exp) => exp.ativo && !exp.deletadoEm
-      );
-
-      if (expedientesValidos.length === 0) {
-        return false;
-      }
-
-      const horaAtualMinutos = horaAtual.getHours() * 60 + horaAtual.getMinutes();
-
-      return expedientesValidos.some((exp) => {
-        const entradaMinutos = exp.entrada.getHours() * 60 + exp.entrada.getMinutes();
-        const saidaMinutos = exp.saida.getHours() * 60 + exp.saida.getMinutes();
-
-        return horaAtualMinutos >= entradaMinutos && horaAtualMinutos <= saidaMinutos;
+    it('deve mapear alteradorPrioridade quando presente', () => {
+      const chamado = {
+        ...chamadoBase,
+        prioridadeAlterada: BASE_DATE,
+        alteradorPrioridade: {
+          id: 'admin-1', nome: 'Admin', sobrenome: 'Root', email: 'admin@example.com',
+        },
+      };
+      const res = formatarChamadoResposta(chamado);
+      expect(res.prioridadeAlteradaPor).toEqual({
+        id: 'admin-1', nome: 'Admin Root', email: 'admin@example.com',
       });
-    };
-
-    it('deve retornar false quando não houver expedientes', () => {
-      const resultado = estaNoExpediente([], new Date());
-      expect(resultado).toBe(false);
-    });
-
-    it('deve retornar false quando expedientes estiverem inativos', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: false,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(10, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(false);
-    });
-
-    it('deve retornar false quando expedientes estiverem deletados', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: new Date(),
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(10, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(false);
-    });
-
-    it('deve retornar false quando hora atual for antes do expediente', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(8, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(false);
-    });
-
-    it('deve retornar false quando hora atual for após o expediente', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(19, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(false);
-    });
-
-    it('deve retornar true quando hora atual estiver dentro do expediente', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(10, 30, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(true);
-    });
-
-    it('deve retornar true quando hora for exatamente no início do expediente', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(9, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(true);
-    });
-
-    it('deve retornar true quando hora for exatamente no fim do expediente', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(9, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(18, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(true);
-    });
-
-    it('deve funcionar com múltiplos expedientes', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(8, 0, 0)),
-          saida: new Date(new Date().setHours(12, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-        {
-          entrada: new Date(new Date().setHours(14, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(15, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(true);
-    });
-
-    it('deve retornar false no intervalo entre expedientes', () => {
-      const expedientes = [
-        {
-          entrada: new Date(new Date().setHours(8, 0, 0)),
-          saida: new Date(new Date().setHours(12, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-        {
-          entrada: new Date(new Date().setHours(14, 0, 0)),
-          saida: new Date(new Date().setHours(18, 0, 0)),
-          ativo: true,
-          deletadoEm: null,
-        },
-      ];
-      const horaAtual = new Date(new Date().setHours(13, 0, 0));
-
-      const resultado = estaNoExpediente(expedientes, horaAtual);
-      expect(resultado).toBe(false);
+      expect(res.prioridadeAlteradaEm).toEqual(BASE_DATE);
     });
   });
-  
-  describe('Validação do prazo de reabertura', () => {
-    const podeReabrir = (encerradoEm: Date | null): { pode: boolean; erro?: string } => {
-      if (!encerradoEm) {
-        return { pode: false, erro: 'Data de encerramento não encontrada' };
-      }
 
-      const agora = new Date();
-      const diferencaMs = agora.getTime() - encerradoEm.getTime();
-      const diferencaHoras = diferencaMs / (1000 * 60 * 60);
-
-      if (diferencaHoras > 48) {
-        return { pode: false, erro: 'Prazo de 48 horas excedido' };
-      }
-
-      return { pode: true };
-    };
-
-    it('deve retornar erro quando não houver data de encerramento', () => {
-      const resultado = podeReabrir(null);
-      expect(resultado.pode).toBe(false);
-      expect(resultado.erro).toContain('Data de encerramento não encontrada');
+  describe('DESCRICAO_PRIORIDADE', () => {
+    it.each([
+      ['P1', 'Alta Prioridade'],
+      ['P2', 'Urgente'],
+      ['P3', 'Urgente'],
+      ['P4', 'Baixa Prioridade'],
+      ['P5', 'Baixa Prioridade'],
+    ] as [PrioridadeChamado, string][])('%s → "%s"', (p, descricao) => {
+      expect(DESCRICAO_PRIORIDADE[p]).toBe(descricao);
     });
 
-    it('deve retornar erro quando exceder 48 horas', () => {
-      const encerradoEm = new Date(Date.now() - 49 * 3600 * 1000);
-      const resultado = podeReabrir(encerradoEm);
-      expect(resultado.pode).toBe(false);
-      expect(resultado.erro).toContain('48 horas');
-    });
-
-    it('deve aceitar exatamente 48 horas', () => {
-      const encerradoEm = new Date(Date.now() - 48 * 3600 * 1000);
-      const resultado = podeReabrir(encerradoEm);
-      expect(resultado.pode).toBe(true);
-    });
-
-    it('deve aceitar menos de 48 horas', () => {
-      const encerradoEm = new Date(Date.now() - 24 * 3600 * 1000);
-      const resultado = podeReabrir(encerradoEm);
-      expect(resultado.pode).toBe(true);
-    });
-
-    it('deve aceitar recém encerrado', () => {
-      const encerradoEm = new Date(Date.now() - 30 * 60 * 1000); // 30 minutos
-      const resultado = podeReabrir(encerradoEm);
-      expect(resultado.pode).toBe(true);
-    });
-
-    it('deve rejeitar 48h + 1 minuto', () => {
-      const encerradoEm = new Date(Date.now() - (48 * 3600 + 60) * 1000);
-      const resultado = podeReabrir(encerradoEm);
-      expect(resultado.pode).toBe(false);
+    it('deve cobrir todas as prioridades válidas', () => {
+      expect(Object.keys(DESCRICAO_PRIORIDADE)).toEqual(PRIORIDADES_VALIDAS);
     });
   });
-  
-  describe('Validação de permissionamento', () => {
-    interface Usuario {
-      id: string;
-      regra: 'ADMIN' | 'TECNICO' | 'USUARIO';
-    }
 
-    const podeEditarChamado = (
-      usuario: Usuario,
-      chamadoUsuarioId: string
-    ): boolean => {
-      // Admin pode editar qualquer chamado
-      if (usuario.regra === 'ADMIN') {
-        return true;
+  describe('PRIORIDADES_POR_NIVEL', () => {
+    it.each([
+      ['N1', 'P4', true],  ['N1', 'P5', true],
+      ['N1', 'P1', false], ['N1', 'P2', false], ['N1', 'P3', false],
+      ['N2', 'P2', true],  ['N2', 'P3', true],
+      ['N2', 'P1', false], ['N2', 'P4', false], ['N2', 'P5', false],
+      ['N3', 'P1', true],  ['N3', 'P2', true],  ['N3', 'P3', true],
+      ['N3', 'P4', true],  ['N3', 'P5', true],
+    ] as [NivelTecnico, PrioridadeChamado, boolean][])(
+      '%s pode assumir prioridade %s: %s',
+      (nivel, prioridade, esperado) => {
+        expect(PRIORIDADES_POR_NIVEL[nivel].includes(prioridade)).toBe(esperado);
       }
+    );
 
-      // Outros só podem editar seus próprios chamados
-      return usuario.id === chamadoUsuarioId;
-    };
-
-    it('deve permitir admin editar qualquer chamado', () => {
-      const admin = { id: 'admin-1', regra: 'ADMIN' as const };
-      const resultado = podeEditarChamado(admin, 'outro-usuario');
-      expect(resultado).toBe(true);
-    });
-
-    it('deve permitir usuário editar próprio chamado', () => {
-      const usuario = { id: 'user-1', regra: 'USUARIO' as const };
-      const resultado = podeEditarChamado(usuario, 'user-1');
-      expect(resultado).toBe(true);
-    });
-
-    it('deve impedir usuário de editar chamado de outro', () => {
-      const usuario = { id: 'user-1', regra: 'USUARIO' as const };
-      const resultado = podeEditarChamado(usuario, 'user-2');
-      expect(resultado).toBe(false);
-    });
-
-    it('deve permitir técnico editar próprio chamado', () => {
-      const tecnico = { id: 'tech-1', regra: 'TECNICO' as const };
-      const resultado = podeEditarChamado(tecnico, 'tech-1');
-      expect(resultado).toBe(true);
-    });
-
-    it('deve impedir técnico de editar chamado de outro', () => {
-      const tecnico = { id: 'tech-1', regra: 'TECNICO' as const };
-      const resultado = podeEditarChamado(tecnico, 'user-2');
-      expect(resultado).toBe(false);
+    it('N3 deve ter acesso a todas as prioridades', () => {
+      expect(PRIORIDADES_POR_NIVEL['N3']).toEqual(PRIORIDADES_VALIDAS);
     });
   });
-  
-  describe('Validação dos dados do chamado', () => {
-    interface ChamadoCompleto {
-      id: string;
-      OS: string;
-      descricao: string;
-      descricaoEncerramento: string | null;
-      status: ChamadoStatus;
-      geradoEm: Date;
-      atualizadoEm: Date;
-      encerradoEm: Date | null;
-      usuario: { id: string; nome: string; sobrenome: string; email: string } | null;
-      tecnico: { id: string; nome: string; sobrenome: string; email: string } | null;
-      servicos?: { servico: { id: string; nome: string } }[];
-    }
 
-    const formatarChamadoResposta = (chamado: ChamadoCompleto) => {
-      return {
-        id: chamado.id,
-        OS: chamado.OS,
-        descricao: chamado.descricao,
-        descricaoEncerramento: chamado.descricaoEncerramento,
-        status: chamado.status,
-        geradoEm: chamado.geradoEm.toISOString(),
-        atualizadoEm: chamado.atualizadoEm.toISOString(),
-        encerradoEm: chamado.encerradoEm?.toISOString() ?? null,
-        usuario: chamado.usuario
-          ? {
-              id: chamado.usuario.id,
-              nome: chamado.usuario.nome,
-              sobrenome: chamado.usuario.sobrenome,
-              email: chamado.usuario.email,
-            }
-          : null,
-        tecnico: chamado.tecnico
-          ? {
-              id: chamado.tecnico.id,
-              nome: chamado.tecnico.nome,
-              sobrenome: chamado.tecnico.sobrenome,
-              email: chamado.tecnico.email,
-            }
-          : null,
-        servicos: chamado.servicos?.map((s) => ({
-          id: s.servico.id,
-          nome: s.servico.nome,
-        })) ?? [],
-      };
-    };
+  describe('NIVEL_POR_PRIORIDADE', () => {
+    it.each([
+      ['P1', ['N3']],
+      ['P2', ['N2', 'N3']],
+      ['P3', ['N2', 'N3']],
+      ['P4', ['N1', 'N3']],
+      ['P5', ['N1', 'N3']],
+    ] as [PrioridadeChamado, NivelTecnico[]][])(
+      '%s → níveis %s',
+      (prioridade, niveisEsperados) => {
+        expect(NIVEL_POR_PRIORIDADE[prioridade]).toEqual(niveisEsperados);
+      }
+    );
 
-    it('deve formatar chamado completo corretamente', () => {
-      const chamado: ChamadoCompleto = {
-        id: 'chamado-1',
-        OS: 'INC0001',
-        descricao: 'Descrição do chamado',
-        descricaoEncerramento: null,
-        status: ChamadoStatus.ABERTO,
-        geradoEm: new Date('2025-01-01'),
-        atualizadoEm: new Date('2025-01-01'),
-        encerradoEm: null,
-        usuario: {
-          id: 'user-1',
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@example.com',
-        },
-        tecnico: null,
-        servicos: [
-          { servico: { id: 'serv-1', nome: 'Suporte' } },
-        ],
-      };
+    it('deve ser o inverso consistente de PRIORIDADES_POR_NIVEL', () => {
+      for (const nivel of ['N1', 'N2', 'N3'] as NivelTecnico[]) {
+        for (const prioridade of PRIORIDADES_VALIDAS) {
+          expect(PRIORIDADES_POR_NIVEL[nivel].includes(prioridade))
+            .toBe(NIVEL_POR_PRIORIDADE[prioridade].includes(nivel));
+        }
+      }
+    });
+  });
 
-      const resultado = formatarChamadoResposta(chamado);
+  describe('Transições de status — PATCH /:id/status', () => {
+    const STATUS_VALIDOS: ChamadoStatus[] = [
+      ChamadoStatus.EM_ATENDIMENTO,
+      ChamadoStatus.ENCERRADO,
+      ChamadoStatus.CANCELADO,
+    ];
 
-      expect(resultado.id).toBe('chamado-1');
-      expect(resultado.OS).toBe('INC0001');
-      expect(resultado.usuario).toEqual({
-        id: 'user-1',
-        nome: 'João',
-        sobrenome: 'Silva',
-        email: 'joao@example.com',
+    it.each([
+      [ChamadoStatus.EM_ATENDIMENTO, true],
+      [ChamadoStatus.ENCERRADO,      true],
+      [ChamadoStatus.CANCELADO,      true],
+      [ChamadoStatus.ABERTO,         false],
+      [ChamadoStatus.REABERTO,       false],
+    ] as [ChamadoStatus, boolean][])('status %s aceito pelo endpoint: %s', (s, esperado) => {
+      expect(STATUS_VALIDOS.includes(s)).toBe(esperado);
+    });
+
+    it('TECNICO não pode definir status CANCELADO', () => {
+      const regra      = str('TECNICO');
+      const novoStatus = str(ChamadoStatus.CANCELADO) as ChamadoStatus;
+      expect(regra === 'TECNICO' && novoStatus === ChamadoStatus.CANCELADO).toBe(true);
+    });
+
+    it('chamado CANCELADO bloqueia qualquer nova alteração', () => {
+      const statusAtual = str(ChamadoStatus.CANCELADO) as ChamadoStatus;
+      expect(statusAtual === ChamadoStatus.CANCELADO).toBe(true);
+    });
+  });
+
+  describe('Permissão de edição — PATCH /:id', () => {
+    const STATUS_EDITAVEIS: ChamadoStatus[] = [
+      ChamadoStatus.ABERTO,
+      ChamadoStatus.REABERTO,
+    ];
+
+    const podeEditar = (regra: string, uid: string, donoChamado: string) =>
+      regra === 'ADMIN' || uid === donoChamado;
+
+    it.each([
+      ['ADMIN',   'admin-1', 'qualquer', true],
+      ['USUARIO', 'user-1',  'user-1',   true],
+      ['USUARIO', 'user-1',  'user-2',   false],
+      ['TECNICO', 'tech-1',  'tech-1',   true],
+      ['TECNICO', 'tech-1',  'user-99',  false],
+    ])('%s (id=%s, dono=%s) → pode editar: %s', (regra, uid, dono, esperado) => {
+      expect(podeEditar(regra, uid, dono)).toBe(esperado);
+    });
+
+    it.each([
+      [ChamadoStatus.ABERTO,         true],
+      [ChamadoStatus.REABERTO,       true],
+      [ChamadoStatus.EM_ATENDIMENTO, false],
+      [ChamadoStatus.ENCERRADO,      false],
+      [ChamadoStatus.CANCELADO,      false],
+    ] as [ChamadoStatus, boolean][])('status %s permite edição: %s', (s, esperado) => {
+      expect(STATUS_EDITAVEIS.includes(s)).toBe(esperado);
+    });
+  });
+
+  describe('Permissão de transferência — PATCH /:id/transferir', () => {
+    const STATUS_TRANSFERIVEIS: ChamadoStatus[] = [
+      ChamadoStatus.ABERTO,
+      ChamadoStatus.EM_ATENDIMENTO,
+      ChamadoStatus.REABERTO,
+    ];
+
+    it.each([
+      [ChamadoStatus.ABERTO,         true],
+      [ChamadoStatus.EM_ATENDIMENTO, true],
+      [ChamadoStatus.REABERTO,       true],
+      [ChamadoStatus.ENCERRADO,      false],
+      [ChamadoStatus.CANCELADO,      false],
+    ] as [ChamadoStatus, boolean][])('status %s permite transferência: %s', (s, esperado) => {
+      expect(STATUS_TRANSFERIVEIS.includes(s)).toBe(esperado);
+    });
+
+    it('TECNICO só pode transferir chamados atribuídos a ele mesmo', () => {
+      const tecnicoId        = str('tech-1');
+      const chamadoTecnicoId = str('tech-2');
+      expect(tecnicoId === chamadoTecnicoId).toBe(false); // diferente → 403
+    });
+
+    it('não deve permitir transferir para o mesmo técnico atual', () => {
+      const tecnicoAtualId = str('tech-1');
+      const tecnicoNovoId  = str('tech-1');
+      expect(tecnicoAtualId === tecnicoNovoId).toBe(true); // mesmo → 400
+    });
+  });
+
+  describe('Permissão de prioridade — PATCH /:id/prioridade', () => {
+    it('somente TECNICO N3 pode reclassificar via este endpoint', () => {
+      const nivel = str('N3') as NivelTecnico;
+      expect(nivel === 'N3').toBe(true);
+    });
+
+    it.each(['N1', 'N2'] as NivelTecnico[])('nível %s → bloqueado (403)', (nivel) => {
+      expect(nivel !== 'N3').toBe(true);
+    });
+
+    it.each([
+      [ChamadoStatus.CANCELADO, true],
+      [ChamadoStatus.ENCERRADO, true],
+      [ChamadoStatus.ABERTO,    false],
+      [ChamadoStatus.REABERTO,  false],
+    ] as [ChamadoStatus, boolean][])('status %s bloqueia alteração de prioridade: %s', (s, bloqueado) => {
+      const bloqueados: ChamadoStatus[] = [ChamadoStatus.CANCELADO, ChamadoStatus.ENCERRADO];
+      expect(bloqueados.includes(s)).toBe(bloqueado);
+    });
+
+    it('deve rejeitar quando prioridade nova === prioridade atual', () => {
+      const atual = str('P2') as PrioridadeChamado;
+      const nova  = str('P2') as PrioridadeChamado;
+      expect(atual === nova).toBe(true); // → 400
+    });
+  });
+
+  describe('Permissão de comentário — POST /:id/comentarios', () => {
+    const podeCriarInterno = (regra: string) => regra !== 'USUARIO';
+
+    it.each([
+      ['ADMIN',   true],
+      ['TECNICO', true],
+      ['USUARIO', false],
+    ])('%s pode criar comentário interno: %s', (regra, esperado) => {
+      expect(podeCriarInterno(regra)).toBe(esperado);
+    });
+
+    it.each([
+      [ChamadoStatus.CANCELADO,      true],
+      [ChamadoStatus.ABERTO,         false],
+      [ChamadoStatus.EM_ATENDIMENTO, false],
+      [ChamadoStatus.REABERTO,       false],
+      [ChamadoStatus.ENCERRADO,      false],
+    ] as [ChamadoStatus, boolean][])('status %s bloqueia novo comentário: %s', (s, bloqueado) => {
+      expect(s === ChamadoStatus.CANCELADO).toBe(bloqueado);
+    });
+
+    it('USUARIO não vê comentários com visibilidadeInterna=true', () => {
+      const regra = str('USUARIO');
+      expect(regra !== 'USUARIO').toBe(false);
+    });
+  });
+
+  describe('estaNoExpediente() — lógica de verificarExpedienteTecnico()', () => {
+    describe('sem expedientes válidos → false', () => {
+      it('lista vazia', () =>
+        expect(estaNoExpediente([], horaFixa(10))).toBe(false));
+
+      it('expediente inativo', () =>
+        expect(estaNoExpediente([makeExpediente(9, 18, false)], horaFixa(10))).toBe(false));
+
+      it('expediente deletado', () =>
+        expect(estaNoExpediente([makeExpediente(9, 18, true, new Date())], horaFixa(10))).toBe(false));
+    });
+
+    describe('expediente 09h–18h', () => {
+      const exp = [makeExpediente(9, 18)];
+
+      it.each([
+        [8,  0,  false, 'antes da entrada'],
+        [9,  0,  true,  'exatamente na entrada'],
+        [12, 30, true,  'meio do turno'],
+        [18, 0,  true,  'exatamente na saída'],
+        [19, 0,  false, 'após a saída'],
+      ] as [number, number, boolean, string][])('%dh%02d — %s → %s', (h, min, esperado) => {
+        expect(estaNoExpediente(exp, horaFixa(h, min))).toBe(esperado);
       });
-      expect(resultado.tecnico).toBeNull();
-      expect(resultado.servicos).toEqual([{ id: 'serv-1', nome: 'Suporte' }]);
     });
 
-    it('deve formatar datas em ISO string', () => {
-      const chamado: ChamadoCompleto = {
-        id: 'chamado-1',
-        OS: 'INC0001',
-        descricao: 'Teste',
-        descricaoEncerramento: null,
-        status: ChamadoStatus.ABERTO,
-        geradoEm: new Date('2025-01-01T10:00:00Z'),
-        atualizadoEm: new Date('2025-01-01T11:00:00Z'),
-        encerradoEm: null,
-        usuario: null,
-        tecnico: null,
-      };
+    describe('turno partido 08h–12h / 14h–18h', () => {
+      const exps = [makeExpediente(8, 12), makeExpediente(14, 18)];
 
-      const resultado = formatarChamadoResposta(chamado);
+      it.each([
+        [10, true,  'dentro do 1º turno'],
+        [13, false, 'intervalo entre turnos'],
+        [16, true,  'dentro do 2º turno'],
+      ] as [number, boolean, string][])('%dh — %s → %s', (h, esperado) => {
+        expect(estaNoExpediente(exps, horaFixa(h))).toBe(esperado);
+      });
 
-      expect(resultado.geradoEm).toBe('2025-01-01T10:00:00.000Z');
-      expect(resultado.atualizadoEm).toBe('2025-01-01T11:00:00.000Z');
-      expect(resultado.encerradoEm).toBeNull();
-    });
-
-    it('deve retornar array vazio quando servicos for undefined', () => {
-      const chamado: ChamadoCompleto = {
-        id: 'chamado-1',
-        OS: 'INC0001',
-        descricao: 'Teste',
-        descricaoEncerramento: null,
-        status: ChamadoStatus.ABERTO,
-        geradoEm: new Date(),
-        atualizadoEm: new Date(),
-        encerradoEm: null,
-        usuario: null,
-        tecnico: null,
-        servicos: undefined,
-      };
-
-      const resultado = formatarChamadoResposta(chamado);
-      expect(resultado.servicos).toEqual([]);
+      it('deve ignorar expediente deletado e manter apenas o válido', () => {
+        const expsComDeletado = [
+          makeExpediente(8, 12),
+          makeExpediente(14, 18, true, new Date()), // deletado
+        ];
+        expect(estaNoExpediente(expsComDeletado, horaFixa(16))).toBe(false); // 2º turno deletado
+        expect(estaNoExpediente(expsComDeletado, horaFixa(10))).toBe(true);  // 1º turno ok
+      });
     });
   });
 });

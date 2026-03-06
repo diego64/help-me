@@ -48,6 +48,7 @@ const createAdminFixture = (overrides: Partial<UsuarioFixture> = {}): UsuarioFix
   email: 'admin@example.com',
   password: 'HASHED_PASSWORD_PBKDF2',
   regra: 'ADMIN' as Regra,
+  nivel: null,
   setor: null,
   telefone: null,
   ramal: null,

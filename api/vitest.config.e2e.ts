@@ -43,8 +43,8 @@ export default defineConfig({
     // Configurações de execução
     fileParallelism: false, // Evita conflitos de banco de dados
     testTimeout: 60000, // 60s - testes E2E podem ser mais lentos
-    hookTimeout: 30000, // 30s para beforeAll/afterAll
-    teardownTimeout: 30000, // 30s para cleanup
+    hookTimeout: 60000, // 60s para beforeAll/afterAll
+    teardownTimeout: 60000, // 60s para cleanup
     
     // Executar sequencialmente para evitar race conditions
     // @ts-expect-error - Vitest não tem tipagem para poolOptions

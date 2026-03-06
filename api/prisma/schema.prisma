@@ -23,10 +23,17 @@ enum ChamadoStatus {
 }
 
 enum PrioridadeChamado {
-  BAIXA
-  NORMAL
-  ALTA
-  URGENTE
+  P1
+  P2
+  P3
+  P4
+  P5
+}
+
+enum NivelTecnico {
+  N1
+  N2
+  N3
 }
 
 enum Setor {
@@ -47,12 +54,13 @@ enum Setor {
 // ==================== MODELS ====================
 
 model Usuario {
-  id                     String      @id @default(cuid())
-  nome                   String      @db.VarChar(100)
-  sobrenome              String      @db.VarChar(100)
-  email                  String      @unique @db.VarChar(255)
-  password               String      @db.VarChar(512)
+  id                     String        @id @default(cuid())
+  nome                   String        @db.VarChar(100)
+  sobrenome              String        @db.VarChar(100)
+  email                  String        @unique @db.VarChar(255)
+  password               String        @db.VarChar(512)
   regra                  Regra
+  nivel                  NivelTecnico? @default(N1)
   setor                  Setor?
   telefone               String?
   ramal                  String?
@@ -67,25 +75,30 @@ model Usuario {
   chamadoOS              Chamado[]   @relation("UsuarioChamado")
   tecnicoChamados        Chamado[]   @relation("TecnicoResponsavel")
   tecnicoDisponibilidade Expediente[]
-  
+
   // Sistema de Transferência
   transferenciasRealizadas TransferenciaChamado[] @relation("TransferenciasRealizadas")
   transferenciasRecebidas  TransferenciaChamado[] @relation("TransferenciasPara")
   transferenciasEnviadas   TransferenciaChamado[] @relation("TransferenciasDe")
-  
+
   // Sistema de Priorização
   alteracoesPrioridade     Chamado[]              @relation("AlteracoesPrioridade")
-  
+
   // Sistema de Comentários
   comentarios              ComentarioChamado[]
+
+  // Sistema de Anexos
+  anexos                   AnexoChamado[]
 
   // ==================== INDEX ====================
 
   @@index([email])
   @@index([regra])
+  @@index([nivel])
   @@index([ativo])
   @@index([setor])
   @@index([deletadoEm])
+  @@index([regra, nivel])
   @@map("usuarios")
 }
 
@@ -124,11 +137,11 @@ model Servico {
 }
 
 model Chamado {
-  id                    String              @id @default(cuid())
-  OS                    String              @unique @db.VarChar(50)
-  descricao             String              @db.Text
-  status                ChamadoStatus       @default(ABERTO)
-  descricaoEncerramento String?             @map("descricao_encerramento") @db.Text
+  id                    String            @id @default(cuid())
+  OS                    String            @unique @db.VarChar(50)
+  descricao             String            @db.Text
+  status                ChamadoStatus     @default(ABERTO)
+  descricaoEncerramento String?           @map("descricao_encerramento") @db.Text
 
   geradoEm     DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(3)
   atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
@@ -142,19 +155,19 @@ model Chamado {
   tecnicoId    String?  @map("tecnico_id")
 
   servicos     OrdemDeServico[]
-  
-  prioridade              PrioridadeChamado   @default(NORMAL)
-  prioridadeAlterada      DateTime?           @map("prioridade_alterada") @db.Timestamptz(3)
-  prioridadeAlteradaPor   String?             @map("prioridade_alterada_por")
-  
-  alteradorPrioridade     Usuario?            @relation("AlteracoesPrioridade", fields: [prioridadeAlteradaPor], references: [id], onDelete: SetNull)
 
-  transferencias          TransferenciaChamado[]
+  prioridade            PrioridadeChamado @default(P4)
+  prioridadeAlterada    DateTime?         @map("prioridade_alterada") @db.Timestamptz(3)
+  prioridadeAlteradaPor String?           @map("prioridade_alterada_por")
 
-  comentarios             ComentarioChamado[]
+  alteradorPrioridade   Usuario?          @relation("AlteracoesPrioridade", fields: [prioridadeAlteradaPor], references: [id], onDelete: SetNull)
+
+  transferencias        TransferenciaChamado[]
+  comentarios           ComentarioChamado[]
+  anexos                AnexoChamado[]
 
   // ==================== INDEX ====================
-  
+
   @@index([usuarioId])
   @@index([tecnicoId])
   @@index([status])
@@ -164,12 +177,10 @@ model Chamado {
   @@index([status, geradoEm])
   @@index([tecnicoId, status])
   @@index([usuarioId, status])
-  
   @@index([prioridade])
   @@index([prioridade, status])
   @@index([status, prioridade, geradoEm])
   @@index([prioridadeAlteradaPor])
-  
   @@map("chamados")
 }
 
@@ -184,8 +195,6 @@ model OrdemDeServico {
   geradoEm     DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(3)
   atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
   deletadoEm   DateTime? @map("deletado_em") @db.Timestamptz(3)
-
-  // ==================== PREVENÇÃO DE DUPLICIDADE DE DADOS ====================
 
   @@unique([chamadoId, servicoId], name: "unique_chamado_servico")
   @@index([chamadoId])
@@ -202,12 +211,12 @@ model TransferenciaChamado {
   motivo            String   @db.Text
   transferidoPor    String   @map("transferido_por")
   transferidoEm     DateTime @default(now()) @map("transferido_em") @db.Timestamptz(3)
-  
+
   chamado           Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   tecnicoAnterior   Usuario? @relation("TransferenciasDe", fields: [tecnicoAnteriorId], references: [id], onDelete: SetNull)
   tecnicoNovo       Usuario  @relation("TransferenciasPara", fields: [tecnicoNovoId], references: [id], onDelete: Cascade)
   transferidor      Usuario  @relation("TransferenciasRealizadas", fields: [transferidoPor], references: [id], onDelete: Cascade)
-  
+
   @@index([chamadoId])
   @@index([tecnicoAnteriorId])
   @@index([tecnicoNovoId])
@@ -217,19 +226,19 @@ model TransferenciaChamado {
 }
 
 model ComentarioChamado {
-  id                  String   @id @default(cuid())
-  chamadoId           String   @map("chamado_id")
-  autorId             String   @map("autor_id")
-  comentario          String   @db.Text
-  visibilidadeInterna Boolean  @default(false) @map("visibilidade_interna")
-  
-  criadoEm            DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm        DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  id                  String    @id @default(cuid())
+  chamadoId           String    @map("chamado_id")
+  autorId             String    @map("autor_id")
+  comentario          String    @db.Text
+  visibilidadeInterna Boolean   @default(false) @map("visibilidade_interna")
+
+  criadoEm            DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm        DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
   deletadoEm          DateTime? @map("deletado_em") @db.Timestamptz(3)
-  
+
   chamado             Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   autor               Usuario  @relation(fields: [autorId], references: [id], onDelete: Cascade)
-  
+
   @@index([chamadoId])
   @@index([autorId])
   @@index([criadoEm])
@@ -237,4 +246,29 @@ model ComentarioChamado {
   @@index([chamadoId, deletadoEm])
   @@index([visibilidadeInterna])
   @@map("comentarios_chamado")
+}
+
+model AnexoChamado {
+  id           String    @id @default(cuid())
+  chamadoId    String    @map("chamado_id")
+  autorId      String    @map("autor_id")
+  nomeArquivo  String    @map("nome_arquivo") @db.VarChar(255)
+  nomeOriginal String    @map("nome_original") @db.VarChar(255)
+  mimetype     String    @db.VarChar(100)
+  tamanho      Int
+  bucketMinio  String    @map("bucket_minio") @db.VarChar(100)
+  objetoMinio  String    @map("objeto_minio") @db.VarChar(255)
+
+  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  deletadoEm   DateTime? @map("deletado_em") @db.Timestamptz(3)
+
+  chamado      Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+  autor        Usuario  @relation(fields: [autorId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId])
+  @@index([autorId])
+  @@index([criadoEm])
+  @@index([deletadoEm])
+  @@index([chamadoId, deletadoEm])
+  @@map("anexos_chamado")
 }

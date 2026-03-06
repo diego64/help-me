@@ -227,7 +227,6 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockReturnValue(mockRedisClient);
 
         await import('@infrastructure/database/redis/client');
-
         await new Promise((resolve) => setImmediate(resolve));
 
         expect(logger.error).toHaveBeenCalledWith(
@@ -245,7 +244,6 @@ describe('Redis Client - Cobertura Completa', () => {
         (createClient as any).mockReturnValue(mockRedisClient);
 
         await import('@infrastructure/database/redis/client');
-
         await new Promise((resolve) => setImmediate(resolve));
 
         expect(logger.error).toHaveBeenCalledWith(
@@ -267,36 +265,28 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve logar quando evento "connect" for disparado', () => {
       const connectHandler = eventHandlers.get('connect');
       expect(connectHandler).toBeDefined();
-
       connectHandler!();
-
       expect(logger.info).toHaveBeenCalledWith('Cliente Redis conectado');
     });
 
     it('deve logar quando evento "ready" for disparado', () => {
       const readyHandler = eventHandlers.get('ready');
       expect(readyHandler).toBeDefined();
-
       readyHandler!();
-
       expect(logger.info).toHaveBeenCalledWith('Cliente Redis pronto');
     });
 
     it('deve logar quando evento "reconnecting" for disparado', () => {
       const reconnectingHandler = eventHandlers.get('reconnecting');
       expect(reconnectingHandler).toBeDefined();
-
       reconnectingHandler!();
-
       expect(logger.info).toHaveBeenCalledWith('Tentando reconectar ao Redis');
     });
 
     it('deve logar quando evento "end" for disparado', () => {
       const endHandler = eventHandlers.get('end');
       expect(endHandler).toBeDefined();
-
       endHandler!();
-
       expect(logger.info).toHaveBeenCalledWith('Conexão Redis encerrada');
     });
 
@@ -362,7 +352,6 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve retornar erro após 5 tentativas', () => {
       const resultado = reconnectStrategy(6);
-
       expect(resultado).toBeInstanceOf(Error);
       expect((resultado as Error).message).toBe(
         'Máximo de tentativas de reconexão excedido'
@@ -391,7 +380,6 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve logar erro ao exceder máximo de tentativas', () => {
       reconnectStrategy(6);
-
       expect(logger.error).toHaveBeenCalledWith(
         { maxRetries: 5 },
         'Falha ao conectar Redis após múltiplas tentativas'
@@ -430,29 +418,17 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve armazenar string com TTL customizado', async () => {
       await cacheSet('chave-teste', 'valor-teste', 7200);
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'chave-teste',
-        'valor-teste',
-        { EX: 7200 }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('chave-teste', 'valor-teste', { EX: 7200 });
     });
 
     it('deve armazenar string com TTL padrão (3600s)', async () => {
       await cacheSet('chave-teste', 'valor-teste');
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'chave-teste',
-        'valor-teste',
-        { EX: 3600 }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('chave-teste', 'valor-teste', { EX: 3600 });
     });
 
     it('deve serializar objeto simples para JSON', async () => {
       const objeto = { nome: 'Teste', valor: 123 };
-
       await cacheSet('chave-objeto', objeto, 3600);
-
       expect(mockRedisClient.set).toHaveBeenCalledWith(
         'chave-objeto',
         JSON.stringify(objeto),
@@ -464,15 +440,10 @@ describe('Redis Client - Cobertura Completa', () => {
       const objetoComplexo = {
         id: 1,
         nome: 'Teste',
-        dados: {
-          nested: true,
-          array: [1, 2, 3],
-        },
+        dados: { nested: true, array: [1, 2, 3] },
         timestamp: new Date().toISOString(),
       };
-
       await cacheSet('chave-complexa', objetoComplexo, 1800);
-
       expect(mockRedisClient.set).toHaveBeenCalledWith(
         'chave-complexa',
         JSON.stringify(objetoComplexo),
@@ -482,9 +453,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve armazenar array como JSON', async () => {
       const array = [1, 2, 3, 4, 5];
-
       await cacheSet('chave-array', array);
-
       expect(mockRedisClient.set).toHaveBeenCalledWith(
         'chave-array',
         JSON.stringify(array),
@@ -494,64 +463,38 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve armazenar com TTL zero (usa default por ser falsy)', async () => {
       await cacheSet('chave-teste', 'valor', 0);
-
-      // TTL 0 é falsy, então usa DEFAULT_TTL (3600)
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'chave-teste',
-        'valor',
-        { EX: 3600 }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('chave-teste', 'valor', { EX: 3600 });
     });
 
     it('deve armazenar com TTL undefined (usa default)', async () => {
       await cacheSet('chave-teste', 'valor', undefined);
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'chave-teste',
-        'valor',
-        { EX: 3600 }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('chave-teste', 'valor', { EX: 3600 });
     });
 
     it('deve armazenar com TTL null (usa default)', async () => {
       await cacheSet('chave-teste', 'valor', null as any);
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'chave-teste',
-        'valor',
-        { EX: 3600 }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('chave-teste', 'valor', { EX: 3600 });
     });
 
     it('deve retornar sem erro quando Redis não estiver conectado (isOpen false)', async () => {
       mockRedisClient.isOpen = false;
-
       await cacheSet('chave-teste', 'valor-teste');
-
       expect(mockRedisClient.set).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith(
-        'Redis não conectado, operação SET ignorada'
-      );
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação SET ignorada');
     });
 
     it('deve retornar sem erro quando Redis não estiver pronto (isReady false)', async () => {
       mockRedisClient.isOpen = true;
       mockRedisClient.isReady = false;
-
       await cacheSet('chave-teste', 'valor-teste');
-
       expect(mockRedisClient.set).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith(
-        'Redis não conectado, operação SET ignorada'
-      );
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação SET ignorada');
     });
 
     it('deve capturar e logar erro do Redis', async () => {
       const erroSet = new Error('Set failed');
       mockRedisClient.set.mockRejectedValueOnce(erroSet);
-
       await expect(cacheSet('chave-teste', 'valor-teste')).resolves.toBeUndefined();
-
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroSet, key: 'chave-teste' },
         'Erro ao executar SET no Redis'
@@ -568,7 +511,6 @@ describe('Redis Client - Cobertura Completa', () => {
       for (const erro of erros) {
         mockRedisClient.set.mockRejectedValueOnce(erro);
         await cacheSet('chave', 'valor');
-
         expect(logger.error).toHaveBeenCalledWith(
           { err: erro, key: 'chave' },
           'Erro ao executar SET no Redis'
@@ -594,18 +536,14 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve retornar valor quando chave existir', async () => {
       mockRedisClient.get.mockResolvedValue('valor-armazenado');
-
       const resultado = await cacheGet('chave-teste');
-
       expect(mockRedisClient.get).toHaveBeenCalledWith('chave-teste');
       expect(resultado).toBe('valor-armazenado');
     });
 
     it('deve retornar null quando chave não existir', async () => {
       mockRedisClient.get.mockResolvedValue(null);
-
       const resultado = await cacheGet('chave-inexistente');
-
       expect(mockRedisClient.get).toHaveBeenCalledWith('chave-inexistente');
       expect(resultado).toBeNull();
     });
@@ -613,25 +551,19 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar valor JSON serializado', async () => {
       const objetoJson = JSON.stringify({ test: 'data' });
       mockRedisClient.get.mockResolvedValue(objetoJson);
-
       const resultado = await cacheGet('chave-json');
-
       expect(resultado).toBe(objetoJson);
     });
 
     it('deve retornar string vazia', async () => {
       mockRedisClient.get.mockResolvedValue('');
-
       const resultado = await cacheGet('chave-vazia');
-
       expect(resultado).toBe('');
     });
 
     it('deve retornar null quando Redis não estiver conectado (isOpen false)', async () => {
       mockRedisClient.isOpen = false;
-
       const resultado = await cacheGet('chave-teste');
-
       expect(resultado).toBeNull();
       expect(mockRedisClient.get).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledWith(
@@ -642,9 +574,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar null quando Redis não estiver pronto (isReady false)', async () => {
       mockRedisClient.isOpen = true;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheGet('chave-teste');
-
       expect(resultado).toBeNull();
       expect(mockRedisClient.get).not.toHaveBeenCalled();
     });
@@ -652,9 +582,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar null em caso de erro', async () => {
       const erroGet = new Error('Get failed');
       mockRedisClient.get.mockRejectedValueOnce(erroGet);
-
       const resultado = await cacheGet('chave-teste');
-
       expect(resultado).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroGet, key: 'chave-teste' },
@@ -663,16 +591,11 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve tratar múltiplos erros consecutivos', async () => {
-      const erros = [
-        new Error('Error 1'),
-        new Error('Error 2'),
-        new Error('Error 3'),
-      ];
+      const erros = [new Error('Error 1'), new Error('Error 2'), new Error('Error 3')];
 
       for (const erro of erros) {
         mockRedisClient.get.mockRejectedValueOnce(erro);
         const resultado = await cacheGet('chave');
-
         expect(resultado).toBeNull();
         expect(logger.error).toHaveBeenCalledWith(
           { err: erro, key: 'chave' },
@@ -699,18 +622,14 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve deletar uma chave com sucesso', async () => {
       mockRedisClient.del.mockResolvedValue(1);
-
       const resultado = await cacheDel('chave-teste');
-
       expect(mockRedisClient.del).toHaveBeenCalledWith(['chave-teste']);
       expect(resultado).toBe(1);
     });
 
     it('deve deletar múltiplas chaves', async () => {
       mockRedisClient.del.mockResolvedValue(3);
-
       const resultado = await cacheDel('chave1', 'chave2', 'chave3');
-
       expect(mockRedisClient.del).toHaveBeenCalledWith(['chave1', 'chave2', 'chave3']);
       expect(resultado).toBe(3);
     });
@@ -718,54 +637,42 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve deletar grande quantidade de chaves', async () => {
       const chaves = Array.from({ length: 100 }, (_, i) => `chave${i}`);
       mockRedisClient.del.mockResolvedValue(100);
-
       const resultado = await cacheDel(...chaves);
-
       expect(mockRedisClient.del).toHaveBeenCalledWith(chaves);
       expect(resultado).toBe(100);
     });
 
     it('deve retornar 0 quando não houver chaves para deletar', async () => {
       const resultado = await cacheDel();
-
       expect(mockRedisClient.del).not.toHaveBeenCalled();
       expect(resultado).toBe(0);
     });
 
     it('deve retornar 0 quando array de chaves estiver vazio', async () => {
       const resultado = await cacheDel(...[]);
-
       expect(mockRedisClient.del).not.toHaveBeenCalled();
       expect(resultado).toBe(0);
     });
 
     it('deve retornar 0 quando chave não existir', async () => {
       mockRedisClient.del.mockResolvedValue(0);
-
       const resultado = await cacheDel('chave-inexistente');
-
       expect(resultado).toBe(0);
     });
 
     it('deve retornar 0 quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheDel('chave-teste');
-
       expect(resultado).toBe(0);
       expect(mockRedisClient.del).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith(
-        'Redis não conectado, operação DEL ignorada'
-      );
+      expect(logger.warn).toHaveBeenCalledWith('Redis não conectado, operação DEL ignorada');
     });
 
     it('deve retornar 0 em caso de erro', async () => {
       const erroDel = new Error('Del failed');
       mockRedisClient.del.mockRejectedValueOnce(erroDel);
-
       const resultado = await cacheDel('chave-teste');
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroDel, keys: ['chave-teste'] },
@@ -776,9 +683,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve logar erro com múltiplas chaves', async () => {
       const erroDel = new Error('Del failed');
       mockRedisClient.del.mockRejectedValueOnce(erroDel);
-
       await cacheDel('chave1', 'chave2');
-
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroDel, keys: ['chave1', 'chave2'] },
         'Erro ao executar DEL no Redis'
@@ -804,33 +709,23 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve deletar chaves que correspondem ao padrão', async () => {
       mockRedisClient.keys.mockResolvedValue(['usuario:1', 'usuario:2', 'usuario:3']);
       mockRedisClient.del.mockResolvedValue(3);
-
       const resultado = await cacheDelPattern('usuario:*');
-
       expect(mockRedisClient.keys).toHaveBeenCalledWith('usuario:*');
-      expect(mockRedisClient.del).toHaveBeenCalledWith([
-        'usuario:1',
-        'usuario:2',
-        'usuario:3',
-      ]);
+      expect(mockRedisClient.del).toHaveBeenCalledWith(['usuario:1', 'usuario:2', 'usuario:3']);
       expect(resultado).toBe(3);
     });
 
     it('deve deletar com padrão complexo', async () => {
       mockRedisClient.keys.mockResolvedValue(['cache:user:123', 'cache:user:456']);
       mockRedisClient.del.mockResolvedValue(2);
-
       const resultado = await cacheDelPattern('cache:user:*');
-
       expect(mockRedisClient.keys).toHaveBeenCalledWith('cache:user:*');
       expect(resultado).toBe(2);
     });
 
     it('deve retornar 0 quando nenhuma chave corresponder', async () => {
       mockRedisClient.keys.mockResolvedValue([]);
-
       const resultado = await cacheDelPattern('inexistente:*');
-
       expect(mockRedisClient.keys).toHaveBeenCalledWith('inexistente:*');
       expect(mockRedisClient.del).not.toHaveBeenCalled();
       expect(resultado).toBe(0);
@@ -839,9 +734,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheDelPattern('teste:*');
-
       expect(resultado).toBe(0);
       expect(logger.warn).toHaveBeenCalledWith(
         'Redis não conectado, operação DEL PATTERN ignorada'
@@ -851,9 +744,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 em caso de erro ao buscar chaves', async () => {
       const erroKeys = new Error('Keys failed');
       mockRedisClient.keys.mockRejectedValueOnce(erroKeys);
-
       const resultado = await cacheDelPattern('teste:*');
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroKeys, pattern: 'teste:*' },
@@ -865,9 +756,7 @@ describe('Redis Client - Cobertura Completa', () => {
       mockRedisClient.keys.mockResolvedValue(['chave1', 'chave2']);
       const erroDel = new Error('Del failed');
       mockRedisClient.del.mockRejectedValueOnce(erroDel);
-
       const resultado = await cacheDelPattern('test:*');
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroDel, pattern: 'test:*' },
@@ -879,9 +768,7 @@ describe('Redis Client - Cobertura Completa', () => {
       const chaves = Array.from({ length: 1000 }, (_, i) => `session:${i}`);
       mockRedisClient.keys.mockResolvedValue(chaves);
       mockRedisClient.del.mockResolvedValue(1000);
-
       const resultado = await cacheDelPattern('session:*');
-
       expect(resultado).toBe(1000);
     });
   });
@@ -903,18 +790,14 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve retornar true quando chave existir', async () => {
       mockRedisClient.exists.mockResolvedValue(1);
-
       const resultado = await cacheExists('chave-teste');
-
       expect(mockRedisClient.exists).toHaveBeenCalledWith('chave-teste');
       expect(resultado).toBe(true);
     });
 
     it('deve retornar false quando chave não existir', async () => {
       mockRedisClient.exists.mockResolvedValue(0);
-
       const resultado = await cacheExists('chave-inexistente');
-
       expect(mockRedisClient.exists).toHaveBeenCalledWith('chave-inexistente');
       expect(resultado).toBe(false);
     });
@@ -922,9 +805,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheExists('chave-teste');
-
       expect(resultado).toBe(false);
       expect(mockRedisClient.exists).not.toHaveBeenCalled();
     });
@@ -932,9 +813,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false em caso de erro', async () => {
       const erroExists = new Error('Exists failed');
       mockRedisClient.exists.mockRejectedValueOnce(erroExists);
-
       const resultado = await cacheExists('chave-teste');
-
       expect(resultado).toBe(false);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroExists, key: 'chave-teste' },
@@ -971,35 +850,27 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve definir TTL para chave existente', async () => {
       mockRedisClient.expire.mockResolvedValue(1);
-
       const resultado = await cacheExpire('chave-teste', 7200);
-
       expect(mockRedisClient.expire).toHaveBeenCalledWith('chave-teste', 7200);
       expect(resultado).toBe(true);
     });
 
     it('deve retornar false quando chave não existir', async () => {
       mockRedisClient.expire.mockResolvedValue(0);
-
       const resultado = await cacheExpire('chave-inexistente', 3600);
-
       expect(resultado).toBe(false);
     });
 
     it('deve definir TTL curto (1 segundo)', async () => {
       mockRedisClient.expire.mockResolvedValue(1);
-
       const resultado = await cacheExpire('chave-temporaria', 1);
-
       expect(mockRedisClient.expire).toHaveBeenCalledWith('chave-temporaria', 1);
       expect(resultado).toBe(true);
     });
 
     it('deve definir TTL longo (1 dia)', async () => {
       mockRedisClient.expire.mockResolvedValue(1);
-
       const resultado = await cacheExpire('chave-longa', 86400);
-
       expect(mockRedisClient.expire).toHaveBeenCalledWith('chave-longa', 86400);
       expect(resultado).toBe(true);
     });
@@ -1007,9 +878,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheExpire('chave-teste', 3600);
-
       expect(resultado).toBe(false);
       expect(mockRedisClient.expire).not.toHaveBeenCalled();
     });
@@ -1017,9 +886,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false em caso de erro', async () => {
       const erroExpire = new Error('Expire failed');
       mockRedisClient.expire.mockRejectedValueOnce(erroExpire);
-
       const resultado = await cacheExpire('chave-teste', 3600);
-
       expect(resultado).toBe(false);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroExpire, key: 'chave-teste', ttl: 3600 },
@@ -1045,43 +912,33 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve retornar TTL restante da chave', async () => {
       mockRedisClient.ttl.mockResolvedValue(3600);
-
       const resultado = await cacheTTL('chave-teste');
-
       expect(mockRedisClient.ttl).toHaveBeenCalledWith('chave-teste');
       expect(resultado).toBe(3600);
     });
 
     it('deve retornar -1 quando chave não tiver TTL', async () => {
       mockRedisClient.ttl.mockResolvedValue(-1);
-
       const resultado = await cacheTTL('chave-sem-ttl');
-
       expect(resultado).toBe(-1);
     });
 
     it('deve retornar -2 quando chave não existir', async () => {
       mockRedisClient.ttl.mockResolvedValue(-2);
-
       const resultado = await cacheTTL('chave-inexistente');
-
       expect(resultado).toBe(-2);
     });
 
     it('deve retornar TTL específico (100 segundos)', async () => {
       mockRedisClient.ttl.mockResolvedValue(100);
-
       const resultado = await cacheTTL('chave');
-
       expect(resultado).toBe(100);
     });
 
     it('deve retornar -2 quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheTTL('chave-teste');
-
       expect(resultado).toBe(-2);
       expect(mockRedisClient.ttl).not.toHaveBeenCalled();
     });
@@ -1089,9 +946,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar -2 em caso de erro', async () => {
       const erroTTL = new Error('TTL failed');
       mockRedisClient.ttl.mockRejectedValueOnce(erroTTL);
-
       const resultado = await cacheTTL('chave-teste');
-
       expect(resultado).toBe(-2);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroTTL, key: 'chave-teste' },
@@ -1117,36 +972,28 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve incrementar contador em 1 por padrão', async () => {
       mockRedisClient.incr.mockResolvedValue(1);
-
       const resultado = await cacheIncr('contador');
-
       expect(mockRedisClient.incr).toHaveBeenCalledWith('contador');
       expect(resultado).toBe(1);
     });
 
     it('deve incrementar contador em valor customizado', async () => {
       mockRedisClient.incrBy.mockResolvedValue(10);
-
       const resultado = await cacheIncr('contador', 10);
-
       expect(mockRedisClient.incrBy).toHaveBeenCalledWith('contador', 10);
       expect(resultado).toBe(10);
     });
 
     it('deve incrementar em valores grandes', async () => {
       mockRedisClient.incrBy.mockResolvedValue(1000);
-
       const resultado = await cacheIncr('contador', 1000);
-
       expect(mockRedisClient.incrBy).toHaveBeenCalledWith('contador', 1000);
       expect(resultado).toBe(1000);
     });
 
     it('deve usar incr quando increment for 1', async () => {
       mockRedisClient.incr.mockResolvedValue(5);
-
       const resultado = await cacheIncr('views', 1);
-
       expect(mockRedisClient.incr).toHaveBeenCalledWith('views');
       expect(mockRedisClient.incrBy).not.toHaveBeenCalled();
       expect(resultado).toBe(5);
@@ -1154,9 +1001,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve usar incrBy quando increment for diferente de 1', async () => {
       mockRedisClient.incrBy.mockResolvedValue(25);
-
       const resultado = await cacheIncr('score', 5);
-
       expect(mockRedisClient.incrBy).toHaveBeenCalledWith('score', 5);
       expect(mockRedisClient.incr).not.toHaveBeenCalled();
       expect(resultado).toBe(25);
@@ -1165,9 +1010,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheIncr('contador');
-
       expect(resultado).toBe(0);
       expect(mockRedisClient.incr).not.toHaveBeenCalled();
     });
@@ -1175,9 +1018,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 em caso de erro', async () => {
       const erroIncr = new Error('Incr failed');
       mockRedisClient.incr.mockRejectedValueOnce(erroIncr);
-
       const resultado = await cacheIncr('contador');
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroIncr, key: 'contador', increment: 1 },
@@ -1188,9 +1029,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 em caso de erro no incrBy', async () => {
       const erroIncrBy = new Error('IncrBy failed');
       mockRedisClient.incrBy.mockRejectedValueOnce(erroIncrBy);
-
       const resultado = await cacheIncr('contador', 5);
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroIncrBy, key: 'contador', increment: 5 },
@@ -1216,36 +1055,28 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve decrementar contador em 1 por padrão', async () => {
       mockRedisClient.decr.mockResolvedValue(9);
-
       const resultado = await cacheDecr('contador');
-
       expect(mockRedisClient.decr).toHaveBeenCalledWith('contador');
       expect(resultado).toBe(9);
     });
 
     it('deve decrementar contador em valor customizado', async () => {
       mockRedisClient.decrBy.mockResolvedValue(5);
-
       const resultado = await cacheDecr('contador', 5);
-
       expect(mockRedisClient.decrBy).toHaveBeenCalledWith('contador', 5);
       expect(resultado).toBe(5);
     });
 
     it('deve decrementar em valores grandes', async () => {
       mockRedisClient.decrBy.mockResolvedValue(0);
-
       const resultado = await cacheDecr('estoque', 100);
-
       expect(mockRedisClient.decrBy).toHaveBeenCalledWith('estoque', 100);
       expect(resultado).toBe(0);
     });
 
     it('deve usar decr quando decrement for 1', async () => {
       mockRedisClient.decr.mockResolvedValue(99);
-
       const resultado = await cacheDecr('tentativas', 1);
-
       expect(mockRedisClient.decr).toHaveBeenCalledWith('tentativas');
       expect(mockRedisClient.decrBy).not.toHaveBeenCalled();
       expect(resultado).toBe(99);
@@ -1253,9 +1084,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve usar decrBy quando decrement for diferente de 1', async () => {
       mockRedisClient.decrBy.mockResolvedValue(50);
-
       const resultado = await cacheDecr('creditos', 10);
-
       expect(mockRedisClient.decrBy).toHaveBeenCalledWith('creditos', 10);
       expect(mockRedisClient.decr).not.toHaveBeenCalled();
       expect(resultado).toBe(50);
@@ -1264,9 +1093,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheDecr('contador');
-
       expect(resultado).toBe(0);
       expect(mockRedisClient.decr).not.toHaveBeenCalled();
     });
@@ -1274,9 +1101,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 em caso de erro', async () => {
       const erroDecr = new Error('Decr failed');
       mockRedisClient.decr.mockRejectedValueOnce(erroDecr);
-
       const resultado = await cacheDecr('contador');
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroDecr, key: 'contador', decrement: 1 },
@@ -1287,9 +1112,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar 0 em caso de erro no decrBy', async () => {
       const erroDecrBy = new Error('DecrBy failed');
       mockRedisClient.decrBy.mockRejectedValueOnce(erroDecrBy);
-
       const resultado = await cacheDecr('contador', 3);
-
       expect(resultado).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroDecrBy, key: 'contador', decrement: 3 },
@@ -1315,9 +1138,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve limpar todo o cache com sucesso', async () => {
       mockRedisClient.flushDb.mockResolvedValue('OK');
-
       const resultado = await cacheFlush();
-
       expect(mockRedisClient.flushDb).toHaveBeenCalled();
       expect(resultado).toBe(true);
       expect(logger.info).toHaveBeenCalledWith('Cache Redis limpo com sucesso');
@@ -1326,9 +1147,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false quando Redis não estiver conectado', async () => {
       mockRedisClient.isOpen = false;
       mockRedisClient.isReady = false;
-
       const resultado = await cacheFlush();
-
       expect(resultado).toBe(false);
       expect(mockRedisClient.flushDb).not.toHaveBeenCalled();
     });
@@ -1336,9 +1155,7 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve retornar false em caso de erro', async () => {
       const erroFlush = new Error('Flush failed');
       mockRedisClient.flushDb.mockRejectedValueOnce(erroFlush);
-
       const resultado = await cacheFlush();
-
       expect(resultado).toBe(false);
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroFlush },
@@ -1348,9 +1165,7 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve logar sucesso apenas uma vez', async () => {
       mockRedisClient.flushDb.mockResolvedValue('OK');
-
       await cacheFlush();
-
       const infoCalls = (logger.info as any).mock.calls.filter(
         (call: any[]) => call[0] === 'Cache Redis limpo com sucesso'
       );
@@ -1383,85 +1198,89 @@ describe('Redis Client - Cobertura Completa', () => {
       it('deve retornar true quando conectado e pronto', () => {
         mockRedisClient.isOpen = true;
         mockRedisClient.isReady = true;
-
         expect(isRedisConnected()).toBe(true);
       });
 
       it('deve retornar false quando não conectado (isOpen false)', () => {
         mockRedisClient.isOpen = false;
         mockRedisClient.isReady = true;
-
         expect(isRedisConnected()).toBe(false);
       });
 
       it('deve retornar false quando não pronto (isReady false)', () => {
         mockRedisClient.isOpen = true;
         mockRedisClient.isReady = false;
-
         expect(isRedisConnected()).toBe(false);
       });
 
       it('deve retornar false quando ambos forem false', () => {
         mockRedisClient.isOpen = false;
         mockRedisClient.isReady = false;
-
         expect(isRedisConnected()).toBe(false);
       });
     });
 
     describe('14.2. waitForRedis', () => {
-      it('deve retornar true quando Redis estiver pronto', async () => {
+      afterEach(() => {
+        vi.useRealTimers(); // garante restauração mesmo em caso de falha
+      });
+
+      it('deve retornar true quando Redis estiver pronto imediatamente', async () => {
         mockRedisClient.isOpen = true;
         mockRedisClient.isReady = true;
-
         const resultado = await waitForRedis(1000);
+        expect(resultado).toBe(true);
+      });
 
+      it('deve usar timeout padrão de 10000ms quando Redis estiver pronto', async () => {
+        mockRedisClient.isOpen = true;
+        mockRedisClient.isReady = true;
+        const resultado = await waitForRedis();
         expect(resultado).toBe(true);
       });
 
       it('deve retornar false quando timeout for excedido', async () => {
+        vi.useFakeTimers();
         mockRedisClient.isOpen = false;
         mockRedisClient.isReady = false;
 
-        const resultado = await waitForRedis(100);
+        const promise = waitForRedis(100);
+        await vi.advanceTimersByTimeAsync(200);
+        const resultado = await promise;
 
         expect(resultado).toBe(false);
-      }, 10000);
+      });
 
       it('deve aguardar até Redis ficar pronto', async () => {
+        vi.useFakeTimers();
         mockRedisClient.isOpen = false;
         mockRedisClient.isReady = false;
 
+        const promise = waitForRedis(500);
+
+        // Simula Redis ficando pronto após 50ms
         setTimeout(() => {
           mockRedisClient.isOpen = true;
           mockRedisClient.isReady = true;
         }, 50);
 
-        const resultado = await waitForRedis(500);
+        await vi.advanceTimersByTimeAsync(100);
+        const resultado = await promise;
 
         expect(resultado).toBe(true);
       });
 
-      it('deve usar timeout padrão de 10000ms', async () => {
-        mockRedisClient.isOpen = true;
-        mockRedisClient.isReady = true;
-
-        const resultado = await waitForRedis();
-
-        expect(resultado).toBe(true);
-      });
-
-      it('deve aguardar múltiplas verificações antes de timeout', async () => {
+      it('deve retornar false após múltiplas verificações sem sucesso', async () => {
+        vi.useFakeTimers();
         mockRedisClient.isOpen = false;
         mockRedisClient.isReady = false;
 
-        const startTime = Date.now();
-        const resultado = await waitForRedis(300);
-        const elapsed = Date.now() - startTime;
+        const promise = waitForRedis(300);
+        await vi.advanceTimersByTimeAsync(400);
+        const resultado = await promise;
 
         expect(resultado).toBe(false);
-        expect(elapsed).toBeGreaterThanOrEqual(250);
-      }, 10000);
+      });
     });
 
     describe('14.3. cacheInfo', () => {
@@ -1562,7 +1381,6 @@ describe('Redis Client - Cobertura Completa', () => {
         for (const erro of erros) {
           mockRedisClient.ping.mockRejectedValueOnce(erro);
           const health = await cacheHealthCheck();
-
           expect(health.status).toBe('unhealthy');
           expect(health.error).toBe(
             erro instanceof Error ? erro.message : 'Custom error'
@@ -1589,27 +1407,21 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve desconectar gracefully quando conectado', async () => {
       mockRedisClient.quit.mockResolvedValue('OK');
-
       await disconnectRedis();
-
       expect(mockRedisClient.quit).toHaveBeenCalled();
       expect(logger.info).toHaveBeenCalledWith('Redis desconectado com sucesso');
     });
 
     it('não deve chamar quit quando já desconectado', async () => {
       mockRedisClient.isOpen = false;
-
       await disconnectRedis();
-
       expect(mockRedisClient.quit).not.toHaveBeenCalled();
     });
 
     it('deve capturar erro ao desconectar', async () => {
       const erroQuit = new Error('Quit failed');
       mockRedisClient.quit.mockRejectedValueOnce(erroQuit);
-
       await disconnectRedis();
-
       expect(logger.error).toHaveBeenCalledWith(
         { err: erroQuit },
         'Erro ao desconectar Redis'
@@ -1618,12 +1430,8 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve tratar múltiplas tentativas de desconexão', async () => {
       mockRedisClient.quit.mockResolvedValue('OK');
-
       await disconnectRedis();
-      
-      // Segunda chamada: isOpen ainda é true, então quit é chamado novamente
       await disconnectRedis();
-
       // Sem proteção de estado, quit será chamado 2 vezes
       expect(mockRedisClient.quit).toHaveBeenCalledTimes(2);
     });
@@ -1638,9 +1446,7 @@ describe('Redis Client - Cobertura Completa', () => {
       for (const erro of erros) {
         mockRedisClient.isOpen = true;
         mockRedisClient.quit.mockRejectedValueOnce(erro);
-
         await disconnectRedis();
-
         expect(logger.error).toHaveBeenCalledWith(
           { err: erro },
           'Erro ao desconectar Redis'
@@ -1680,13 +1486,11 @@ describe('Redis Client - Cobertura Completa', () => {
       mockRedisClient.get.mockResolvedValue('valor');
       mockRedisClient.exists.mockResolvedValue(1);
 
-      const promises = [
+      await Promise.all([
         cacheSet('key1', 'value1'),
         cacheGet('key2'),
         cacheExists('key3'),
-      ];
-
-      await Promise.all(promises);
+      ]);
 
       expect(mockRedisClient.set).toHaveBeenCalledTimes(1);
       expect(mockRedisClient.get).toHaveBeenCalledTimes(1);
@@ -1696,49 +1500,24 @@ describe('Redis Client - Cobertura Completa', () => {
     it('deve lidar com valores especiais no cache', async () => {
       const { cacheSet } = await import('@infrastructure/database/redis/client');
 
-      // Testa null - será serializado como objeto
       await cacheSet('special', null as any);
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'special',
-        'null', // JSON.stringify(null) = 'null'
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('special', 'null', expect.any(Object));
 
-      // Testa undefined - typeof undefined !== 'object', então passa direto
       mockRedisClient.set.mockClear();
       await cacheSet('special', undefined as any);
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'special',
-        undefined, // undefined passa como está (não é objeto)
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('special', undefined, expect.any(Object));
 
-      // Testa número zero - typeof 0 === 'number', não é objeto
       mockRedisClient.set.mockClear();
       await cacheSet('special', 0 as any);
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'special',
-        0, // number passa direto
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('special', 0, expect.any(Object));
 
-      // Testa boolean false - typeof false === 'boolean', não é objeto
       mockRedisClient.set.mockClear();
       await cacheSet('special', false as any);
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'special',
-        false, // boolean passa direto
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('special', false, expect.any(Object));
 
-      // Testa string vazia
       mockRedisClient.set.mockClear();
       await cacheSet('special', '');
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'special',
-        '', // string passa direto
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('special', '', expect.any(Object));
     });
 
     it('deve lidar com objetos circulares sem lançar erro', async () => {
@@ -1747,27 +1526,17 @@ describe('Redis Client - Cobertura Completa', () => {
       const circular: any = { a: 1 };
       circular.self = circular;
 
-      // JSON.stringify lança erro, mas o código captura e loga
-      // Então a promise resolve normalmente (não rejeita)
       await expect(cacheSet('circular', circular)).resolves.toBeUndefined();
-
-      // Verifica que o erro foi logado
       expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          err: expect.any(TypeError),
-          key: 'circular'
-        }),
+        expect.objectContaining({ err: expect.any(TypeError), key: 'circular' }),
         'Erro ao executar SET no Redis'
       );
     });
 
     it('deve lidar com TTL negativo', async () => {
       const { cacheExpire } = await import('@infrastructure/database/redis/client');
-
       mockRedisClient.expire.mockResolvedValue(1);
-
       await cacheExpire('key', -1);
-
       expect(mockRedisClient.expire).toHaveBeenCalledWith('key', -1);
     });
 
@@ -1787,14 +1556,9 @@ describe('Redis Client - Cobertura Completa', () => {
     });
 
     it('deve lidar com padrões vazios no delPattern', async () => {
-      const { cacheDelPattern } = await import(
-        '@infrastructure/database/redis/client'
-      );
-
+      const { cacheDelPattern } = await import('@infrastructure/database/redis/client');
       mockRedisClient.keys.mockResolvedValue([]);
-
       const resultado = await cacheDelPattern('');
-
       expect(mockRedisClient.keys).toHaveBeenCalledWith('');
       expect(resultado).toBe(0);
     });
@@ -1834,56 +1598,34 @@ describe('Redis Client - Cobertura Completa', () => {
 
     it('deve lidar com valores muito grandes', async () => {
       const { cacheSet } = await import('@infrastructure/database/redis/client');
-
-      const valorGrande = 'x'.repeat(1000000); // 1MB
+      const valorGrande = 'x'.repeat(1000000);
       await cacheSet('big-value', valorGrande);
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'big-value',
-        valorGrande,
-        expect.any(Object)
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('big-value', valorGrande, expect.any(Object));
     });
 
     it('deve lidar com muitas chaves no delPattern', async () => {
-      const { cacheDelPattern } = await import(
-        '@infrastructure/database/redis/client'
-      );
-
+      const { cacheDelPattern } = await import('@infrastructure/database/redis/client');
       const chavesGrandes = Array.from({ length: 10000 }, (_, i) => `key:${i}`);
       mockRedisClient.keys.mockResolvedValue(chavesGrandes);
       mockRedisClient.del.mockResolvedValue(10000);
-
       const resultado = await cacheDelPattern('key:*');
-
       expect(resultado).toBe(10000);
       expect(mockRedisClient.del).toHaveBeenCalledWith(chavesGrandes);
     });
 
     it('deve lidar com TTL muito longo', async () => {
       const { cacheSet } = await import('@infrastructure/database/redis/client');
-
-      const umAno = 31536000; // segundos em um ano
+      const umAno = 31536000;
       await cacheSet('long-ttl', 'valor', umAno);
-
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
-        'long-ttl',
-        'valor',
-        { EX: umAno }
-      );
+      expect(mockRedisClient.set).toHaveBeenCalledWith('long-ttl', 'valor', { EX: umAno });
     });
 
     it('deve lidar com incrementos/decrementos grandes', async () => {
-      const { cacheIncr, cacheDecr } = await import(
-        '@infrastructure/database/redis/client'
-      );
-
+      const { cacheIncr, cacheDecr } = await import('@infrastructure/database/redis/client');
       mockRedisClient.incrBy.mockResolvedValue(1000000);
       mockRedisClient.decrBy.mockResolvedValue(0);
-
       await cacheIncr('counter', 1000000);
       await cacheDecr('counter', 1000000);
-
       expect(mockRedisClient.incrBy).toHaveBeenCalledWith('counter', 1000000);
       expect(mockRedisClient.decrBy).toHaveBeenCalledWith('counter', 1000000);
     });
@@ -1894,9 +1636,7 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-
       await import('@infrastructure/database/redis/client');
-
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.socket.connectTimeout).toBe(5000);
     });
@@ -1905,9 +1645,7 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-
       await import('@infrastructure/database/redis/client');
-
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.commandsQueueMaxLength).toBe(1000);
     });
@@ -1916,9 +1654,7 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-
       await import('@infrastructure/database/redis/client');
-
       const callArgs = (createClient as any).mock.calls[0][0];
       expect(callArgs.disableOfflineQueue).toBe(false);
     });
@@ -1932,7 +1668,6 @@ describe('Redis Client - Cobertura Completa', () => {
       vi.resetModules();
       (createClient as any).mockClear();
       (createClient as any).mockReturnValue(mockRedisClient);
-
       await import('@infrastructure/database/redis/client');
 
       const callArgs = (createClient as any).mock.calls[0][0];

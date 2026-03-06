@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Chamado Reaberto - Help Me</title>
+    <style>
+      .badge {
+        display: inline-block;
+        background: #7c3aed;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .info-table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 24px;
+      }
+      .info-table td {
+        padding: 4px 0;
+        font-size: 15px;
+      }
+      .footer {
+        color: #8f97a2;
+        font-size: 12px;
+        margin-top: 32px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body style="background: #f6f8fa; margin: 0; padding: 0;">
+    <table width="100%" bgcolor="#f6f8fa" style="padding: 0; margin: 0;">
+      <tr>
+        <td align="center">
+          <table style="max-width: 490px; background: #fff; border-radius: 12px; margin: 36px auto; padding: 32px; box-shadow: 0 2px 16px 0 #e3e6ee; font-family: Arial, sans-serif;">
+            <tr>
+              <td style="text-align: center;">
+                <img src="https://i.imgur.com/kFtvJ6C.png" alt="Help Me - Logo" style="max-height: 48px; margin-bottom:18px;">
+                <h2 style="color: #7c3aed; margin-top:0; margin-bottom:20px;">Chamado Reaberto!</h2>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <p>Olá <strong>{{nomeDestinatario}}</strong>,</p>
+                <p>
+                  O chamado <span class="badge">#{{chamadoOS}}</span> foi <strong>reaberto</strong> pelo solicitante <strong>{{usuarioNome}}</strong> e requer sua atenção.
+                </p>
+                <table class="info-table">
+                  <tr>
+                    <td><b>Chamado:</b></td><td>{{chamadoOS}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Prioridade:</b></td><td>{{prioridade}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Solicitante:</b></td><td>{{usuarioNome}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Descrição Original:</b></td><td>{{descricao}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Status:</b></td><td><span style="color:#7c3aed; font-weight:bold;">Reaberto</span></td>
+                  </tr>
+                </table>
+                <p>
+                  <strong>Acesse o portal para verificar o motivo da reabertura e retomar o atendimento.</strong>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                <hr style="margin-bottom:18px;opacity:0.3;">
+                Help Me &copy; 2026 &mdash; Central de Suporte.<br>
+                <span style="font-size:11px;">Por favor, não responda este e-mail caso não tenha solicitado suporte.</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

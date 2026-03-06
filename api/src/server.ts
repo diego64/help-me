@@ -3,12 +3,15 @@ import { logger } from './shared/config/logger';
 import { prisma } from './infrastructure/database/prisma/client';
 import { redisClient } from './infrastructure/database/redis/client'
 import { conectarKafkaProducer, desconectarKafkaProducer } from './infrastructure/messaging/kafka/client';
-import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamadoConsumer';
+import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamado.consumer';
+import { startNotificacaoConsumer, stopNotificacaoConsumer } from './infrastructure/messaging/kafka/consumers/notificacao.consumer';
+import { startSLAJob } from './infrastructure/jobs/sla.job';
 import app from './app';
 
 const PORT = process.env.PORT || 3000;
 
 let servidor: any;
+let slaJob: NodeJS.Timeout | null = null;
 
 (async () => {
   try {
@@ -28,7 +31,12 @@ let servidor: any;
     await startChamadoConsumer();
     logger.info('Kafka Consumer inicializado com sucesso!');
 
-	  
+    await startNotificacaoConsumer();
+    logger.info('Kafka Consumer de notificações inicializado com sucesso!');
+
+    slaJob = startSLAJob();
+    logger.info('SLA Job iniciado com sucesso!');
+
     servidor = app.listen(PORT, () => {
       logger.info(
         {
@@ -48,14 +56,22 @@ let servidor: any;
 
 
 const progressiveShutdown = async (sinal: string) => {
-  logger.info({ sinal }, ' Sinal de desligamento recebido');
+  logger.info({ sinal }, 'Sinal de desligamento recebido');
 
   if (servidor) {
     servidor.close(async () => {
       logger.info('Servidor HTTP encerrado');
 
       try {
- 
+        if (slaJob) {
+          clearInterval(slaJob);
+          logger.info('SLA Job parado');
+        }
+
+        logger.info('Parando Kafka Consumer de notificações...');
+        await stopNotificacaoConsumer();
+        logger.info('Kafka Consumer de notificações parado');
+
         logger.info('Parando Kafka Consumer...');
         if (typeof stopChamadoConsumer === 'function') {
           await stopChamadoConsumer();

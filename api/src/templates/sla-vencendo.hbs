@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SLA em Risco - Help Me</title>
+    <style>
+      .badge {
+        display: inline-block;
+        background: #dc2626;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .alerta-box {
+        background: #fef2f2;
+        border-left: 4px solid #dc2626;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-size: 15px;
+        color: #991b1b;
+      }
+      .info-table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 24px;
+      }
+      .info-table td {
+        padding: 4px 0;
+        font-size: 15px;
+      }
+      .footer {
+        color: #8f97a2;
+        font-size: 12px;
+        margin-top: 32px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body style="background: #f6f8fa; margin: 0; padding: 0;">
+    <table width="100%" bgcolor="#f6f8fa" style="padding: 0; margin: 0;">
+      <tr>
+        <td align="center">
+          <table style="max-width: 490px; background: #fff; border-radius: 12px; margin: 36px auto; padding: 32px; box-shadow: 0 2px 16px 0 #e3e6ee; font-family: Arial, sans-serif;">
+            <tr>
+              <td style="text-align: center;">
+                <img src="https://i.imgur.com/kFtvJ6C.png" alt="Help Me - Logo" style="max-height: 48px; margin-bottom:18px;">
+                <h2 style="color: #dc2626; margin-top:0; margin-bottom:20px;">⚠️ SLA em Risco!</h2>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <p>Olá <strong>{{nomeDestinatario}}</strong>,</p>
+
+                <div class="alerta-box">
+                  Atenção! O chamado <strong>#{{chamadoOS}}</strong> está há <strong>{{horasAberto}} horas</strong> sem resolução e o SLA está em risco.
+                </div>
+
+                <table class="info-table">
+                  <tr>
+                    <td><b>Chamado:</b></td><td>{{chamadoOS}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Prioridade:</b></td><td>{{prioridade}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Tempo em Aberto:</b></td>
+                    <td><span style="color:#dc2626; font-weight:bold;">{{horasAberto}}h</span></td>
+                  </tr>
+                </table>
+                <p>
+                  <strong>Acesse o portal imediatamente para dar andamento a este chamado e evitar o descumprimento do SLA.</strong>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                <hr style="margin-bottom:18px;opacity:0.3;">
+                Help Me &copy; 2026 &mdash; Central de Suporte.<br>
+                <span style="font-size:11px;">Por favor, não responda este e-mail caso não tenha solicitado suporte.</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

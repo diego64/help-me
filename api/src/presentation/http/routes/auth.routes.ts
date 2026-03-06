@@ -19,6 +19,7 @@ const USUARIO_SELECT_COMPLETO = {
   email: true,
   password: true,
   regra: true,
+  nivel: true,
   setor: true,
   telefone: true,
   ramal: true,
