@@ -613,7 +613,7 @@ jobs:
 
           | Campo | Valor |
           |-------|-------|
-          | **Tipo** | `${BRANCH_TYPE}\` |
+          | **Tipo** | ${BRANCH_TYPE} |
           | **Descrição** | ${BRANCH_DESC} |
           | **Branch Origem** | \`${{ github.ref_name }}\` |
 
@@ -782,7 +782,7 @@ jobs:
           fetch-depth: 0
       
       - name: Gerar Release Notes
-        id: NOTES
+        id: notes
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           BRANCH_TYPE="${{ inputs.branch-type }}"
@@ -803,7 +803,7 @@ jobs:
             COMMITS=$(git log --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges -n 20)
           fi
 
-          cat > NOTES.md << 'NOTES_END'
+          cat > notes.md << 'NOTES_END'
           ## Help-Me API vVERSION_PLACEHOLDER
 
           Today, we are excited to share the **vVERSION_PLACEHOLDER** stable release
@@ -869,11 +869,11 @@ jobs:
 
           NOTES_END
 
-          echo "" >> NOTES.md
-          echo "$COMMITS" >> NOTES.md
-          echo "" >> NOTES.md
+          echo "" >> notes.md
+          echo "$COMMITS" >> notes.md
+          echo "" >> notes.md
 
-          cat >> NOTES.md << 'NOTES_END'
+          cat >> notes.md << 'NOTES_END'
 
           ---
 
@@ -948,12 +948,12 @@ jobs:
           NOTES_END
 
           if [ -n "$PREVIOUS_TAG" ]; then
-            echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> NOTES.md
+            echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> notes.md
           else
-            echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> NOTES.md
+            echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> notes.md
           fi
 
-          cat >> NOTES.md << 'NOTES_END'
+          cat >> notes.md << 'NOTES_END'
 
           ---
 
@@ -968,10 +968,10 @@ jobs:
           </div>
           NOTES_END
 
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" NOTES.md
-          sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" NOTES.md
-          sed -i "s/BRANCH_TYPE_PLACEHOLDER/$BRANCH_TYPE/g" NOTES.md
-          sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" NOTES.md
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" notes.md
+          sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" notes.md
+          sed -i "s/BRANCH_TYPE_PLACEHOLDER/$BRANCH_TYPE/g" notes.md
+          sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" notes.md
 
           echo "Notes geradas!"
       
@@ -980,10 +980,10 @@ jobs:
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: v${{ needs.build.outputs.version }}
-          body_path: NOTES.md
+          body_path: notes.md
           draft: false
           prerelease: false
-          generate_NOTES: false
+          generate_notes: false
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
