@@ -594,11 +594,6 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << END_SUMMARY
           # Versão ${{ needs.build.outputs.version }}
 
-          ![Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
-          ![Version](https://img.shields.io/badge/version-${{ needs.build.outputs.version }}-blue?style=flat-square)
-          ![Docker](https://img.shields.io/badge/docker-published-2496ED?style=flat-square&logo=docker)
-          ![Branch Type](https://img.shields.io/badge/branch--type-${BADGE_LABEL}-${BADGE_COLOR}?style=flat-square)
-
           ---
 
           ## Tipo de Branch
