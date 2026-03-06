@@ -404,6 +404,13 @@ jobs:
           SMTP_PASS_TESTE=3263bb9ce3c328
           SMTP_FROM_TESTE=test@helpme.com
 
+          # Aliases lidos diretamente pelo código
+          SMTP_HOST=sandbox.smtp.mailtrap.io
+          SMTP_PORT=2525
+          SMTP_USER=e0f224ffc3cf93
+          SMTP_PASS=3263bb9ce3c328
+          SMTP_FROM=test@helpme.com
+
           # ==================== URL BASE ====================
           API_BASE_URL_TESTE=http://localhost:3333
           API_HOST_TESTE=0.0.0.0
@@ -775,10 +782,19 @@ jobs:
           fetch-depth: 0
       
       - name: Gerar Release Notes
-        id: release_notes
+        id: NOTES
         run: |
           VERSION="${{ needs.build.outputs.version }}"
+          BRANCH_TYPE="${{ inputs.branch-type }}"
           
+          case "$BRANCH_TYPE" in
+            develop)  BRANCH_ICON="🔵" ;;
+            feature)  BRANCH_ICON="🟣" ;;
+            release)  BRANCH_ICON="🟢" ;;
+            hotfix)   BRANCH_ICON="🔴" ;;
+            *)        BRANCH_ICON="⚪" ;;
+          esac
+
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           
           if [ -n "$PREVIOUS_TAG" ]; then
@@ -786,10 +802,8 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges -n 20)
           fi
-          
-          esac
 
-          cat > release_notes.md << 'RELEASE_END'
+          cat > NOTES.md << 'NOTES_END'
           ## Help-Me API vVERSION_PLACEHOLDER
 
           Today, we are excited to share the **vVERSION_PLACEHOLDER** stable release
@@ -853,13 +867,13 @@ jobs:
 
           ## What's New
 
-          RELEASE_END
+          NOTES_END
 
-          echo "" >> release_notes.md
-          echo "$COMMITS" >> release_notes.md
-          echo "" >> release_notes.md
+          echo "" >> NOTES.md
+          echo "$COMMITS" >> NOTES.md
+          echo "" >> NOTES.md
 
-          cat >> release_notes.md << 'RELEASE_END'
+          cat >> NOTES.md << 'NOTES_END'
 
           ---
 
@@ -931,15 +945,15 @@ jobs:
 
           ## Full Changelog
 
-          RELEASE_END
+          NOTES_END
 
           if [ -n "$PREVIOUS_TAG" ]; then
-            echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> release_notes.md
+            echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> NOTES.md
           else
-            echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> release_notes.md
+            echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> NOTES.md
           fi
 
-          cat >> release_notes.md << 'RELEASE_END'
+          cat >> NOTES.md << 'NOTES_END'
 
           ---
 
@@ -952,29 +966,29 @@ jobs:
           [![License](https://img.shields.io/github/license/${{ github.repository }}?style=flat-square)](https://github.com/${{ github.repository }}/blob/main/LICENSE)
 
           </div>
-          RELEASE_END
+          NOTES_END
 
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" release_notes.md
-          sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" release_notes.md
-          sed -i "s/BRANCH_TYPE_PLACEHOLDER/$BRANCH_TYPE/g" release_notes.md
-          sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" release_notes.md
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" NOTES.md
+          sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" NOTES.md
+          sed -i "s/BRANCH_TYPE_PLACEHOLDER/$BRANCH_TYPE/g" NOTES.md
+          sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" NOTES.md
 
-          echo "Release notes geradas!"
+          echo "Notes geradas!"
       
-      - name: Create GitHub Release
+      - name: Create GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: v${{ needs.build.outputs.version }}
-          body_path: release_notes.md
+          body_path: NOTES.md
           draft: false
           prerelease: false
-          generate_release_notes: false
+          generate_NOTES: false
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Upload Assets to Release
+      - name: Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
