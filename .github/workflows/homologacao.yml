@@ -479,7 +479,7 @@ jobs:
             --timeout 30 \
             2>/dev/null || true
 
-  release:
+  versao:
     name: Push Docker Image
     runs-on: ubuntu-latest
     needs: [build, testes-unitarios, testes-e2e]
@@ -592,7 +592,7 @@ jobs:
           BADGE_LABEL="${{ steps.branch-meta.outputs.badge_label }}"
 
           cat >> $GITHUB_STEP_SUMMARY << END_SUMMARY
-          # Release v${{ needs.build.outputs.version }}
+          # Versão ${{ needs.build.outputs.version }}
 
           ![Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
           ![Version](https://img.shields.io/badge/version-${{ needs.build.outputs.version }}-blue?style=flat-square)
@@ -748,32 +748,9 @@ jobs:
 
           ---
 
-          <div align="center">
-
-          ** Pipeline Executada com Sucesso! **
-
-          [![View Workflow](https://img.shields.io/badge/View-Workflow-blue?style=for-the-badge&logo=github)](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          [![Docker Hub](https://img.shields.io/badge/Docker-Hub-2496ED?style=for-the-badge&logo=docker)](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-
-          </div>
           END_SUMMARY
-
-  github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build, release]
-    if: ${{ inputs.create-tag == true }}
-    environment: homologacao
-    permissions:
-      contents: write
-    
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       
-      - name: Gerar Release Notes
+      - name: Gerar Notes
         id: notes
         run: |
           VERSION="${{ needs.build.outputs.version }}"
