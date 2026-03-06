@@ -556,14 +556,6 @@ jobs:
           sarif_file: trivy-results.sarif
         continue-on-error: true
       
-      - name: Criar tag Git
-        if: ${{ inputs.create-tag }}
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag -a "v${{ needs.build.outputs.version }}" -m "Release v${{ needs.build.outputs.version }}"
-          git push origin "v${{ needs.build.outputs.version }}"
-      
       - name: Determinar badge e label do tipo de branch
         id: branch-meta
         run: |
