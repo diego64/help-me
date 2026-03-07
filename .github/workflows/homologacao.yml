@@ -549,7 +549,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload resultados do Trivy
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           category: trivy-docker-scan
@@ -668,11 +668,11 @@ jobs:
 
           | Gate | Status | Detalhes |
           |------|--------|----------|
-          | **Build** | ✅ Passed | TypeScript compilation successful |
-          | **Unit Tests** | ✅ Passed | All unit tests passed |
-          | **E2E Tests** | ✅ Passed | Integration tests validated |
-          | **Security Scan** | ✅ Passed | Trivy vulnerability scan completed |
-          | **Lint** | ✅ Passed | Hadolint Docker analysis |
+          | **Build** | ? Passed | TypeScript compilation successful |
+          | **Unit Tests** | ? Passed | All unit tests passed |
+          | **E2E Tests** | ? Passed | Integration tests validated |
+          | **Security Scan** | ? Passed | Trivy vulnerability scan completed |
+          | **Lint** | ? Passed | Hadolint Docker analysis |
 
           ---
 
@@ -744,8 +744,6 @@ jobs:
           ---
 
           END_SUMMARY
-
-          END_SUMMARY
       
       - name: Gerar Notes
         id: notes
@@ -754,11 +752,11 @@ jobs:
           BRANCH_TYPE="${{ inputs.branch-type }}"
           
           case "$BRANCH_TYPE" in
-            develop)  BRANCH_ICON="🔵" ;;
-            feature)  BRANCH_ICON="🟣" ;;
-            release)  BRANCH_ICON="🟢" ;;
-            hotfix)   BRANCH_ICON="🔴" ;;
-            *)        BRANCH_ICON="⚪" ;;
+            develop)  BRANCH_ICON="??" ;;
+            feature)  BRANCH_ICON="??" ;;
+            release)  BRANCH_ICON="??" ;;
+            hotfix)   BRANCH_ICON="??" ;;
+            *)        BRANCH_ICON="?" ;;
           esac
 
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
