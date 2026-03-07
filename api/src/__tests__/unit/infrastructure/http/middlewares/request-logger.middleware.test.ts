@@ -612,7 +612,7 @@ describe('Request Logger Middleware', () => {
 
       requests.forEach(({ req, res }) => {
         requestLoggerMiddleware(req, res, next);
-      });
+      }, 20000);
 
       expect(next).toHaveBeenCalledTimes(100);
       expect(logger.child).toHaveBeenCalledTimes(100);

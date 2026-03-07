@@ -1,274 +1,245 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { app } from '../../../app';
+import app from '../../../app';
 import { createTestUser } from '../setup/test.database';
-import { generateUniqueEmail, extractErrorMessage, loginUser } from '../setup/test.helpers'; 
+import {
+  generateUniqueEmail,
+  extractErrorMessage,
+  loginUser,
+} from '../setup/test.helpers';
 
-describe('E2E: Autenticação - Login', () => {
+const SEED_USUARIO = {
+  email: process.env.USER_EMAIL_TESTE ?? 'user@helpme.com',
+  password: process.env.USER_PASSWORD_TESTE ?? 'User123!',
+};
+
+async function loginSeedUsuario() {
+  return loginUser(SEED_USUARIO.email, SEED_USUARIO.password);
+}
+
+describe('E2E: Autenticação', () => {
   describe('POST /api/auth/login', () => {
-    it('deve fazer login com credenciais válidas', async () => {
-      const userEmail = generateUniqueEmail('login-test');
-      const userPassword = 'Senha123!';
-      
-      await createTestUser({
+    it('login com credenciais válidas retorna tokens e dados do usuário', async () => {
+      const email = generateUniqueEmail('login');
+      const password = 'Senha123!';
+
+      await createTestUser({ nome: 'Teste', sobrenome: 'Login', email, password, regra: 'USUARIO' });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      // expiresIn pode ser número (segundos) ou string (ex: "8h") dependendo da implementação
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      expect(res.body).toHaveProperty('expiresIn');
+      expect(typeof res.body.accessToken).toBe('string');
+      expect(typeof res.body.refreshToken).toBe('string');
+      expect(res.body.usuario).toMatchObject({
+        email,
         nome: 'Teste',
         sobrenome: 'Login',
-        email: userEmail,
-        password: userPassword,
-        regra: 'USUARIO',
       });
-      
-      // Act: Tenta fazer login
-      const response = await request(app)
-        .post('/api/auth/login')
-        .send({
-          email: userEmail,
-          password: userPassword,
-        });
-      
-      // Assert: Verifica resposta
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('accessToken');
-      expect(response.body).toHaveProperty('refreshToken');
-      expect(response.body).toHaveProperty('expiresIn');
-      expect(response.body).toHaveProperty('usuario');
-      
-      // Verifica dados do usuário
-      expect(response.body.usuario.email).toBe(userEmail);
-      expect(response.body.usuario.nome).toBe('Teste');
-      expect(response.body.usuario.sobrenome).toBe('Login');
-      
-      // Não deve retornar senha
-      expect(response.body.usuario).not.toHaveProperty('password');
-      expect(response.body.usuario).not.toHaveProperty('refreshToken');
+      expect(res.body.usuario).not.toHaveProperty('password');
+      expect(res.body.usuario).not.toHaveProperty('refreshToken');
     });
-    
-    it('deve rejeitar login com email inválido', async () => {
-      const response = await request(app)
+
+    it.each([
+      ['ADMIN'],
+      ['TECNICO'],
+      ['USUARIO'],
+    ] as const)('login bem-sucedido para regra %s', async (regra) => {
+      const email = generateUniqueEmail(`regra-${regra.toLowerCase()}`);
+      const password = 'Senha123!';
+
+      await createTestUser({ email, password, regra });
+
+      const res = await request(app)
         .post('/api/auth/login')
-        .send({
-          email: 'email-invalido',
-          password: 'Senha123!',
-        });
-      
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toContain('Email inválido');
+        .send({ email, password })
+        .expect(200);
+
+      expect(res.body.usuario.regra).toBe(regra);
     });
-    
-    it('deve rejeitar login sem email', async () => {
-      const response = await request(app)
+
+    it.each([
+      ['sem email', { password: 'Senha123!' }, 400, /obrigatório/i],
+      ['sem senha', { email: 'test@example.com' }, 400, /obrigatório/i],
+      ['email inválido', { email: 'email-invalido', password: 'Senha123!' }, 400, /email inválido/i],
+    ])('rejeita login %s', async (_, body, status, msgPattern) => {
+      const res = await request(app).post('/api/auth/login').send(body);
+
+      expect(res.status).toBe(status);
+      expect(extractErrorMessage(res)).toMatch(msgPattern);
+    });
+
+    it('usuário inexistente retorna 401 com credenciais inválidas', async () => {
+      const res = await request(app)
         .post('/api/auth/login')
-        .send({
-          password: 'Senha123!',
-        });
-      
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toContain('obrigatório');
+        .send({ email: 'naoexiste@example.com', password: 'Senha123!' });
+
+      expect(res.status).toBe(401);
+      expect(extractErrorMessage(res)).toMatch(/credenciais inválidas/i);
     });
-    
-    it('deve rejeitar login sem senha', async () => {
-      const response = await request(app)
+
+    it('senha incorreta retorna 401 com credenciais inválidas', async () => {
+      const email = generateUniqueEmail('wrong-pass');
+      await createTestUser({ email, password: 'SenhaCorreta123!' });
+
+      const res = await request(app)
         .post('/api/auth/login')
-        .send({
-          email: 'test@example.com',
-        });
-      
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toContain('obrigatório');
+        .send({ email, password: 'SenhaErrada123!' });
+
+      expect(res.status).toBe(401);
+      expect(extractErrorMessage(res)).toMatch(/credenciais inválidas/i);
     });
-    
-    it('deve rejeitar login com usuário inexistente', async () => {
-      const response = await request(app)
+
+    it('usuário inativo retorna 401 com mensagem de conta inativa', async () => {
+      const email = generateUniqueEmail('inativo');
+      await createTestUser({ email, password: 'Senha123!', ativo: false });
+
+      const res = await request(app)
         .post('/api/auth/login')
-        .send({
-          email: 'naoexiste@example.com',
-          password: 'Senha123!',
-        });
-      
-      expect(response.status).toBe(401);
-      expect(extractErrorMessage(response)).toContain('Credenciais inválidas');
+        .send({ email, password: 'Senha123!' });
+
+      expect(res.status).toBe(401);
+      expect(extractErrorMessage(res)).toMatch(/inativa/i);
     });
-    
-    it('deve rejeitar login com senha incorreta', async () => {
-      const userEmail = generateUniqueEmail('wrong-password');
-      await createTestUser({
-        email: userEmail,
-        password: 'SenhaCorreta123!',
-      });
-      
-      const response = await request(app)
-        .post('/api/auth/login')
-        .send({
-          email: userEmail,
-          password: 'SenhaErrada123!',
-        });
-      
-      expect(response.status).toBe(401);
-      expect(extractErrorMessage(response)).toContain('Credenciais inválidas');
-    });
-    
-    it('deve rejeitar login de usuário inativo', async () => {
-      const userEmail = generateUniqueEmail('inactive');
-      await createTestUser({
-        email: userEmail,
-        password: 'Senha123!',
-        ativo: false,
-      });
-      
-      const response = await request(app)
-        .post('/api/auth/login')
-        .send({
-          email: userEmail,
-          password: 'Senha123!',
-        });
-      
-      expect(response.status).toBe(401);
-      expect(extractErrorMessage(response)).toContain('inativa');
-    });
-    
-    it('deve bloquear após múltiplas tentativas falhas', async () => {
-      const userEmail = generateUniqueEmail('brute-force');
-      await createTestUser({
-        email: userEmail,
-        password: 'SenhaCorreta123!',
-      });
-      
-      // Faz 5 tentativas com senha errada
+
+    it('bloqueia após 5 tentativas falhas → 429', async () => {
+      const email = generateUniqueEmail('brute-force');
+      await createTestUser({ email, password: 'SenhaCorreta123!' });
+
       for (let i = 0; i < 5; i++) {
         await request(app)
           .post('/api/auth/login')
-          .send({
-            email: userEmail,
-            password: 'SenhaErrada!',
-          });
+          .send({ email, password: 'SenhaErrada!' });
       }
-      
-      // 6ª tentativa deve ser bloqueada
-      const response = await request(app)
+
+      const res = await request(app)
         .post('/api/auth/login')
-        .send({
-          email: userEmail,
-          password: 'SenhaCorreta123!',
-        });
-      
-      expect(response.status).toBe(429);
-      expect(extractErrorMessage(response)).toContain('Muitas tentativas');
-    });
-    
-    it('deve permitir login com diferentes regras de usuário', async () => {
-      const regras = ['ADMIN', 'TECNICO', 'USUARIO'] as const;
-      
-      for (const regra of regras) {
-        const userEmail = generateUniqueEmail(`role-${regra.toLowerCase()}`);
-        const userPassword = 'Senha123!';
-        
-        await createTestUser({
-          email: userEmail,
-          password: userPassword,
-          regra,
-        });
-        
-        const response = await request(app)
-          .post('/api/auth/login')
-          .send({
-            email: userEmail,
-            password: userPassword,
-          });
-        
-        expect(response.status).toBe(200);
-        expect(response.body.usuario.regra).toBe(regra);
-      }
+        .send({ email, password: 'SenhaCorreta123!' });
+
+      expect(res.status).toBe(429);
+      expect(extractErrorMessage(res)).toMatch(/muitas tentativas/i);
+      expect(res.body).toHaveProperty('bloqueadoAte');
+      expect(res.body.tentativasRestantes).toBe(0);
     });
   });
-  
+
   describe('POST /api/auth/logout', () => {
-    it('deve fazer logout com sucesso', async () => {
-      const { accessToken } = await loginUser(
-        process.env.USER_EMAIL || 'user@helpme.com',
-        process.env.USER_PASSWORD || 'User123!'
-      );
-      
-      const response = await request(app)
-        .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${accessToken}`);
-      
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message');
-    });
-    
-    it('deve rejeitar logout sem token', async () => {
-      const response = await request(app)
-        .post('/api/auth/logout');
-      
-      expect(response.status).toBe(401);
-    });
-    
-    it.skip('não deve permitir usar token após logout - PENDENTE: Implementar blacklist', async () => {
-      const { accessToken } = await loginUser(
-        process.env.USER_EMAIL || 'user@helpme.com',
-        process.env.USER_PASSWORD || 'User123!'
-      );
-      
-      await request(app)
+    it('logout com token válido retorna mensagem de sucesso', async () => {
+      const { accessToken } = await loginSeedUsuario();
+
+      const res = await request(app)
         .post('/api/auth/logout')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
-      
-      const response = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${accessToken}`);
-      
-      expect(response.status).toBe(401);
+
+      expect(res.body).toHaveProperty('message');
+      expect(res.body.message).toMatch(/sucesso/i);
     });
+
+    it('logout sem token retorna 401', async () => {
+      await request(app).post('/api/auth/logout').expect(401);
+    });
+
+    it.todo('token não deve funcionar após logout — PENDENTE: blacklist implementada');
   });
-  
+
+  describe('POST /api/auth/refresh-token', () => {
+    it('renova tokens com refresh token válido', async () => {
+      const { refreshToken } = await loginSeedUsuario();
+
+      const res = await request(app)
+        .post('/api/auth/refresh-token')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      expect(res.body).toHaveProperty('expiresIn');
+      expect(typeof res.body.accessToken).toBe('string');
+      expect(typeof res.body.refreshToken).toBe('string');
+    });
+
+    it('novos tokens são diferentes dos originais', async () => {
+      const { accessToken: oldAccess, refreshToken: oldRefresh } = await loginSeedUsuario();
+
+      // Aguarda 1s para garantir iat diferente no JWT
+      await new Promise((r) => setTimeout(r, 1000));
+
+      const res = await request(app)
+        .post('/api/auth/refresh-token')
+        .send({ refreshToken: oldRefresh })
+        .expect(200);
+
+      expect(res.body.accessToken).not.toBe(oldAccess);
+    });
+
+    it('sem refresh token retorna 400', async () => {
+      const res = await request(app)
+        .post('/api/auth/refresh-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(/refresh token.*obrigatório/i);
+    });
+
+    it('refresh token inválido retorna 401', async () => {
+      const res = await request(app)
+        .post('/api/auth/refresh-token')
+        .send({ refreshToken: 'token.invalido.aqui' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it.todo('refresh token já rotacionado retorna 401 — PENDENTE: rotação de refresh token não implementada');
+  });
+
   describe('GET /api/auth/me', () => {
-    it('deve retornar perfil do usuário autenticado', async () => {
-      const { accessToken, usuario } = await loginUser(
-        process.env.USER_EMAIL || 'user@helpme.com',
-        process.env.USER_PASSWORD || 'User123!'
-      );
-      
-      const response = await request(app)
+    it('retorna perfil completo sem campos sensíveis', async () => {
+      const { accessToken, usuario } = await loginSeedUsuario();
+
+      const res = await request(app)
         .get('/api/auth/me')
-        .set('Authorization', `Bearer ${accessToken}`);
-      
-      expect(response.status).toBe(200);
-      expect(response.body.id).toBe(usuario.id);
-      expect(response.body.email).toBe(usuario.email);
-      expect(response.body).not.toHaveProperty('password');
-      expect(response.body).not.toHaveProperty('refreshToken');
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.id).toBe(usuario.id);
+      expect(res.body.email).toBe(usuario.email);
+      expect(res.body).toHaveProperty('nome');
+      expect(res.body).toHaveProperty('regra');
+      expect(res.body).not.toHaveProperty('password');
+      expect(res.body).not.toHaveProperty('refreshToken');
     });
-    
-    it('deve rejeitar sem token', async () => {
-      const response = await request(app)
-        .get('/api/auth/me');
-      
-      expect(response.status).toBe(401);
+
+    it('sem token retorna 401', async () => {
+      await request(app).get('/api/auth/me').expect(401);
     });
   });
-  
+
   describe('GET /api/auth/status', () => {
-    it('deve retornar status autenticado quando logado', async () => {
-      const { accessToken } = await loginUser(
-        process.env.USER_EMAIL || 'user@helpme.com',
-        process.env.USER_PASSWORD || 'User123!'
-      );
-      
-      const response = await request(app)
+    it('retorna autenticado=true com dados básicos quando logado', async () => {
+      const { accessToken } = await loginSeedUsuario();
+
+      const res = await request(app)
         .get('/api/auth/status')
-        .set('Authorization', `Bearer ${accessToken}`);
-      
-      expect(response.status).toBe(200);
-      expect(response.body.autenticado).toBe(true);
-      expect(response.body).toHaveProperty('usuario');
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.autenticado).toBe(true);
+      expect(res.body.usuario).toMatchObject({
+        id: expect.any(String),
+        email: expect.any(String),
+        regra: expect.any(String),
+      });
     });
-    
-    it('deve retornar não autenticado sem token', async () => {
-      const response = await request(app)
-        .get('/api/auth/status');
-      
-      expect(response.status).toBe(401);
+
+    it('sem token retorna 401', async () => {
+      // A rota retorna 401; campo autenticado no body depende da implementação
+      await request(app).get('/api/auth/status').expect(401);
     });
   });
 });

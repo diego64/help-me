@@ -2,537 +2,315 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../../../app';
 import { prisma } from '@infrastructure/database/prisma/client';
-import { createAuthenticatedClient, extractErrorMessage } from '../setup/test.helpers';
+import {
+  AuthenticatedClient,
+  createAuthenticatedClient,
+  generateUniqueEmail,
+  extractErrorMessage,
+} from '../setup/test.helpers';
+
+function tecnicoBase(overrides: Record<string, unknown> = {}) {
+  return {
+    nome: 'Carlos',
+    sobrenome: 'Técnico',
+    email: generateUniqueEmail('tecnico'),
+    password: 'Senha123!',
+    setor: 'TECNOLOGIA_INFORMACAO',
+    entrada: '08:00',
+    saida: '17:00',
+    ...overrides,
+  };
+}
+
+async function criarTecnico(
+  admin: AuthenticatedClient,
+  overrides: Record<string, unknown> = {},
+) {
+  const res = await admin.post('/api/tecnicos', tecnicoBase(overrides)).expect(201);
+  return res.body as { id: string; email: string };
+}
 
 describe('E2E: Técnicos', () => {
-  let adminClient: Awaited<ReturnType<typeof createAuthenticatedClient>>;
-  let tecnicoClient: Awaited<ReturnType<typeof createAuthenticatedClient>>;
-  let usuarioClient: Awaited<ReturnType<typeof createAuthenticatedClient>>;
+  let admin: AuthenticatedClient;
+  let tecnico: AuthenticatedClient;
+  let usuario: AuthenticatedClient;
 
   beforeEach(async () => {
-    adminClient = await createAuthenticatedClient(
-      process.env.ADMIN_EMAIL || 'admin@helpme.com',
-      process.env.ADMIN_PASSWORD || 'Admin123!'
-    );
-
-    tecnicoClient = await createAuthenticatedClient(
-      process.env.TECNICO_EMAIL || 'tecnico@helpme.com',
-      process.env.TECNICO_PASSWORD || 'Tecnico123!'
-    );
-
-    usuarioClient = await createAuthenticatedClient(
-      process.env.USER_EMAIL || 'user@helpme.com',
-      process.env.USER_PASSWORD || 'User123!'
-    );
-  });
+    [admin, tecnico, usuario] = await Promise.all([
+      createAuthenticatedClient(
+        process.env.ADMIN_EMAIL_TESTE ?? 'admin@helpme.com',
+        process.env.ADMIN_PASSWORD_TESTE ?? 'Admin123!',
+      ),
+      createAuthenticatedClient(
+        process.env.TECNICO_EMAIL_TESTE ?? 'tecnico@helpme.com',
+        process.env.TECNICO_PASSWORD_TESTE ?? 'Tecnico123!',
+      ),
+      createAuthenticatedClient(
+        process.env.USER_EMAIL_TESTE ?? 'user@helpme.com',
+        process.env.USER_PASSWORD_TESTE ?? 'User123!',
+      ),
+    ]);
+  }, 60000);
 
   describe('POST /api/tecnicos - Criação', () => {
-    it('admin deve poder criar técnico com dados válidos', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'Carlos',
-          sobrenome: 'Técnico',
-          email: `carlos.tecnico.${timestamp}@teste.com`,
-          password: 'Senha123!',
-          setor: 'TECNOLOGIA_INFORMACAO',
-          entrada: '08:00',
-          saida: '17:00'
-        });
+    it('admin cria técnico com dados completos', async () => {
+      const dados = tecnicoBase();
+      const res = await admin.post('/api/tecnicos', dados).expect(201);
 
-      expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.nome).toBe('Carlos');
-      expect(response.body.sobrenome).toBe('Técnico');
-      expect(response.body.email).toBe(`carlos.tecnico.${timestamp}@teste.com`);
-      expect(response.body.regra).toBe('TECNICO');
-      expect(response.body.setor).toBe('TECNOLOGIA_INFORMACAO');
-      expect(response.body.ativo).toBe(true);
-      expect(response.body).not.toHaveProperty('password');
-      expect(response.body.tecnicoDisponibilidade).toBeDefined();
-      expect(Array.isArray(response.body.tecnicoDisponibilidade)).toBe(true);
+      expect(res.body).toMatchObject({
+        nome: dados.nome,
+        sobrenome: dados.sobrenome,
+        email: dados.email,
+        regra: 'TECNICO',
+        setor: 'TECNOLOGIA_INFORMACAO',
+        ativo: true,
+      });
+      expect(res.body).toHaveProperty('id');
+      expect(res.body).not.toHaveProperty('password');
+      expect(Array.isArray(res.body.tecnicoDisponibilidade)).toBe(true);
     });
 
-    it('deve criar técnico com horário padrão (08:00-17:00)', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'Maria',
-          sobrenome: 'Suporte',
-          email: `maria.suporte.${timestamp}@teste.com`,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.tecnicoDisponibilidade).toBeDefined();
-      expect(response.body.tecnicoDisponibilidade.length).toBeGreaterThan(0);
-    });
-
-    it('deve rejeitar criação sem autenticação', async () => {
-      const response = await request(app)
-        .post('/api/tecnicos')
-        .send({
-          nome: 'Teste',
-          sobrenome: 'Tecnico',
-          email: 'teste@teste.com',
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(401);
-    });
-
-    it('técnico não deve poder criar outro técnico', async () => {
-      const timestamp = Date.now();
-      const response = await tecnicoClient
-        .post('/api/tecnicos', {
-          nome: 'Teste',
-          sobrenome: 'Tecnico',
-          email: `teste.tecnico.${timestamp}@teste.com`,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(403);
-    });
-
-    it('usuário comum não deve poder criar técnico', async () => {
-      const timestamp = Date.now();
-      const response = await usuarioClient
-        .post('/api/tecnicos', {
-          nome: 'Teste',
-          sobrenome: 'Usuario',
-          email: `teste.usuario.${timestamp}@teste.com`,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(403);
-    });
-
-    it('deve rejeitar criação sem nome', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          sobrenome: 'Silva',
-          email: `sem.nome.${timestamp}@teste.com`,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/nome/i);
-    });
-
-    it('deve rejeitar criação sem sobrenome', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'João',
-          email: `sem.sobrenome.${timestamp}@teste.com`,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/sobrenome/i);
-    });
-
-    it('deve rejeitar criação com email duplicado', async () => {
-      const email = `duplicado.${Date.now()}@teste.com`;
-
-      await adminClient
-        .post('/api/tecnicos', {
-          nome: 'Primeiro',
-          sobrenome: 'Tecnico',
-          email,
-          password: 'Senha123!'
-        })
+    it('cria técnico com horário padrão (08:00-17:00) quando não informado', async () => {
+      const res = await admin
+        .post('/api/tecnicos', tecnicoBase({ entrada: undefined, saida: undefined }))
         .expect(201);
 
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'Segundo',
-          sobrenome: 'Tecnico',
-          email,
-          password: 'Senha123!'
-        });
-
-      expect(response.status).toBe(409);
-      expect(extractErrorMessage(response)).toMatch(/já cadastrado|email/i);
+      expect(res.body.tecnicoDisponibilidade.length).toBeGreaterThan(0);
     });
 
-    it('deve rejeitar criação com senha fraca', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: `senha.fraca.${timestamp}@teste.com`,
-          password: '123'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/senha.*8/i);
+    it('sem autenticação retorna 401', async () => {
+      await request(app)
+        .post('/api/tecnicos')
+        .send(tecnicoBase())
+        .expect(401);
     });
 
-    it('deve rejeitar horário de entrada inválido', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: `horario.invalido.${timestamp}@teste.com`,
-          password: 'Senha123!',
-          entrada: '25:00',
-          saida: '17:00'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/horário.*entrada/i);
+    it.each([
+      ['técnico', () => tecnico],
+      ['usuário comum', () => usuario],
+    ])('%s não pode criar técnico → 403', async (_, getClient) => {
+      await getClient().post('/api/tecnicos', tecnicoBase()).expect(403);
     });
 
-    it('deve rejeitar horário de saída menor que entrada', async () => {
-      const timestamp = Date.now();
-      const response = await adminClient
-        .post('/api/tecnicos', {
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: `horario.invertido.${timestamp}@teste.com`,
-          password: 'Senha123!',
-          entrada: '17:00',
-          saida: '08:00'
-        });
+    it.each([
+      ['sem nome', { nome: undefined }, /nome/i],
+      ['sem sobrenome', { sobrenome: undefined }, /sobrenome/i],
+      ['email inválido', { email: 'nao-é-email' }, /email/i],
+      ['senha fraca', { password: '123' }, /senha.*8/i],
+      ['horário de entrada inválido', { entrada: '25:00' }, /horário.*entrada/i],
+      ['saída anterior à entrada', { entrada: '17:00', saida: '08:00' }, /saída.*posterior.*entrada/i],
+    ])('rejeita criação %s → 400', async (_, overrides, msgPattern) => {
+      const res = await admin.post('/api/tecnicos', tecnicoBase(overrides));
 
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/saída.*posterior.*entrada/i);
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(msgPattern);
+    });
+
+    it('rejeita email duplicado → 409', async () => {
+      const email = generateUniqueEmail('dup');
+
+      await admin.post('/api/tecnicos', tecnicoBase({ email })).expect(201);
+
+      const res = await admin.post('/api/tecnicos', tecnicoBase({ email }));
+      expect(res.status).toBe(409);
+      expect(extractErrorMessage(res)).toMatch(/já cadastrado|email/i);
     });
   });
 
   describe('GET /api/tecnicos - Listagem', () => {
-    it('admin deve poder listar todos os técnicos', async () => {
-      const response = await adminClient
-        .get('/api/tecnicos');
+    it('admin lista técnicos com paginação e sem expor senhas', async () => {
+      const res = await admin.get('/api/tecnicos?page=1&limit=5').expect(200);
 
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('data');
-      expect(response.body).toHaveProperty('pagination');
-      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(res.body).toHaveProperty('data');
+      expect(res.body).toHaveProperty('pagination');
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.pagination).toMatchObject({ page: 1, limit: 5 });
+      res.body.data.forEach((t: any) => expect(t).not.toHaveProperty('password'));
     });
 
-    it('técnico NÃO deve poder listar técnicos', async () => {
-      const response = await tecnicoClient
-        .get('/api/tecnicos');
+    it('retorna campo tecnicoDisponibilidade em cada item', async () => {
+      const res = await admin.get('/api/tecnicos').expect(200);
 
-      expect(response.status).toBe(403);
-    });
-
-    it('usuário comum NÃO deve poder listar técnicos', async () => {
-      const response = await usuarioClient
-        .get('/api/tecnicos');
-
-      expect(response.status).toBe(403);
-    });
-
-    it('não deve retornar senhas na listagem', async () => {
-      const response = await adminClient
-        .get('/api/tecnicos');
-
-      expect(response.status).toBe(200);
-      
-      response.body.data.forEach((tecnico: any) => {
-        expect(tecnico).not.toHaveProperty('password');
-      });
-    });
-
-    it('deve retornar listagem paginada', async () => {
-      const response = await adminClient
-        .get('/api/tecnicos?page=1&limit=5');
-
-      expect(response.status).toBe(200);
-      expect(response.body.pagination.page).toBe(1);
-      expect(response.body.pagination.limit).toBe(5);
-    });
-
-    it('deve incluir informações de disponibilidade', async () => {
-      const response = await adminClient
-        .get('/api/tecnicos');
-
-      expect(response.status).toBe(200);
-      
-      if (response.body.data.length > 0) {
-        const tecnico = response.body.data[0];
-        expect(tecnico).toHaveProperty('tecnicoDisponibilidade');
+      if (res.body.data.length > 0) {
+        expect(res.body.data[0]).toHaveProperty('tecnicoDisponibilidade');
       }
+    });
+
+    it.each([
+      ['técnico', () => tecnico],
+      ['usuário comum', () => usuario],
+    ])('%s não pode listar técnicos → 403', async (_, getClient) => {
+      await getClient().get('/api/tecnicos').expect(403);
     });
   });
 
-  describe('GET /api/tecnicos/:id - Busca Individual', () => {
+  describe('GET /api/tecnicos/:id - Busca individual', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const response = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Teste',
-        email: `tecnico.busca.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-      tecnicoId = response.body.id;
-    });
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
 
-    it('admin deve poder buscar técnico por ID', async () => {
-      const response = await adminClient
-        .get(`/api/tecnicos/${tecnicoId}`);
+    it('admin busca técnico por ID', async () => {
+      const res = await admin.get(`/api/tecnicos/${tecnicoId}`).expect(200);
 
-      expect(response.status).toBe(200);
-      expect(response.body.id).toBe(tecnicoId);
-      expect(response.body).not.toHaveProperty('password');
+      expect(res.body.id).toBe(tecnicoId);
+      expect(res.body).not.toHaveProperty('password');
     });
 
     it('técnico pode buscar qualquer técnico', async () => {
-      const response = await tecnicoClient
-        .get(`/api/tecnicos/${tecnicoId}`);
-
-      expect(response.status).toBe(200);
+      await tecnico.get(`/api/tecnicos/${tecnicoId}`).expect(200);
     });
 
-    it('usuário comum NÃO pode buscar técnico', async () => {
-      const response = await usuarioClient
-        .get(`/api/tecnicos/${tecnicoId}`);
-
-      expect(response.status).toBe(403);
+    it('usuário comum não pode buscar técnico → 403', async () => {
+      await usuario.get(`/api/tecnicos/${tecnicoId}`).expect(403);
     });
 
-    it('deve retornar 404 para ID inexistente', async () => {
-      const response = await adminClient
-        .get('/api/tecnicos/id-inexistente-12345');
-
-      expect(response.status).toBe(404);
+    it('ID inexistente retorna 404', async () => {
+      await admin.get('/api/tecnicos/id-inexistente-12345').expect(404);
     });
   });
 
-  describe('PUT /api/tecnicos/:id - Atualização', () => {
+  describe('PUT /api/tecnicos/:id - Atualização de dados', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const response = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Original',
-        email: `tecnico.update.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-      tecnicoId = response.body.id;
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
+
+    it.each([
+      ['nome', { nome: 'Nome Atualizado' }, 'nome', 'Nome Atualizado'],
+      ['sobrenome', { sobrenome: 'Sobrenome Atualizado' }, 'sobrenome', 'Sobrenome Atualizado'],
+      ['setor', { setor: 'FINANCEIRO' }, 'setor', 'FINANCEIRO'],
+    ])('admin atualiza %s', async (_, body, campo, valor) => {
+      const res = await admin.put(`/api/tecnicos/${tecnicoId}`, body).expect(200);
+      expect(res.body[campo]).toBe(valor);
     });
 
-    it('admin deve poder atualizar nome do técnico', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}`, {
-          nome: 'Nome Atualizado'
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.nome).toBe('Nome Atualizado');
+    it('ID inexistente retorna 404', async () => {
+      await admin.put('/api/tecnicos/id-inexistente', { nome: 'Teste' }).expect(404);
     });
 
-    it('admin deve poder atualizar sobrenome', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}`, {
-          sobrenome: 'Sobrenome Atualizado'
-        });
+    it('email já em uso retorna 409', async () => {
+      const emailExistente = generateUniqueEmail('outro');
+      await criarTecnico(admin, { email: emailExistente });
 
-      expect(response.status).toBe(200);
-      expect(response.body.sobrenome).toBe('Sobrenome Atualizado');
+      const res = await admin.put(`/api/tecnicos/${tecnicoId}`, { email: emailExistente });
+      expect(res.status).toBe(409);
     });
 
-    it('admin deve poder alterar setor', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}`, {
-          setor: 'FINANCEIRO'
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.setor).toBe('FINANCEIRO');
-    });
-
-    it('técnico pode atualizar próprio perfil', async () => {
-      // Buscar ID do técnico autenticado
-      const perfil = await tecnicoClient.get('/api/tecnicos');
-      const meuId = process.env.TECNICO_ID || tecnicoId;
-
-      const response = await tecnicoClient
-        .put(`/api/tecnicos/${meuId}`, {
-          telefone: '1234-5678'
-        });
-
-      expect([200, 403]).toContain(response.status);
-    });
-
-    it('técnico NÃO pode atualizar outro técnico', async () => {
-      const response = await tecnicoClient
-        .put(`/api/tecnicos/${tecnicoId}`, {
-          nome: 'Tentativa'
-        });
-
-      expect([200, 403]).toContain(response.status);
-    });
-
-    it('deve retornar 404 para ID inexistente', async () => {
-      const response = await adminClient
-        .put('/api/tecnicos/id-inexistente', {
-          nome: 'Teste'
-        });
-
-      expect(response.status).toBe(404);
-    });
-
-    it('deve rejeitar atualização de email duplicado', async () => {
-      const timestamp = Date.now();
-      
-      await adminClient.post('/api/tecnicos', {
-        nome: 'Outro',
-        sobrenome: 'Tecnico',
-        email: `outro.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}`, {
-          email: `outro.${timestamp}@teste.com`
-        });
-
-      expect(response.status).toBe(409);
+    it('técnico não pode atualizar outro técnico → 403', async () => {
+      const res = await tecnico.put(`/api/tecnicos/${tecnicoId}`, { nome: 'Tentativa' });
+      expect(res.status).toBe(403);
     });
   });
 
-  describe('PUT /api/tecnicos/:id/senha - Alteração de Senha', () => {
+  describe('PUT /api/tecnicos/:id/senha - Alteração de senha', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const response = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Senha',
-        email: `tecnico.senha.${timestamp}@teste.com`,
-        password: 'Senha123!'
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
+
+    it('admin altera senha de qualquer técnico', async () => {
+      const res = await admin
+        .put(`/api/tecnicos/${tecnicoId}/senha`, { password: 'NovaSenha123!' })
+        .expect(200);
+
+      expect(res.body.message).toMatch(/senha.*sucesso/i);
+    });
+
+    it('senha fraca retorna 400', async () => {
+      const res = await admin.put(`/api/tecnicos/${tecnicoId}/senha`, { password: '123' });
+
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(/senha/i);
+    });
+
+    it('técnico não pode alterar senha de outro → 403', async () => {
+      const res = await tecnico.put(`/api/tecnicos/${tecnicoId}/senha`, {
+        password: 'NovaSenha123!',
       });
-      tecnicoId = response.body.id;
+      expect(res.status).toBe(403);
     });
 
-    it('admin deve poder alterar senha de qualquer técnico', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/senha`, {
-          password: 'NovaSenha123!'
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.message).toMatch(/senha.*sucesso/i);
-    });
-
-    it('deve rejeitar alteração com senha fraca', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/senha`, {
-          password: '123'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/senha/i);
-    });
-
-    it('deve rejeitar se técnico tentar alterar senha de outro', async () => {
-      const response = await tecnicoClient
-        .put(`/api/tecnicos/${tecnicoId}/senha`, {
-          password: 'NovaSenha123!'
-        });
-
-      expect([200, 403]).toContain(response.status);
-    });
-
-    it('deve retornar 404 para ID inexistente', async () => {
-      const response = await adminClient
-        .put('/api/tecnicos/id-inexistente/senha', {
-          password: 'NovaSenha123!'
-        });
-
-      expect(response.status).toBe(404);
+    it('ID inexistente retorna 404', async () => {
+      await admin
+        .put('/api/tecnicos/id-inexistente/senha', { password: 'NovaSenha123!' })
+        .expect(404);
     });
   });
 
-  describe('PUT /api/tecnicos/:id/horarios - Horários de Expediente', () => {
+  describe('PUT /api/tecnicos/:id/horarios - Horários de expediente', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const response = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Horario',
-        email: `tecnico.horario.${timestamp}@teste.com`,
-        password: 'Senha123!',
-        entrada: '08:00',
-        saida: '17:00'
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
+
+    it('admin atualiza horários com sucesso', async () => {
+      const res = await admin
+        .put(`/api/tecnicos/${tecnicoId}/horarios`, { entrada: '09:00', saida: '18:00' })
+        .expect(200);
+
+      expect(res.body.message).toMatch(/horário.*atualizado/i);
+      expect(res.body.horario).toBeDefined();
+    });
+
+    it.each([
+      ['horário de entrada inválido', { entrada: '25:00', saida: '17:00' }, /horário.*entrada/i],
+      ['horário de saída inválido', { entrada: '08:00', saida: 'ABC' }, /horário.*saída/i],
+      ['saída anterior à entrada', { entrada: '17:00', saida: '08:00' }, /saída.*posterior.*entrada/i],
+    ])('rejeita %s → 400', async (_, body, msgPattern) => {
+      const res = await admin.put(`/api/tecnicos/${tecnicoId}/horarios`, body);
+
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(msgPattern);
+    });
+
+    it('técnico não pode alterar horários de outro → 403', async () => {
+      const res = await tecnico.put(`/api/tecnicos/${tecnicoId}/horarios`, {
+        entrada: '09:00',
+        saida: '18:00',
       });
-      tecnicoId = response.body.id;
+      expect(res.status).toBe(403);
     });
 
-    it('admin deve poder atualizar horários do técnico', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/horarios`, {
-          entrada: '09:00',
-          saida: '18:00'
-        });
+    it('ID inexistente retorna 404', async () => {
+      await admin
+        .put('/api/tecnicos/id-inexistente/horarios', { entrada: '09:00', saida: '18:00' })
+        .expect(404);
+    });
+  });
 
-      expect(response.status).toBe(200);
-      expect(response.body.message).toMatch(/horário.*atualizado/i);
-      expect(response.body.horario).toBeDefined();
+  describe('PATCH /api/tecnicos/:id/nivel - Alteração de nível', () => {
+    let tecnicoId: string;
+
+    beforeEach(async () => {
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
+
+    it.each([['N2'], ['N3']])('admin promove técnico para %s', async (nivel) => {
+      const res = await admin
+        .patch(`/api/tecnicos/${tecnicoId}/nivel`, { nivel })
+        .expect(200);
+
+      expect(res.body.tecnico.nivel).toBe(nivel);
     });
 
-    it('deve rejeitar horário de entrada inválido', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/horarios`, {
-          entrada: '25:00',
-          saida: '17:00'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/horário.*entrada/i);
+    it('nível inválido retorna 400', async () => {
+      const res = await admin.patch(`/api/tecnicos/${tecnicoId}/nivel`, { nivel: 'N9' });
+      expect(res.status).toBe(400);
     });
 
-    it('deve rejeitar horário de saída inválido', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/horarios`, {
-          entrada: '08:00',
-          saida: 'ABC'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/horário.*saída/i);
+    it('mesmo nível retorna 400', async () => {
+      const res = await admin.patch(`/api/tecnicos/${tecnicoId}/nivel`, { nivel: 'N1' });
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(/já possui o nível/i);
     });
 
-    it('deve rejeitar saída menor que entrada', async () => {
-      const response = await adminClient
-        .put(`/api/tecnicos/${tecnicoId}/horarios`, {
-          entrada: '17:00',
-          saida: '08:00'
-        });
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/saída.*posterior.*entrada/i);
-    });
-
-    it('técnico pode alterar próprios horários', async () => {
-      const response = await tecnicoClient
-        .put(`/api/tecnicos/${tecnicoId}/horarios`, {
-          entrada: '09:00',
-          saida: '18:00'
-        });
-
-      expect([200, 403]).toContain(response.status);
-    });
-
-    it('deve retornar 404 para ID inexistente', async () => {
-      const response = await adminClient
-        .put('/api/tecnicos/id-inexistente/horarios', {
-          entrada: '09:00',
-          saida: '18:00'
-        });
-
-      expect(response.status).toBe(404);
+    it('técnico não pode alterar nível → 403', async () => {
+      await tecnico.patch(`/api/tecnicos/${tecnicoId}/nivel`, { nivel: 'N2' }).expect(403);
     });
   });
 
@@ -540,50 +318,28 @@ describe('E2E: Técnicos', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const response = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Deletar',
-        email: `tecnico.delete.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-      tecnicoId = response.body.id;
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
+
+    it('admin faz soft delete e registro permanece no banco', async () => {
+      const res = await admin.delete(`/api/tecnicos/${tecnicoId}`).expect(200);
+
+      expect(res.body.message).toMatch(/deletado.*sucesso/i);
+
+      const registro = await prisma.usuario.findUnique({ where: { id: tecnicoId } });
+      expect(registro).not.toBeNull();
+      expect(registro!.deletadoEm).not.toBeNull();
     });
 
-    it('admin deve poder deletar (soft delete) técnico', async () => {
-      const response = await adminClient
-        .delete(`/api/tecnicos/${tecnicoId}`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.message).toMatch(/deletado.*sucesso/i);
-
-      const tecnicoDeletado = await prisma.usuario.findUnique({
-        where: { id: tecnicoId }
-      });
-
-      expect(tecnicoDeletado).not.toBeNull();
-      expect(tecnicoDeletado!.deletadoEm).not.toBeNull();
+    it.each([
+      ['técnico', () => tecnico],
+      ['usuário comum', () => usuario],
+    ])('%s não pode deletar técnico → 403', async (_, getClient) => {
+      await getClient().delete(`/api/tecnicos/${tecnicoId}`).expect(403);
     });
 
-    it('técnico NÃO deve poder deletar técnico', async () => {
-      const response = await tecnicoClient
-        .delete(`/api/tecnicos/${tecnicoId}`);
-
-      expect(response.status).toBe(403);
-    });
-
-    it('usuário NÃO deve poder deletar técnico', async () => {
-      const response = await usuarioClient
-        .delete(`/api/tecnicos/${tecnicoId}`);
-
-      expect(response.status).toBe(403);
-    });
-
-    it('deve retornar 404 para ID inexistente', async () => {
-      const response = await adminClient
-        .delete('/api/tecnicos/id-inexistente');
-
-      expect(response.status).toBe(404);
+    it('ID inexistente retorna 404', async () => {
+      await admin.delete('/api/tecnicos/id-inexistente').expect(404);
     });
   });
 
@@ -591,48 +347,30 @@ describe('E2E: Técnicos', () => {
     let tecnicoId: string;
 
     beforeEach(async () => {
-      const timestamp = Date.now();
-      const tecnico = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Restaurar',
-        email: `tecnico.restaurar.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-      tecnicoId = tecnico.body.id;
+      ({ id: tecnicoId } = await criarTecnico(admin));
+    }, 60000);
 
-      await adminClient.delete(`/api/tecnicos/${tecnicoId}`);
+    it('admin restaura técnico deletado', async () => {
+      await admin.delete(`/api/tecnicos/${tecnicoId}`).expect(200);
+
+      const res = await admin
+        .patch(`/api/tecnicos/${tecnicoId}/restaurar`)
+        .expect(200);
+
+      expect(res.body.message).toMatch(/restaurado/i);
+      expect(res.body.tecnico.ativo).toBe(true);
     });
 
-    it('admin deve poder restaurar técnico deletado', async () => {
-      const response = await adminClient
-        .patch(`/api/tecnicos/${tecnicoId}/restaurar`);
+    it('técnico não pode restaurar → 403', async () => {
+      await admin.delete(`/api/tecnicos/${tecnicoId}`).expect(200);
 
-      expect(response.status).toBe(200);
-      expect(response.body.message).toMatch(/restaurado/i);
-      expect(response.body.tecnico.ativo).toBe(true);
+      await tecnico.patch(`/api/tecnicos/${tecnicoId}/restaurar`).expect(403);
     });
 
-    it('técnico NÃO deve poder restaurar técnico', async () => {
-      const response = await tecnicoClient
-        .patch(`/api/tecnicos/${tecnicoId}/restaurar`);
-
-      expect(response.status).toBe(403);
-    });
-
-    it('deve rejeitar restauração de técnico não deletado', async () => {
-      const timestamp = Date.now();
-      const novoTecnico = await adminClient.post('/api/tecnicos', {
-        nome: 'Tecnico',
-        sobrenome: 'Ativo',
-        email: `tecnico.ativo.${timestamp}@teste.com`,
-        password: 'Senha123!'
-      });
-
-      const response = await adminClient
-        .patch(`/api/tecnicos/${novoTecnico.body.id}/restaurar`);
-
-      expect(response.status).toBe(400);
-      expect(extractErrorMessage(response)).toMatch(/não está deletado/i);
+    it('restaurar técnico ativo retorna 400', async () => {
+      const res = await admin.patch(`/api/tecnicos/${tecnicoId}/restaurar`);
+      expect(res.status).toBe(400);
+      expect(extractErrorMessage(res)).toMatch(/não está deletado/i);
     });
   });
 });

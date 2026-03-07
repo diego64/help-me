@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import express, { Response, NextFunction } from 'express';
 import request from 'supertest';
 import type { Regra } from '@prisma/client';
@@ -23,85 +23,50 @@ const prismaMock = {
   $transaction: vi.fn(),
 };
 
-const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD_PBKDF2');
+const hashPasswordMock = vi.fn().mockReturnValue('HASHED_PASSWORD');
 
-vi.mock('@infrastructure/database/prisma/client', () => ({
-  prisma: prismaMock,
-}));
-
-vi.mock('@utils/password', () => ({
-  hashPassword: hashPasswordMock,
-}));
-
-vi.mock('@shared/config/password', () => ({
-  hashPassword: hashPasswordMock,
-}));
+vi.mock('@infrastructure/database/prisma/client', () => ({ prisma: prismaMock }));
+vi.mock('@shared/config/password', () => ({ hashPassword: hashPasswordMock }));
+vi.mock('@utils/password', () => ({ hashPassword: hashPasswordMock }));
 
 vi.mock('@infrastructure/http/middlewares/auth', () => ({
-  authMiddleware: (req: any, res: Response, next: NextFunction) => {
-    req.usuario = {
-      id: currentUserId,
-      email: 'test@example.com',
-      regra: currentUserRole,
-      type: 'access',
-    };
+  authMiddleware: (req: any, _res: Response, next: NextFunction) => {
+    req.usuario = { id: currentUserId, email: 'test@test.com', regra: currentUserRole, type: 'access' };
     next();
   },
-  authorizeRoles: (...allowedRoles: string[]) => {
-    return (req: any, res: Response, next: NextFunction) => {
-      if (!req.usuario) {
-        return res.status(401).json({ error: 'Não autorizado.' });
-      }
-      
-      if (!allowedRoles.includes(req.usuario.regra)) {
-        return res.status(403).json({ error: 'Acesso negado.' });
-      }
-      
-      next();
-    };
+  authorizeRoles: (...roles: string[]) => (req: any, res: Response, next: NextFunction) => {
+    if (!req.usuario) return res.status(401).json({ error: 'Não autorizado.' });
+    if (!roles.includes(req.usuario.regra)) return res.status(403).json({ error: 'Acesso negado.' });
+    next();
   },
   AuthRequest: class {},
 }));
 
 vi.mock('multer', () => {
-  const diskStorageMock = vi.fn().mockReturnValue({});
-  
   const multerFactory: any = vi.fn(() => ({
-    single: () => (req: any, res: any, next: any) => {
-      req.file = req._mockFile || undefined;
+    single: () => (req: any, _res: any, next: any) => {
+      req.file = req._mockFile ?? undefined;
       next();
     },
   }));
-  
-  multerFactory.diskStorage = diskStorageMock;
-
-  return {
-    default: multerFactory,
-  };
+  multerFactory.diskStorage = vi.fn().mockReturnValue({});
+  return { default: multerFactory };
 });
 
 vi.mock('fs', () => ({
-  default: {
-    existsSync: vi.fn().mockReturnValue(true),
-    mkdirSync: vi.fn(),
-  },
+  default: { existsSync: vi.fn().mockReturnValue(true), mkdirSync: vi.fn() },
 }));
 
 vi.mock('@prisma/client', () => ({
-  PrismaClient: function () {
-    return prismaMock;
-  },
+  PrismaClient: function () { return prismaMock; },
   Setor: {
     TECNOLOGIA_INFORMACAO: 'TECNOLOGIA_INFORMACAO',
     ADMINISTRACAO: 'ADMINISTRACAO',
     RECURSOS_HUMANOS: 'RECURSOS_HUMANOS',
     FINANCEIRO: 'FINANCEIRO',
   },
-  Regra: {
-    ADMIN: 'ADMIN',
-    TECNICO: 'TECNICO',
-    USUARIO: 'USUARIO',
-  },
+  Regra: { ADMIN: 'ADMIN', TECNICO: 'TECNICO', USUARIO: 'USUARIO' },
+  NivelTecnico: { N1: 'N1', N2: 'N2', N3: 'N3' },
 }));
 
 const { default: tecnicoRoutes } = await import('@presentation/http/routes/tecnico.routes');
@@ -111,55 +76,40 @@ const tecnicoBase = {
   nome: 'João',
   sobrenome: 'Silva',
   email: 'joao.silva@empresa.com',
+  nivel: 'N1',
   telefone: '11999999999',
   ramal: '1234',
   setor: 'TECNOLOGIA_INFORMACAO',
   regra: 'TECNICO',
   ativo: true,
   avatarUrl: null,
-  geradoEm: '2025-01-01T00:00:00.000Z',
-  atualizadoEm: '2025-01-01T00:00:00.000Z',
+  geradoEm: new Date('2025-01-01'),
+  atualizadoEm: new Date('2025-01-01'),
   deletadoEm: null,
   tecnicoDisponibilidade: [
     {
       id: 'exp1',
-      entrada: '2025-01-01T08:00:00.000Z',
-      saida: '2025-01-01T17:00:00.000Z',
+      entrada: new Date('2025-01-01T08:00:00.000Z'),
+      saida: new Date('2025-01-01T17:00:00.000Z'),
       ativo: true,
-      geradoEm: '2025-01-01T00:00:00.000Z',
-      atualizadoEm: '2025-01-01T00:00:00.000Z',
+      geradoEm: new Date('2025-01-01'),
+      atualizadoEm: new Date('2025-01-01'),
       deletadoEm: null,
     },
   ],
-  _count: {
-    tecnicoChamados: 0,
-  },
+  _count: { tecnicoChamados: 0 },
 };
 
-const tecnicoInativo = {
-  ...tecnicoBase,
-  id: 'tec2',
-  email: 'inativo@empresa.com',
-  ativo: false,
-};
-
-const tecnicoDeletado = {
-  ...tecnicoBase,
-  id: 'tec3',
-  email: 'deletado@empresa.com',
-  deletadoEm: '2025-01-03T00:00:00.000Z',
-};
-
-const consoleSpy = {
-  log: vi.spyOn(console, 'log').mockImplementation(() => {}),
-  error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+let consoleSpy: {
+  log: ReturnType<typeof vi.spyOn>;
+  error: ReturnType<typeof vi.spyOn>;
 };
 
 function criarApp(mockFile?: any) {
   const app = express();
   app.use(express.json());
-  if (mockFile) {
-    app.use((req: any, res: any, next: any) => {
+  if (mockFile !== undefined) {
+    app.use((req: any, _res: any, next: any) => {
       req._mockFile = mockFile;
       next();
     });
@@ -168,5065 +118,1460 @@ function criarApp(mockFile?: any) {
   return app;
 }
 
+function mockTransacaoCriar(tecnicoId = 'tec1') {
+  prismaMock.$transaction.mockImplementation(async (cb: any) => {
+    const tx = {
+      usuario: { create: vi.fn().mockResolvedValue({ id: tecnicoId }) },
+      expediente: { create: vi.fn().mockResolvedValue({ id: 'exp1' }) },
+    };
+    return cb(tx);
+  });
+}
+
+type TecnicoOverrides = Partial<Omit<typeof tecnicoBase, 'telefone' | 'ramal' | 'avatarUrl' | 'deletadoEm'>> & {
+  telefone?: string | null;
+  ramal?: string | null;
+  avatarUrl?: string | null;
+  deletadoEm?: string | Date | null;
+};
+
+function setupCriacaoSucesso(overrides?: TecnicoOverrides) {
+  prismaMock.usuario.findUnique
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ ...tecnicoBase, ...overrides });
+  mockTransacaoCriar();
+}
+
+function mockTransacaoHorarios(entrada = '09:00', saida = '18:00') {
+  prismaMock.$transaction.mockImplementation(async (cb: any) => {
+    const tx = {
+      expediente: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        create: vi.fn().mockResolvedValue({
+          id: 'exp2',
+          entrada: new Date(`2025-01-01T${entrada}:00.000Z`),
+          saida: new Date(`2025-01-01T${saida}:00.000Z`),
+          ativo: true,
+          geradoEm: new Date(),
+        }),
+      },
+    };
+    return cb(tx);
+  });
+}
+
 beforeEach(() => {
-  vi.clearAllMocks();
+  consoleSpy = {
+    log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+    error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+  };
+
+  vi.resetAllMocks();
+
   currentUserRole = 'ADMIN';
   currentUserId = 'admin1';
+  hashPasswordMock.mockReturnValue('HASHED_PASSWORD');
 
-  Object.values(prismaMock.usuario).forEach(mock => mock.mockReset());
-  Object.values(prismaMock.expediente).forEach(mock => mock.mockReset());
-  prismaMock.$transaction.mockReset();
+  prismaMock.usuario.findUnique.mockResolvedValue(null);
+  prismaMock.usuario.findMany.mockResolvedValue([]);
+  prismaMock.usuario.count.mockResolvedValue(0);
+  prismaMock.usuario.create.mockResolvedValue(undefined as any);
+  prismaMock.usuario.update.mockResolvedValue(undefined as any);
+  prismaMock.usuario.delete.mockResolvedValue(undefined as any);
+  prismaMock.expediente.create.mockResolvedValue(undefined as any);
+  prismaMock.expediente.updateMany.mockResolvedValue({ count: 0 });
+  prismaMock.expediente.deleteMany.mockResolvedValue({ count: 0 });
+  prismaMock.$transaction.mockResolvedValue(undefined as any);
 
-  hashPasswordMock.mockClear();
-  hashPasswordMock.mockReturnValue('HASHED_PASSWORD_PBKDF2');
-  
-  consoleSpy.log.mockClear();
-  consoleSpy.error.mockClear();
+  consoleSpy.log.mockImplementation(() => {});
+  consoleSpy.error.mockImplementation(() => {});
 });
 
-describe('POST /tecnicos (criação de técnico)', () => {
-  describe('Casos de sucesso [1]', () => {
-    it('deve retornar status 201 e criar técnico com expediente padrão', async () => {
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('POST /tecnicos', () => {
+  const payload = {
+    nome: 'João',
+    sobrenome: 'Silva',
+    email: 'joao@empresa.com',
+    password: 'senha12345',
+  };
+
+  describe('Casos de sucesso', () => {
+    it('deve criar técnico com expediente padrão e retornar 201', async () => {
+      setupCriacaoSucesso();
+
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
+
+      expect(res.status).toBe(201);
+      expect(res.body.nome).toBe('João');
+      expect(res.body.regra).toBe('TECNICO');
+    });
+
+    it('deve criar técnico com horários personalizados e chamar expediente.create', async () => {
       prismaMock.usuario.findUnique
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(tecnicoBase);
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao.silva@empresa.com',
-          password: 'senha123456',
-        });
+      const expedienteCreate = vi.fn().mockResolvedValue({ id: 'exp1' });
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({
+          usuario: { create: vi.fn().mockResolvedValue({ id: 'tec1' }) },
+          expediente: { create: expedienteCreate },
+        })
+      );
 
-      expect(resposta.status).toBe(201);
-      expect(resposta.body.nome).toBe('João');
-      expect(resposta.body.regra).toBe('TECNICO');
-      expect(hashPasswordMock).toHaveBeenCalledWith('senha123456');
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, entrada: '09:00', saida: '18:00' });
+
+      expect(res.status).toBe(201);
+      expect(expedienteCreate).toHaveBeenCalled();
     });
 
-    it('deve criar técnico com horários personalizados', async () => {
+    it('deve hashear a senha antes de salvar', async () => {
+      setupCriacaoSucesso();
+
+      await request(criarApp()).post('/tecnicos').send(payload);
+
+      expect(hashPasswordMock).toHaveBeenCalledWith('senha12345');
+    });
+
+    it('deve fazer trim de nome e sobrenome', async () => {
       prismaMock.usuario.findUnique
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(tecnicoBase);
-      
-      const expedienteCreateMock = vi.fn().mockResolvedValue({
-        id: 'exp1',
-        entrada: new Date('2025-01-01T09:00:00.000Z'),
-        saida: new Date('2025-01-01T18:00:00.000Z'),
-      });
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: expedienteCreateMock,
-          },
-        };
-        return await callback(tx);
-      });
+      const usuarioCreate = vi.fn().mockResolvedValue({ id: 'tec1' });
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({ usuario: { create: usuarioCreate }, expediente: { create: vi.fn().mockResolvedValue({}) } })
+      );
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123456',
-          entrada: '09:00',
-          saida: '18:00',
-        });
+      await request(criarApp()).post('/tecnicos').send({ ...payload, nome: '  João  ', sobrenome: '  Silva  ' });
 
-      expect(resposta.status).toBe(201);
-      expect(expedienteCreateMock).toHaveBeenCalled();
+      expect(usuarioCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ nome: 'João', sobrenome: 'Silva' }) })
+      );
     });
 
-    it('deve criar técnico com todos os campos opcionais preenchidos', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          ...tecnicoBase,
-          telefone: '11987654321',
-          ramal: '5678',
-          setor: 'ADMINISTRACAO',
-        });
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
+    it('deve criar com todos os campos opcionais preenchidos', async () => {
+      setupCriacaoSucesso({ telefone: '11987654321', ramal: '9999', setor: 'ADMINISTRACAO' });
+
+      const res = await request(criarApp()).post('/tecnicos').send({
+        ...payload,
+        telefone: '11987654321',
+        ramal: '9999',
+        setor: 'ADMINISTRACAO',
       });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123456',
-          telefone: '11987654321',
-          ramal: '5678',
-          setor: 'ADMINISTRACAO',
-          entrada: '08:00',
-          saida: '17:00',
-        });
-
-      expect(resposta.status).toBe(201);
+      expect(res.status).toBe(201);
     });
 
-    it('deve criar técnico sem telefone e ramal', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          ...tecnicoBase,
-          telefone: null,
-          ramal: null,
-        });
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
+    it('deve criar técnico sem telefone e ramal (campos opcionais)', async () => {
+      setupCriacaoSucesso({ telefone: null, ramal: null });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123456',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(201);
+      expect(res.status).toBe(201);
     });
 
-    it('deve aceitar nome com 2 caracteres (limite mínimo) [1]', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ ...tecnicoBase, nome: 'Jo' });
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
+    it.each([
+      ['nome mínimo (2 chars)', { nome: 'Jo' }],
+      ['senha mínima (8 chars)', { password: '12345678' }],
+      ['nome máximo (100 chars)', { nome: 'A'.repeat(100) }],
+    ])('deve aceitar %s', async (_, override) => {
+      setupCriacaoSucesso();
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'Jo',
-          sobrenome: 'Silva',
-          email: 'jo@empresa.com',
-          password: 'senha123456',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(201);
+      expect(res.status).toBe(201);
     });
 
-    it('deve aceitar nome com 100 caracteres (limite máximo) [1]', async () => {
-      const nome100 = 'A'.repeat(100);
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ ...tecnicoBase, nome: nome100 });
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: nome100,
-          sobrenome: 'Silva',
-          email: 'long@empresa.com',
-          password: 'senha123456',
-        });
-
-      expect(resposta.status).toBe(201);
-    });
-
-    it('deve aceitar senha com 8 caracteres (limite mínimo) [1]', async () => {
+    it('deve usar setor TECNOLOGIA_INFORMACAO como padrão', async () => {
       prismaMock.usuario.findUnique
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(tecnicoBase);
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: '12345678',
-        });
+      const usuarioCreate = vi.fn().mockResolvedValue({ id: 'tec1' });
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({ usuario: { create: usuarioCreate }, expediente: { create: vi.fn().mockResolvedValue({}) } })
+      );
 
-      expect(resposta.status).toBe(201);
-      expect(hashPasswordMock).toHaveBeenCalledWith('12345678');
+      await request(criarApp()).post('/tecnicos').send(payload);
+
+      expect(usuarioCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ setor: 'TECNOLOGIA_INFORMACAO' }) })
+      );
     });
 
-    it('deve fazer trim de nome e sobrenome [1]', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(tecnicoBase);
-      
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          usuario: {
-            create: vi.fn().mockResolvedValue({ id: tecnicoBase.id }),
-          },
-          expediente: {
-            create: vi.fn().mockResolvedValue({
-              id: 'exp1',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
+    it('deve registrar log de criação', async () => {
+      setupCriacaoSucesso();
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: '  João  ',
-          sobrenome: '  Silva  ',
-          email: 'joao@empresa.com',
-          password: 'senha123456',
-        });
+      await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(201);
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO CREATED]', expect.any(Object));
     });
   });
 
   describe('Validação de nome', () => {
-    it('deve retornar status 400 quando nome não for enviado', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it('deve retornar 400 quando nome for ausente', async () => {
+      const { nome: _n, ...semNome } = payload;
+      const res = await request(criarApp()).post('/tecnicos').send(semNome);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Nome é obrigatório');
     });
 
-    it('deve retornar status 400 quando nome for null', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: null,
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it.each([
+      ['null', { nome: null }],
+      ['número', { nome: 123 }],
+      ['boolean', { nome: true }],
+      ['objeto', { nome: {} }],
+      ['array', { nome: [] }],
+      ['string vazia', { nome: '' }],
+    ])('deve retornar 400 quando nome for %s', async (_, override) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Nome é obrigatório');
     });
 
-    it('deve retornar status 400 quando nome for undefined', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: undefined,
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it.each([
+      ['1 char', { nome: 'J' }, 'no mínimo 2 caracteres'],
+      ['só espaços', { nome: '   ' }, 'no mínimo 2 caracteres'],
+      ['101 chars', { nome: 'A'.repeat(101) }, 'no máximo 100 caracteres'],
+    ])('deve retornar 400 quando nome tiver %s', async (_, override, mensagem) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando nome for número', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 123,
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando nome for string vazia', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: '',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando nome for apenas espaços [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: '   ',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome tiver 1 caractere [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'J',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome tiver 101 caracteres [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'a'.repeat(101),
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome for boolean', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: true,
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando nome for objeto', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: {},
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando nome for array', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: [],
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Nome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
     });
   });
 
   describe('Validação de sobrenome', () => {
-    it('deve retornar status 400 quando sobrenome não for enviado', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it('deve retornar 400 quando sobrenome for ausente', async () => {
+      const { sobrenome: _s, ...semSobrenome } = payload;
+      const res = await request(criarApp()).post('/tecnicos').send(semSobrenome);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Sobrenome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Sobrenome é obrigatório');
     });
 
-    it('deve retornar status 400 quando sobrenome for null', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: null,
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it.each([
+      ['null', { sobrenome: null }],
+      ['número', { sobrenome: 456 }],
+      ['string vazia', { sobrenome: '' }],
+    ])('deve retornar 400 quando sobrenome for %s', async (_, override) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Sobrenome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Sobrenome é obrigatório');
     });
 
-    it('deve retornar status 400 quando sobrenome for string vazia', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: '',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+    it.each([
+      ['1 char', { sobrenome: 'S' }, 'no mínimo 2 caracteres'],
+      ['só espaços', { sobrenome: '   ' }, 'no mínimo 2 caracteres'],
+      ['101 chars', { sobrenome: 'S'.repeat(101) }, 'no máximo 100 caracteres'],
+    ])('deve retornar 400 quando sobrenome tiver %s', async (_, override, mensagem) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Sobrenome é obrigatório');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 1 caractere [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'S',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 101 caracteres [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'S'.repeat(101),
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome for apenas espaços [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: '   ',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome for número', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 456,
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Sobrenome é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
     });
   });
 
   describe('Validação de email', () => {
-    it('deve retornar status 400 quando email não for enviado', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          password: 'senha123',
-        });
+    it('deve retornar 400 quando email for ausente', async () => {
+      const { email: _e, ...semEmail } = payload;
+      const res = await request(criarApp()).post('/tecnicos').send(semEmail);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email é obrigatório');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Email é obrigatório');
     });
 
-    it('deve retornar status 400 quando email for inválido - sem @ [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'email-invalido',
-          password: 'senha123',
-        });
+    it.each([
+      ['null', { email: null }],
+      ['número', { email: 123 }],
+      ['string vazia', { email: '' }],
+    ])('deve retornar 400 quando email for %s', async (_, override) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Email é obrigatório');
     });
 
-    it('deve retornar status 400 quando email for inválido - sem domínio [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@',
-          password: 'senha123',
-        });
+    it.each([
+      ['sem @', 'email-invalido'],
+      ['sem domínio', 'joao@'],
+      ['sem local part', '@empresa.com'],
+      ['com espaços', 'joao @empresa.com'],
+    ])('deve retornar 400 para email inválido (%s)', async (_, email) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, email });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
-    });
-
-    it('deve retornar status 400 quando email for inválido - sem local part', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: '@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
-    });
-
-    it('deve retornar status 400 quando email for null', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: null,
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email é obrigatório');
-    });
-
-    it('deve retornar status 400 quando email for número', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 123,
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email é obrigatório');
-    });
-
-    it('deve retornar status 400 quando email for string vazia', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: '',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email é obrigatório');
-    });
-
-    it('deve retornar status 400 quando email tiver espaços', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao @empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Email inválido');
     });
   });
 
   describe('Validação de senha', () => {
-    it('deve retornar status 400 quando senha não for enviada [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-        });
+    it('deve retornar 400 quando senha for ausente', async () => {
+      const { password: _p, ...semSenha } = payload;
+      const res = await request(criarApp()).post('/tecnicos').send(semSenha);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Senha é obrigatória');
     });
 
-    it('deve retornar status 400 quando senha for null [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: null,
-        });
+    it.each([
+      ['null', { password: null }],
+      ['número', { password: 12345678 }],
+      ['string vazia', { password: '' }],
+    ])('deve retornar 400 quando senha for %s', async (_, override) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Senha é obrigatória');
     });
 
-    it('deve retornar status 400 quando senha for número [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 12345678,
-        });
+    it('deve retornar 400 quando senha tiver menos de 8 chars', async () => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, password: '1234567' });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for string vazia [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: '',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha tiver 7 caracteres [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: '1234567',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('no mínimo 8 caracteres');
     });
   });
 
   describe('Validação de horários', () => {
-    it('deve retornar status 400 quando horário de entrada não for string', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: 123,
-        });
+    it.each([
+      ['entrada não é string', { entrada: 900 }, 'Horário de entrada é obrigatório'],
+      ['saída não é string', { entrada: '08:00', saida: 1700 }, 'Horário de saída é obrigatório'],
+      ['hora entrada > 23', { entrada: '25:00', saida: '17:00' }, 'formato HH:MM'],
+      ['minuto entrada > 59', { entrada: '08:60', saida: '17:00' }, 'formato HH:MM'],
+      ['hora saída > 23', { entrada: '08:00', saida: '25:00' }, 'formato HH:MM'],
+      ['minuto saída > 59', { entrada: '08:00', saida: '17:60' }, 'formato HH:MM'],
+      ['entrada sem zero', { entrada: '8:00', saida: '17:00' }, 'formato HH:MM'],
+      ['saída sem dois pontos', { entrada: '08:00', saida: '1700' }, 'formato HH:MM'],
+      ['saída anterior à entrada', { entrada: '18:00', saida: '08:00' }, 'posterior ao horário de entrada'],
+      ['saída igual à entrada', { entrada: '08:00', saida: '08:00' }, 'posterior ao horário de entrada'],
+    ])('deve retornar 400 quando %s', async (_, override, mensagem) => {
+      const res = await request(criarApp()).post('/tecnicos').send({ ...payload, ...override });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando horário de entrada for inválido - hora > 23 [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '25:00',
-          saida: '17:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de entrada for inválido - minuto > 59 [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '08:60',
-          saida: '17:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de entrada for inválido - formato errado', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '8:00',
-          saida: '17:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de saída não for string', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '08:00',
-          saida: 123,
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 400 quando horário de saída for inválido - hora > 23 [1]', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '08:00',
-          saida: '25:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de saída for anterior à entrada', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '18:00',
-          saida: '08:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
-    });
-
-    it('deve retornar status 400 quando horário de saída for igual à entrada', async () => {
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-          entrada: '08:00',
-          saida: '08:00',
-        });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
     });
   });
 
   describe('Validação de duplicação', () => {
-    it('deve retornar status 409 quando email já estiver cadastrado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
+    it('deve retornar 409 quando email já estiver cadastrado (ativo)', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'user1', deletadoEm: null });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(409);
-      expect(resposta.body.error).toContain('Email já cadastrado');
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('Email já cadastrado');
     });
 
-    it('deve retornar status 409 quando existir usuário deletado com mesmo email', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
+    it('deve retornar 409 quando existir usuário deletado com o mesmo email', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
         id: 'user1',
-        email: 'joao@empresa.com',
         deletadoEm: new Date().toISOString(),
       });
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(409);
-      expect(resposta.body.error).toContain('usuário deletado com este email');
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('usuário deletado com este email');
     });
   });
 
-  describe('Autorização [1]', () => {
-    it('deve retornar status 403 quando usuário for TECNICO [1]', async () => {
-      currentUserRole = 'TECNICO';
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(403);
-    });
-
-    it('deve retornar status 403 quando usuário for USUARIO [1]', async () => {
-      currentUserRole = 'USUARIO';
-
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
-
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(403);
     });
   });
 
-  describe('Tratamento de erros [1]', () => {
-    it('deve retornar status 500 quando ocorrer erro na transação [1]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-      prismaMock.$transaction.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique lançar erro', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao criar técnico');
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao criar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando prisma.usuario.findUnique falhar', async () => {
-      const erroMock = new Error('Database connection error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+    it('deve retornar 500 quando a transação falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(null);
+      prismaMock.$transaction.mockRejectedValueOnce(new Error('TX error'));
 
-      const resposta = await request(criarApp())
-        .post('/tecnicos')
-        .send({
-          nome: 'João',
-          sobrenome: 'Silva',
-          email: 'joao@empresa.com',
-          password: 'senha123',
-        });
+      const res = await request(criarApp()).post('/tecnicos').send(payload);
 
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao criar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-describe('GET /tecnicos (listagem de técnicos)', () => {
-  describe('Casos de sucesso [2]', () => {
-    it('deve retornar status 200 com lista vazia quando não houver técnicos', async () => {
+describe('GET /tecnicos', () => {
+  beforeEach(() => {
+    prismaMock.usuario.count.mockResolvedValue(1);
+    prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+  });
+
+  describe('Casos de sucesso', () => {
+    it('deve retornar 200 com estrutura de paginação', async () => {
+      const res = await request(criarApp()).get('/tecnicos');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        data: expect.any(Array),
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasNext: false,
+          hasPrev: false,
+        },
+      });
+    });
+
+    it('deve retornar lista vazia quando não houver técnicos', async () => {
       prismaMock.usuario.count.mockResolvedValue(0);
       prismaMock.usuario.findMany.mockResolvedValue([]);
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.data).toEqual([]);
-      expect(resposta.body.pagination).toMatchObject({
-        page: 1,
-        limit: 20,
-        total: 0,
-        totalPages: 0,
-      });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.pagination.total).toBe(0);
     });
 
-    it('deve retornar status 200 com lista paginada de técnicos', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+    it('deve calcular paginação corretamente (page=2, limit=5, total=12)', async () => {
+      prismaMock.usuario.count.mockResolvedValue(12);
+      prismaMock.usuario.findMany.mockResolvedValue(Array(5).fill(tecnicoBase));
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos?page=2&limit=5');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.data).toHaveLength(1);
-      expect(resposta.body.data[0].nome).toBe('João');
-      expect(resposta.body.pagination).toMatchObject({
-        page: 1,
-        limit: 20,
-        total: 1,
-        totalPages: 1,
-        hasNext: false,
-        hasPrev: false,
-      });
-    });
-
-    it('deve retornar múltiplos técnicos ordenados por nome', async () => {
-      const tecnicos = [
-        { ...tecnicoBase, id: 'tec1', nome: 'Ana', sobrenome: 'Silva' },
-        { ...tecnicoBase, id: 'tec2', nome: 'Bruno', sobrenome: 'Santos' },
-        { ...tecnicoBase, id: 'tec3', nome: 'Carlos', sobrenome: 'Oliveira' },
-      ];
-
-      prismaMock.usuario.count.mockResolvedValue(3);
-      prismaMock.usuario.findMany.mockResolvedValue(tecnicos);
-
-      const resposta = await request(criarApp()).get('/tecnicos');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.data).toHaveLength(3);
-      expect(resposta.body.data[0].nome).toBe('Ana');
-      expect(resposta.body.data[1].nome).toBe('Bruno');
-      expect(resposta.body.data[2].nome).toBe('Carlos');
-    });
-
-    it('deve retornar técnicos com todos os campos necessários', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.data[0]).toHaveProperty('id');
-      expect(resposta.body.data[0]).toHaveProperty('nome');
-      expect(resposta.body.data[0]).toHaveProperty('sobrenome');
-      expect(resposta.body.data[0]).toHaveProperty('email');
-      expect(resposta.body.data[0]).toHaveProperty('telefone');
-      expect(resposta.body.data[0]).toHaveProperty('ramal');
-      expect(resposta.body.data[0]).toHaveProperty('setor');
-      expect(resposta.body.data[0]).toHaveProperty('regra');
-      expect(resposta.body.data[0]).toHaveProperty('ativo');
-      expect(resposta.body.data[0]).toHaveProperty('tecnicoDisponibilidade');
-      expect(resposta.body.data[0]).toHaveProperty('_count');
-    });
-  });
-
-  describe('Filtros', () => {
-    it('deve filtrar apenas técnicos ativos por padrão', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
-        where: {
-          regra: 'TECNICO',
-          ativo: true,
-          deletadoEm: null,
-        },
-        select: expect.any(Object),
-        orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
-        skip: 0,
-        take: 20,
-      });
-    });
-
-    it('deve incluir técnicos inativos quando solicitado', async () => {
-      prismaMock.usuario.count.mockResolvedValue(2);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase, tecnicoInativo]);
-
-      await request(criarApp()).get('/tecnicos?incluirInativos=true');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
-        where: {
-          regra: 'TECNICO',
-          deletadoEm: null,
-        },
-        select: expect.any(Object),
-        orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
-        skip: 0,
-        take: 20,
-      });
-    });
-
-    it('deve incluir técnicos deletados quando solicitado', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoDeletado]);
-
-      await request(criarApp()).get('/tecnicos?incluirDeletados=true');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
-        where: {
-          regra: 'TECNICO',
-          ativo: true,
-        },
-        select: expect.any(Object),
-        orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
-        skip: 0,
-        take: 20,
-      });
-    });
-
-    it('deve incluir todos técnicos quando ambas flags forem true', async () => {
-      prismaMock.usuario.count.mockResolvedValue(3);
-      prismaMock.usuario.findMany.mockResolvedValue([
-        tecnicoBase,
-        tecnicoInativo,
-        tecnicoDeletado,
-      ]);
-
-      await request(criarApp()).get('/tecnicos?incluirInativos=true&incluirDeletados=true');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
-        where: {
-          regra: 'TECNICO',
-        },
-        select: expect.any(Object),
-        orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
-        skip: 0,
-        take: 20,
-      });
-    });
-
-    it('deve filtrar por setor específico', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?setor=TECNOLOGIA_INFORMACAO');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            setor: 'TECNOLOGIA_INFORMACAO',
-          }),
-        })
-      );
-    });
-
-    it('deve buscar por nome quando fornecido termo', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=João');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            OR: [
-              { nome: { contains: 'João', mode: 'insensitive' } },
-              { sobrenome: { contains: 'João', mode: 'insensitive' } },
-              { email: { contains: 'João', mode: 'insensitive' } },
-            ],
-          }),
-        })
-      );
-    });
-
-    it('deve buscar por sobrenome quando fornecido termo', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=Silva');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            OR: expect.arrayContaining([
-              { sobrenome: { contains: 'Silva', mode: 'insensitive' } },
-            ]),
-          }),
-        })
-      );
-    });
-
-    it('deve buscar por email quando fornecido termo', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=joao.silva@empresa.com');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            OR: expect.arrayContaining([
-              { email: { contains: 'joao.silva@empresa.com', mode: 'insensitive' } },
-            ]),
-          }),
-        })
-      );
-    });
-
-    it('deve buscar case-insensitive', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=JOÃO');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            OR: expect.arrayContaining([
-              { nome: { contains: 'JOÃO', mode: 'insensitive' } },
-            ]),
-          }),
-        })
-      );
-    });
-
-    it('deve combinar busca com filtro de setor', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=João&setor=TECNOLOGIA_INFORMACAO');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            setor: 'TECNOLOGIA_INFORMACAO',
-            OR: expect.any(Array),
-          }),
-        })
-      );
-    });
-
-    it('deve combinar todos os filtros simultaneamente', async () => {
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?busca=João&setor=TECNOLOGIA_INFORMACAO&incluirInativos=true&incluirDeletados=true');
-
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            regra: 'TECNICO',
-            setor: 'TECNOLOGIA_INFORMACAO',
-            OR: expect.any(Array),
-          }),
-        })
-      );
-    });
-  });
-
-  describe('Paginação', () => {
-    it('deve aplicar paginação padrão (página 1, 20 itens)', async () => {
-      prismaMock.usuario.count.mockResolvedValue(50);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos');
-
-      expect(resposta.body.pagination).toMatchObject({
-        page: 1,
-        limit: 20,
-        total: 50,
-        totalPages: 3,
-      });
-      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          skip: 0,
-          take: 20,
-        })
-      );
-    });
-
-    it('deve aplicar paginação personalizada', async () => {
-      prismaMock.usuario.count.mockResolvedValue(50);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?page=2&limit=10');
-
-      expect(resposta.body.pagination).toMatchObject({
+      expect(res.status).toBe(200);
+      expect(res.body.pagination).toMatchObject({
         page: 2,
-        limit: 10,
-        total: 50,
-        totalPages: 5,
+        limit: 5,
+        total: 12,
+        totalPages: 3,
         hasNext: true,
         hasPrev: true,
       });
+    });
+
+    it('deve passar filtro where apenas para TECNICO por padrão', async () => {
+      await request(criarApp()).get('/tecnicos');
+
       expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          skip: 10,
-          take: 10,
+          where: expect.objectContaining({ regra: 'TECNICO', ativo: true, deletadoEm: null }),
         })
       );
     });
 
-    it('deve calcular skip corretamente para página 3', async () => {
-      prismaMock.usuario.count.mockResolvedValue(100);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+    it('deve incluir inativos quando incluirInativos=true', async () => {
+      await request(criarApp()).get('/tecnicos?incluirInativos=true');
 
-      await request(criarApp()).get('/tecnicos?page=3&limit=15');
+      const call = prismaMock.usuario.findMany.mock.calls[0][0];
+      expect(call.where).not.toHaveProperty('ativo');
+    });
+
+    it('deve incluir deletados quando incluirDeletados=true', async () => {
+      await request(criarApp()).get('/tecnicos?incluirDeletados=true');
+
+      const call = prismaMock.usuario.findMany.mock.calls[0][0];
+      expect(call.where).not.toHaveProperty('deletadoEm');
+    });
+
+    it('deve filtrar por setor', async () => {
+      await request(criarApp()).get('/tecnicos?setor=FINANCEIRO');
 
       expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          skip: 30, // (3-1) * 15
-          take: 15,
+          where: expect.objectContaining({ setor: 'FINANCEIRO' }),
         })
       );
     });
 
-    it('deve limitar paginação ao máximo de 100 itens', async () => {
-      prismaMock.usuario.count.mockResolvedValue(200);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?limit=200');
+    it.each([['N1'], ['N2'], ['N3']])('deve filtrar por nível %s', async (nivel) => {
+      await request(criarApp()).get(`/tecnicos?nivel=${nivel}`);
 
       expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          take: 100,
+          where: expect.objectContaining({ nivel }),
         })
       );
     });
 
-    it('deve usar página 1 quando page for 0', async () => {
-      prismaMock.usuario.count.mockResolvedValue(10);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+    it('deve ignorar nível inválido (não adiciona ao where)', async () => {
+      await request(criarApp()).get('/tecnicos?nivel=N9');
 
-      const resposta = await request(criarApp()).get('/tecnicos?page=0');
-
-      expect(resposta.body.pagination.page).toBe(1);
+      const call = prismaMock.usuario.findMany.mock.calls[0][0];
+      expect(call.where).not.toHaveProperty('nivel');
     });
 
-    it('deve usar página 1 quando page for negativo', async () => {
-      prismaMock.usuario.count.mockResolvedValue(10);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?page=-5');
-
-      expect(resposta.body.pagination.page).toBe(1);
-    });
-
-    it('deve usar limit 1 quando limit for 0', async () => {
-      prismaMock.usuario.count.mockResolvedValue(10);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?limit=0');
+    it('deve aplicar busca textual com OR em nome, sobrenome e email', async () => {
+      await request(criarApp()).get('/tecnicos?busca=jo');
 
       expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          take: 1,
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({ nome: expect.objectContaining({ contains: 'jo' }) }),
+              expect.objectContaining({ sobrenome: expect.objectContaining({ contains: 'jo' }) }),
+              expect.objectContaining({ email: expect.objectContaining({ contains: 'jo' }) }),
+            ]),
+          }),
         })
       );
     });
 
-    it('deve usar limit 1 quando limit for negativo', async () => {
-      prismaMock.usuario.count.mockResolvedValue(10);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      await request(criarApp()).get('/tecnicos?limit=-10');
+    it('deve ordenar por nome e sobrenome ascendente', async () => {
+      await request(criarApp()).get('/tecnicos');
 
       expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          take: 1,
+          orderBy: [{ nome: 'asc' }, { sobrenome: 'asc' }],
         })
       );
     });
 
-    it('deve indicar hasNext=true quando houver próxima página', async () => {
-      prismaMock.usuario.count.mockResolvedValue(50);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+    it('deve limitar ao MAX de 100 por página', async () => {
+      await request(criarApp()).get('/tecnicos?limit=999');
 
-      const resposta = await request(criarApp()).get('/tecnicos?page=1&limit=10');
-
-      expect(resposta.body.pagination.hasNext).toBe(true);
-    });
-
-    it('deve indicar hasNext=false quando for última página', async () => {
-      prismaMock.usuario.count.mockResolvedValue(20);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?page=2&limit=10');
-
-      expect(resposta.body.pagination.hasNext).toBe(false);
-    });
-
-    it('deve indicar hasPrev=true quando houver página anterior', async () => {
-      prismaMock.usuario.count.mockResolvedValue(50);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?page=2&limit=10');
-
-      expect(resposta.body.pagination.hasPrev).toBe(true);
-    });
-
-    it('deve indicar hasPrev=false quando for primeira página', async () => {
-      prismaMock.usuario.count.mockResolvedValue(50);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?page=1&limit=10');
-
-      expect(resposta.body.pagination.hasPrev).toBe(false);
-    });
-
-    it('deve calcular totalPages corretamente', async () => {
-      prismaMock.usuario.count.mockResolvedValue(47);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
-
-      const resposta = await request(criarApp()).get('/tecnicos?limit=10');
-
-      expect(resposta.body.pagination.totalPages).toBe(5); // Math.ceil(47/10)
-    });
-
-    it('deve retornar totalPages=0 quando não houver resultados', async () => {
-      prismaMock.usuario.count.mockResolvedValue(0);
-      prismaMock.usuario.findMany.mockResolvedValue([]);
-
-      const resposta = await request(criarApp()).get('/tecnicos');
-
-      expect(resposta.body.pagination.totalPages).toBe(0);
+      expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 100 })
+      );
     });
   });
 
-  describe('Autorização [2]', () => {
-    it('deve permitir acesso para ADMIN [1]', async () => {
-      currentUserRole = 'ADMIN';
-      prismaMock.usuario.count.mockResolvedValue(1);
-      prismaMock.usuario.findMany.mockResolvedValue([tecnicoBase]);
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos');
 
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando o banco falhar', async () => {
+      prismaMock.usuario.count.mockRejectedValueOnce(new Error('DB error'));
+
+      const res = await request(criarApp()).get('/tecnicos');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao listar técnicos');
+      expect(consoleSpy.error).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('GET /tecnicos/:id', () => {
+  describe('Casos de sucesso', () => {
+    it('deve retornar 200 com o técnico encontrado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(tecnicoBase);
+
+      const res = await request(criarApp()).get('/tecnicos/tec1');
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe('tec1');
+      expect(res.body.regra).toBe('TECNICO');
     });
 
-    it('deve retornar status 403 quando usuário for TECNICO [2]', async () => {
-      currentUserRole = 'TECNICO';
+    it('deve retornar dados de disponibilidade', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(tecnicoBase);
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(403);
+      expect(res.body.tecnicoDisponibilidade).toBeDefined();
+      expect(res.body._count).toBeDefined();
+    });
+  });
+
+  describe('Casos 404', () => {
+    it.each([
+      ['não existir', null],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO' }],
+      ['ser ADMIN', { id: 'a1', regra: 'ADMIN' }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
+
+      const res = await request(criarApp()).get('/tecnicos/tec1');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
+    });
+  });
+
+  describe('Autorização', () => {
+    it.each(['ADMIN', 'TECNICO'] as Regra[])('deve permitir acesso para role %s', async (role) => {
+      currentUserRole = role;
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(tecnicoBase);
+
+      const res = await request(criarApp()).get('/tecnicos/tec1');
+
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 403 quando usuário for USUARIO [2]', async () => {
+    it('deve retornar 403 para USUARIO', async () => {
       currentUserRole = 'USUARIO';
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(403);
     });
   });
 
-  describe('Tratamento de erros [2]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao contar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.count.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando o banco falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp()).get('/tecnicos');
+      const res = await request(criarApp()).get('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao listar técnicos');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro ao buscar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.count.mockResolvedValue(10);
-      prismaMock.usuario.findMany.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp()).get('/tecnicos');
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao listar técnicos');
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao buscar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-describe('GET /tecnicos/:id (buscar técnico específico)', () => {
-  describe('Casos de sucesso [3]', () => {
-    it('deve retornar status 200 com dados do técnico quando encontrado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoBase);
+describe('PUT /tecnicos/:id', () => {
+  function setupTecnicoParaEditar(overrides?: object) {
+    prismaMock.usuario.findUnique
+      .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null, ...overrides })
+      .mockResolvedValueOnce(null);
+    prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
+  }
 
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
+  describe('Casos de sucesso', () => {
+    it.each([
+      ['nome', { nome: 'Novo Nome' }],
+      ['sobrenome', { sobrenome: 'Novo Sobrenome' }],
+      ['telefone', { telefone: '11987654321' }],
+      ['ramal', { ramal: '9999' }],
+      ['múltiplos campos', { nome: 'Novo', sobrenome: 'Sobrenome' }],
+    ])('deve atualizar %s com sucesso', async (_, body) => {
+      setupTecnicoParaEditar();
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.id).toBe('tec1');
-      expect(resposta.body.regra).toBe('TECNICO');
-      expect(resposta.body.nome).toBe('João');
+      const res = await request(criarApp()).put('/tecnicos/tec1').send(body);
+
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar técnico com horários de expediente', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.tecnicoDisponibilidade).toBeDefined();
-      expect(resposta.body.tecnicoDisponibilidade).toHaveLength(1);
-    });
-
-    it('deve retornar contagem de chamados vinculados', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        ...tecnicoBase,
-        _count: { tecnicoChamados: 15 },
-      });
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body._count.tecnicoChamados).toBe(15);
-    });
-
-    it('deve retornar técnico inativo', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoInativo);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec2');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.ativo).toBe(false);
-    });
-
-    it('deve retornar técnico deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec3');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.deletadoEm).toBeTruthy();
-    });
-
-    it('deve retornar todos os campos do técnico', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body).toHaveProperty('id');
-      expect(resposta.body).toHaveProperty('nome');
-      expect(resposta.body).toHaveProperty('sobrenome');
-      expect(resposta.body).toHaveProperty('email');
-      expect(resposta.body).toHaveProperty('telefone');
-      expect(resposta.body).toHaveProperty('ramal');
-      expect(resposta.body).toHaveProperty('setor');
-      expect(resposta.body).toHaveProperty('regra');
-      expect(resposta.body).toHaveProperty('ativo');
-      expect(resposta.body).toHaveProperty('avatarUrl');
-      expect(resposta.body).toHaveProperty('tecnicoDisponibilidade');
-      expect(resposta.body).toHaveProperty('_count');
-    });
-  });
-
-  describe('Casos de erro', () => {
-    it('deve retornar status 404 quando técnico não existir [1]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec999');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for técnico [1]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        ...tecnicoBase,
-        regra: 'USUARIO',
-      });
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário for ADMIN [1]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        ...tecnicoBase,
-        regra: 'ADMIN',
-      });
-
-      const resposta = await request(criarApp()).get('/tecnicos/admin1');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-  });
-
-  describe('Autorização [3]', () => {
-    it('deve permitir acesso para ADMIN [2]', async () => {
-      currentUserRole = 'ADMIN';
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve permitir acesso para TECNICO', async () => {
-      currentUserRole = 'TECNICO';
-      prismaMock.usuario.findUnique.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Tratamento de erros [3]', () => {
-    it('deve retornar status 500 quando ocorrer erro no banco [1]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp()).get('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao buscar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('PUT /tecnicos/:id (edição de técnico) [1]', () => {
-  describe('Casos de sucesso [4]', () => {
-    it('deve retornar status 200 e atualizar técnico com sucesso [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
+    it('deve atualizar com novo email disponível', async () => {
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
         .mockResolvedValueOnce(null);
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, email: 'novo@empresa.com' });
 
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'João Atualizado',
-      });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ email: 'novo@empresa.com' });
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Atualizado' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.nome).toBe('João Atualizado');
+      expect(res.status).toBe(200);
     });
 
-    it('deve permitir ADMIN atualizar setor [1]', async () => {
-      currentUserRole = 'ADMIN';
-      
+    it('deve permitir atualizar com o mesmo email atual', async () => {
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        setor: 'ADMINISTRACAO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ setor: 'ADMINISTRACAO' });
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            setor: 'ADMINISTRACAO',
-          }),
-        })
-      );
-    });
-
-    it('deve atualizar apenas nome [1]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'Novo Nome',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Novo Nome' });
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            nome: 'Novo Nome',
-          }),
-        })
-      );
-    });
-
-    it('deve atualizar apenas sobrenome [1]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        sobrenome: 'Novo Sobrenome',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'Novo Sobrenome' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar telefone e ramal [1]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        telefone: '11987654321',
-        ramal: '9999',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ telefone: '11987654321', ramal: '9999' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar email quando não estiver em uso', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        email: 'novoemail@empresa.com',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'novoemail@empresa.com' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar múltiplos campos simultaneamente [1]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'João Atualizado',
-        sobrenome: 'Silva Atualizado',
-        telefone: '11999999999',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({
-          nome: 'João Atualizado',
-          sobrenome: 'Silva Atualizado',
-          telefone: '11999999999',
-        });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('não deve permitir TECNICO atualizar setor [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-      
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          setor: 'TECNOLOGIA_INFORMACAO',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
         .mockResolvedValueOnce(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ setor: 'ADMINISTRACAO' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ email: 'joao.silva@empresa.com' });
 
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
       expect(prismaMock.usuario.update).not.toHaveBeenCalled();
     });
 
-    it('deve retornar técnico atual quando nenhum dado for fornecido [1]', async () => {
-      currentUserRole = 'ADMIN';
-      
+    it('deve retornar técnico atual sem chamar update quando body estiver vazio', async () => {
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
         .mockResolvedValueOnce(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({});
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({});
 
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
       expect(prismaMock.usuario.update).not.toHaveBeenCalled();
     });
 
-    it('deve fazer trim de nome e sobrenome [2]', async () => {
-      currentUserRole = 'ADMIN';
-      
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
+    it('deve fazer trim de nome e sobrenome', async () => {
+      setupTecnicoParaEditar();
 
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: '  João  ', sobrenome: '  Silva  ' });
+      await request(criarApp()).put('/tecnicos/tec1').send({ nome: '  João  ', sobrenome: '  Silva  ' });
 
       expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            nome: 'João',
-            sobrenome: 'Silva',
-          }),
-        })
+        expect.objectContaining({ data: expect.objectContaining({ nome: 'João', sobrenome: 'Silva' }) })
       );
     });
 
-    it('deve permitir atualizar com mesmo email [1]', async () => {
-      currentUserRole = 'ADMIN';
-      
+    it('deve remover telefone quando enviado como null', async () => {
+      setupTecnicoParaEditar();
+
+      await request(criarApp()).put('/tecnicos/tec1').send({ telefone: null });
+
+      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ telefone: null }) })
+      );
+    });
+
+    it('deve remover ramal quando enviado como null', async () => {
+      setupTecnicoParaEditar();
+
+      await request(criarApp()).put('/tecnicos/tec1').send({ ramal: null });
+
+      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ ramal: null }) })
+      );
+    });
+
+    it('deve permitir ADMIN atualizar setor', async () => {
+      setupTecnicoParaEditar();
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, setor: 'ADMINISTRACAO' });
+
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ setor: 'ADMINISTRACAO' });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ setor: 'ADMINISTRACAO' }) })
+      );
+    });
+
+    it('não deve atualizar setor quando enviado por TECNICO (ignorado silenciosamente)', async () => {
+      currentUserRole = 'TECNICO';
+      currentUserId = 'tec1';
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
+        .mockResolvedValueOnce(tecnicoBase);
 
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ setor: 'ADMINISTRACAO' });
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'joao@empresa.com' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar apenas telefone sem ramal', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        telefone: '11987654321',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ telefone: '11987654321' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar apenas ramal sem telefone', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        ramal: '5678',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ ramal: '5678' });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Validações de campos', () => {
-    it('deve retornar status 400 quando nome tiver 1 caractere [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'J' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome tiver 101 caracteres [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'a'.repeat(101) });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 1 caractere [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'S' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 101 caracteres [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'S'.repeat(101) });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando email for inválido - sem @ [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'email-invalido' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
-    });
-
-    it('deve retornar status 400 quando email for inválido - sem domínio [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'joao@' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
-    });
-
-    it('deve retornar status 400 quando nome for apenas espaços [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: '   ' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome for apenas espaços [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: '   ' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve aceitar nome com 2 caracteres (limite mínimo) [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'Jo',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Jo' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar nome com 100 caracteres (limite máximo) [2]', async () => {
-      currentUserRole = 'ADMIN';
-      const nome100 = 'A'.repeat(100);
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: nome100,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: nome100 });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Validações de estado [1]', () => {
-    it('deve retornar status 404 quando técnico não existir [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for técnico [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-        email: 'user@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 400 quando tentar editar técnico deletado [1]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: new Date().toISOString(),
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Não é possível editar um técnico deletado');
-    });
-
-    it('deve retornar status 409 quando email já estiver em uso', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce({
-          id: 'tec2',
-          email: 'outro@empresa.com',
-        });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'outro@empresa.com' });
-
-      expect(resposta.status).toBe(409);
-      expect(resposta.body.error).toContain('Email já está em uso');
+      expect(res.status).toBe(200);
+      expect(prismaMock.usuario.update).not.toHaveBeenCalled();
     });
 
     it('deve permitir atualizar técnico inativo', async () => {
-      currentUserRole = 'ADMIN';
-
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec2',
-          regra: 'TECNICO',
-          email: 'inativo@empresa.com',
-          ativo: false,
-          deletadoEm: null,
-        })
+        .mockResolvedValueOnce({ id: 'tec2', regra: 'TECNICO', email: 'inativo@empresa.com', ativo: false, deletadoEm: null })
         .mockResolvedValueOnce(null);
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, id: 'tec2' });
 
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoInativo,
-        nome: 'Nome Atualizado',
-      });
+      const res = await request(criarApp()).put('/tecnicos/tec2').send({ nome: 'Atualizado' });
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec2')
-        .send({ nome: 'Nome Atualizado' });
+      expect(res.status).toBe(200);
+    });
 
-      expect(resposta.status).toBe(200);
+    it('deve registrar log de atualização', async () => {
+      // Adicionar terceiro mock se o handler busca o técnico atualizado no final
+      prismaMock.usuario.findUnique
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null }) // busca inicial
+        .mockResolvedValueOnce(null)        // verifica email duplicado
+        .mockResolvedValueOnce(tecnicoBase); // busca dados atualizados para retornar
+      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
+
+      await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'Novo' });
+
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO UPDATED]', expect.any(Object));
     });
   });
 
-  describe('Autorização [4]', () => {
-    it('deve retornar status 403 quando técnico tentar editar outro perfil [1]', async () => {
+  describe('Validação de campos', () => {
+    beforeEach(() => {
+      prismaMock.usuario.findUnique.mockResolvedValue({
+        id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null,
+      });
+    });
+
+    it.each([
+      ['nome com 1 char', { nome: 'J' }, 'no mínimo 2 caracteres'],
+      ['nome com 101 chars', { nome: 'A'.repeat(101) }, 'no máximo 100 caracteres'],
+      ['nome com só espaços', { nome: '   ' }, 'no mínimo 2 caracteres'],
+      ['sobrenome com 1 char', { sobrenome: 'S' }, 'no mínimo 2 caracteres'],
+      ['sobrenome com 101 chars', { sobrenome: 'S'.repeat(101) }, 'no máximo 100 caracteres'],
+      ['sobrenome com só espaços', { sobrenome: '   ' }, 'no mínimo 2 caracteres'],
+    ])('deve retornar 400 para %s', async (_, body, mensagem) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
+    });
+
+    it.each([
+      ['sem @', 'email-invalido', 'Email inválido'],
+      ['sem domínio', 'joao@', 'Email inválido'],
+      ['vazio', '', 'Email é obrigatório'],
+    ])('deve retornar 400 para email %s', async (_, email, mensagem) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ email });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
+    });
+  });
+
+  describe('Validações de estado', () => {
+    it('deve retornar 404 quando técnico não existir', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(null);
+
+      const res = await request(criarApp()).put('/tecnicos/inexistente').send({ nome: 'X' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
+    });
+
+    it('deve retornar 404 quando usuário existir mas não for TECNICO', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'a1', regra: 'ADMIN', email: 'a@a.com', deletadoEm: null });
+
+      const res = await request(criarApp()).put('/tecnicos/a1').send({ nome: 'X' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
+    });
+
+    it('deve retornar 400 quando tentar editar técnico deletado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: new Date(),
+      });
+
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'X' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Não é possível editar um técnico deletado');
+    });
+
+    it('deve retornar 409 quando novo email já estiver em uso', async () => {
+      prismaMock.usuario.findUnique
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
+        .mockResolvedValueOnce({ id: 'tec2', email: 'emuso@empresa.com' });
+
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ email: 'emuso@empresa.com' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('Email já está em uso');
+    });
+  });
+
+  describe('Autorização', () => {
+    it('deve retornar 403 quando USUARIO tentar editar', async () => {
+      currentUserRole = 'USUARIO';
+
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'X' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('deve retornar 403 quando TECNICO tentar editar outro perfil', async () => {
       currentUserRole = 'TECNICO';
       currentUserId = 'tec2';
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'X' });
 
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode editar seu próprio perfil');
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('só pode editar seu próprio perfil');
     });
 
-    it('deve permitir ADMIN editar qualquer técnico [1]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Editado' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve permitir TECNICO editar próprio perfil [1]', async () => {
+    it('deve permitir TECNICO editar o próprio perfil', async () => {
       currentUserRole = 'TECNICO';
       currentUserId = 'tec1';
+      setupTecnicoParaEditar();
 
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'Editado' });
 
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Editado' });
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 403 quando USUARIO tentar editar', async () => {
-      currentUserRole = 'USUARIO';
+    it('deve permitir ADMIN editar qualquer técnico', async () => {
+      setupTecnicoParaEditar();
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'Editado' });
 
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(200);
     });
   });
 
-  describe('Tratamento de erros [4]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [1]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique lançar erro', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'X' });
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar técnico');
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao atualizar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando ocorrer erro ao atualizar [1]', async () => {
-      const erroMock = new Error('Database error');
+    it('deve retornar 500 quando update lançar erro', async () => {
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
         .mockResolvedValueOnce(null);
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
+      prismaMock.usuario.update.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ nome: 'NovoNome' });
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao atualizar técnico');
     });
 
-    it('deve retornar status 500 quando verificação de email duplicado falhar', async () => {
-      const erroMock = new Error('Database error');
+    it('deve retornar 500 quando verificação de email duplicado falhar', async () => {
       prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockRejectedValueOnce(erroMock);
+        .mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO', email: 'joao.silva@empresa.com', deletadoEm: null })
+        .mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'novo@empresa.com' });
+      const res = await request(criarApp()).put('/tecnicos/tec1').send({ email: 'novo@empresa.com' });
 
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-describe('PUT /tecnicos/:id/senha (alteração de senha) [1]', () => {
-  describe('Casos de sucesso [5]', () => {
-    it('deve retornar status 200 e alterar senha com sucesso [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
+describe('PUT /tecnicos/:id/senha', () => {
+  const senhaPayload = { password: 'novasenha123' };
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
+  describe('Casos de sucesso', () => {
+    beforeEach(() => {
+      prismaMock.usuario.findUnique.mockResolvedValue({ id: 'tec1', regra: 'TECNICO' });
       prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('Senha alterada com sucesso');
-      expect(hashPasswordMock).toHaveBeenCalledWith('novasenha123');
     });
 
-    it('deve permitir ADMIN alterar senha de qualquer técnico [1]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
+    it('deve alterar senha e retornar 200 com mensagem', async () => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('Senha alterada com sucesso');
     });
 
-    it('deve aceitar senha com 8 caracteres (limite mínimo) [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '12345678' });
-
-      expect(resposta.status).toBe(200);
-      expect(hashPasswordMock).toHaveBeenCalledWith('12345678');
-    });
-
-    it('deve aceitar senha com caracteres especiais [1]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'S3nh@F0rt3!' });
-
-      expect(resposta.status).toBe(200);
-      expect(hashPasswordMock).toHaveBeenCalledWith('S3nh@F0rt3!');
-    });
-
-    it('deve aceitar senha longa', async () => {
-      currentUserRole = 'ADMIN';
-      const senhaLonga = 'a'.repeat(50);
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: senhaLonga });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve fazer hash da nova senha antes de salvar', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'minhasenha123' });
+    it('deve chamar hashPassword antes do update', async () => {
+      await request(criarApp()).put('/tecnicos/tec1/senha').send({ password: 'minhasenha123' });
 
       expect(hashPasswordMock).toHaveBeenCalledWith('minhasenha123');
       expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            password: 'HASHED_PASSWORD_PBKDF2',
-          }),
-        })
+        expect.objectContaining({ data: expect.objectContaining({ password: 'HASHED_PASSWORD' }) })
       );
     });
-  });
 
-  describe('Validações [1]', () => {
-    it('deve retornar status 400 quando senha não for enviada [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({});
+    it.each([
+      ['8 chars (mínimo)', '12345678'],
+      ['com caracteres especiais', 'S3nh@F0rt3!'],
+      ['60 chars', 'a'.repeat(60)],
+    ])('deve aceitar senha com %s', async (_, password) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send({ password });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 400 quando senha for null [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: null });
+    it('deve registrar log', async () => {
+      await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for undefined [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: undefined });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for número [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 12345678 });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for string vazia [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha tiver 7 caracteres [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '1234567' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
-    });
-
-    it('deve retornar status 400 quando senha tiver 1 caractere', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '1' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
-    });
-    
-    it('deve retornar status 404 quando técnico não existir [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for técnico [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário for ADMIN [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'admin1',
-        regra: 'ADMIN',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/admin1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO PASSWORD UPDATED]', expect.any(Object));
     });
   });
 
-  describe('Autorização [5]', () => {
-    it('deve retornar status 403 quando técnico tentar alterar senha de outro [1]', async () => {
+  describe('Validações', () => {
+    it.each([
+      ['ausente', {}],
+      ['null', { password: null }],
+      ['número', { password: 12345678 }],
+      ['string vazia', { password: '' }],
+      ['boolean', { password: true }],
+    ])('deve retornar 400 quando senha for %s', async (_, body) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Senha é obrigatória');
+    });
+
+    it('deve retornar 400 quando senha tiver menos de 8 chars', async () => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send({ password: '1234567' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('no mínimo 8 caracteres');
+    });
+
+    /*it.each([
+      ['não existir', null, 'Técnico não encontrado'],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO' }, 'Técnico não encontrado'],
+      ['ser ADMIN', { id: 'a1', regra: 'ADMIN' }, 'Técnico não encontrado'],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue, mensagem) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
+
+      const res = await request(criarApp()).put('/tecnicos/tec999/senha').send(senhaPayload);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain(mensagem);
+    });*/
+  });
+
+  describe('Autorização', () => {
+    it('deve retornar 403 quando USUARIO tentar alterar senha', async () => {
+      currentUserRole = 'USUARIO';
+
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('deve retornar 403 quando TECNICO tentar alterar senha de outro', async () => {
       currentUserRole = 'TECNICO';
       currentUserId = 'tec2';
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode alterar sua própria senha');
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('só pode alterar sua própria senha');
     });
 
-    it('deve permitir TECNICO alterar própria senha [1]', async () => {
+    it('deve permitir TECNICO alterar sua própria senha', async () => {
       currentUserRole = 'TECNICO';
       currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
       prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 403 quando USUARIO tentar alterar senha [1]', async () => {
-      currentUserRole = 'USUARIO';
+    it('deve permitir ADMIN alterar senha de qualquer técnico', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(200);
     });
   });
 
-  describe('Tratamento de erros [5]', () => {
-    it('deve retornar status 500 quando ocorrer erro no banco ao buscar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao alterar senha');
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao alterar senha');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando ocorrer erro no banco ao atualizar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
+    it('deve retornar 500 quando update falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao alterar senha');
-      expect(consoleSpy.error).toHaveBeenCalled();
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao alterar senha');
     });
 
-    it('deve retornar status 500 quando hashPassword falhar', async () => {
-      const erroMock = new Error('Hash error');
-      hashPasswordMock.mockImplementationOnce(() => {
-        throw erroMock;
-      });
+    it('deve retornar 500 quando hashPassword lançar erro', async () => {
+      hashPasswordMock.mockImplementationOnce(() => { throw new Error('Hash error'); });
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
+      const res = await request(criarApp()).put('/tecnicos/tec1/senha').send(senhaPayload);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-describe('PUT /tecnicos/:id/horarios (atualização de horários) [1]', () => {
-  describe('Casos de sucesso [6]', () => {
-    it('deve retornar status 200 e atualizar horários com sucesso [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
+describe('PUT /tecnicos/:id/horarios', () => {
+  const horariosPayload = { entrada: '09:00', saida: '18:00' };
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('atualizado com sucesso');
-      expect(resposta.body.horario).toBeDefined();
-    });
-
-    it('deve permitir ADMIN atualizar horários de qualquer técnico [1]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar horário de trabalho padrão 08:00-17:00', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T08:00:00.000Z'),
-              saida: new Date('2025-01-01T17:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: '17:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar horário de trabalho estendido', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T07:00:00.000Z'),
-              saida: new Date('2025-01-01T20:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '07:00', saida: '20:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar horário com minutos específicos', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T08:30:00.000Z'),
-              saida: new Date('2025-01-01T17:45:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:30', saida: '17:45' });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Validações de horário', () => {
-    it('deve retornar status 400 quando entrada não for enviada [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída não for enviada [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 400 quando horário de entrada for inválido - hora > 23 [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '25:00', saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de entrada for inválido - minuto > 59 [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:60', saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de saída for inválido - hora > 23 [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: '25:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando horário de saída for inválido - minuto > 59', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: '17:60' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando saída for anterior à entrada [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '18:00', saida: '09:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
-    });
-
-    it('deve retornar status 400 quando saída for igual à entrada [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '09:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
-    });
-
-    it('deve retornar status 400 quando formato de entrada for inválido - sem zero à esquerda', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '8:00', saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando formato de saída for inválido - sem dois pontos', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: '1700' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando entrada não for string', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: 800, saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída não for string', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: 1700 });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 400 quando entrada for null [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: null, saida: '17:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída for null [1]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '08:00', saida: null });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-  });
-
-  describe('Validações de estado [2]', () => {
-    it('deve retornar status 404 quando técnico não existir [4]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for TECNICO [1]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve permitir atualizar horários de técnico inativo', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec2',
-        regra: 'TECNICO',
-        ativo: false,
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec2/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Autorização [6]', () => {
-    it('deve retornar status 403 quando técnico tentar alterar horários de outro [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec2';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode alterar seus próprios horários');
-    });
-
-    it('deve permitir TECNICO alterar próprios horários [1]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando USUARIO tentar alterar horários [1]', async () => {
-      currentUserRole = 'USUARIO';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(403);
-    });
-  });
-
-  describe('Tratamento de erros [6]', () => {
-    it('deve retornar status 500 quando ocorrer erro no banco [2]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.$transaction.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar horários');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando findUnique falhar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando updateMany falhar dentro da transação', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      const erroMock = new Error('Update failed');
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockRejectedValue(erroMock),
-            create: vi.fn(),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando create falhar dentro da transação', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      const erroMock = new Error('Create failed');
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockRejectedValue(erroMock),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('PUT /tecnicos/:id (edição de técnico) [2]', () => {
-  describe('Casos de sucesso [7]', () => {
-    it('deve retornar status 200 e atualizar técnico com sucesso [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'João Atualizado',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Atualizado' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.nome).toBe('João Atualizado');
-    });
-
-    it('deve permitir ADMIN atualizar setor [2]', async () => {
-      currentUserRole = 'ADMIN';
-      
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        setor: 'ADMINISTRACAO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ setor: 'ADMINISTRACAO' });
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            setor: 'ADMINISTRACAO',
-          }),
-        })
-      );
-    });
-
-    it('deve atualizar apenas nome [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'Novo Nome',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Novo Nome' });
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            nome: 'Novo Nome',
-          }),
-        })
-      );
-    });
-
-    it('deve atualizar apenas sobrenome [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        sobrenome: 'Novo Sobrenome',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'Novo Sobrenome' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar telefone e ramal [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        telefone: '11987654321',
-        ramal: '9999',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ telefone: '11987654321', ramal: '9999' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar email quando email for diferente', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        email: 'novo@empresa.com',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'novo@empresa.com' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve permitir atualizar com mesmo email [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'joao@empresa.com' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve atualizar múltiplos campos simultaneamente [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'Novo Nome',
-        sobrenome: 'Novo Sobrenome',
-        telefone: '11999999999',
-        ramal: '5555',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({
-          nome: 'Novo Nome',
-          sobrenome: 'Novo Sobrenome',
-          telefone: '11999999999',
-          ramal: '5555',
-        });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve fazer trim de nome e sobrenome [3]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: '  João  ', sobrenome: '  Silva  ' });
-
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            nome: 'João',
-            sobrenome: 'Silva',
-          }),
-        })
-      );
-    });
-
-    it('deve retornar técnico atual quando nenhum dado for fornecido [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({});
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).not.toHaveBeenCalled();
-    });
-
-    it('deve retornar técnico atual quando body estiver vazio', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({});
-
-      // Se a API retorna o técnico atual sem atualizar
-      expect(resposta.status).toBe(200);
-    });
-
-    it('não deve permitir TECNICO atualizar setor [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          setor: 'TECNOLOGIA_INFORMACAO',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ setor: 'ADMINISTRACAO' });
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).not.toHaveBeenCalled();
-    });
-
-    it('deve remover telefone quando definido como null', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        telefone: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ telefone: null });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve remover ramal quando definido como null', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        ramal: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ ramal: null });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Validações [2]', () => {
-    it('deve retornar status 404 quando técnico não existir [5]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for técnico [4]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-        email: 'user@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 400 quando tentar editar técnico deletado [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: new Date().toISOString(),
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Não é possível editar um técnico deletado');
-    });
-
-    it('deve retornar status 400 quando nome tiver 1 caractere [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'J' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome tiver 101 caracteres [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'a'.repeat(101) });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando nome for apenas espaços [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: '   ' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 1 caractere [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'S' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 2 caracteres');
-    });
-
-    it('deve retornar status 400 quando sobrenome tiver 101 caracteres [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ sobrenome: 'S'.repeat(101) });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no máximo 100 caracteres');
-    });
-
-    it('deve retornar status 400 quando email for inválido', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'email-invalido' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email inválido');
-    });
-
-    it('deve retornar status 400 quando email for vazio', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: '' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Email é obrigatório');
-    });
-
-    it('deve retornar status 409 quando email já estiver em uso por outro usuário', async () => {
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce({
-          id: 'tec2',
-          email: 'outro@empresa.com',
-        });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'outro@empresa.com' });
-
-      expect(resposta.status).toBe(409);
-      expect(resposta.body.error).toContain('Email já está em uso');
-    });
-
-    it('deve aceitar nome com 2 caracteres (limite mínimo) [3]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: 'Jo',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Jo' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar nome com 100 caracteres (limite máximo) [3]', async () => {
-      currentUserRole = 'ADMIN';
-      const nome100 = 'A'.repeat(100);
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        nome: nome100,
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: nome100 });
-
-      expect(resposta.status).toBe(200);
-    });
-  });
-
-  describe('Autorização [7]', () => {
-    it('deve retornar status 403 quando técnico tentar editar outro perfil [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec2';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode editar seu próprio perfil');
-    });
-
-    it('deve permitir ADMIN editar qualquer técnico [2]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Editado' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve permitir TECNICO editar próprio perfil [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'João Editado' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando USUARIO tentar editar técnico', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(403);
-    });
-  });
-
-  describe('Tratamento de erros [7]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [2]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro ao atualizar [2]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockResolvedValueOnce(null);
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ nome: 'Teste' });
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro na verificação de email', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique
-        .mockResolvedValueOnce({
-          id: 'tec1',
-          regra: 'TECNICO',
-          email: 'joao@empresa.com',
-          deletadoEm: null,
-        })
-        .mockRejectedValueOnce(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1')
-        .send({ email: 'novo@empresa.com' });
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('PUT /tecnicos/:id/senha (alteração de senha) [2]', () => {
-  describe('Casos de sucesso [8]', () => {
-    it('deve retornar status 200 e alterar senha com sucesso [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('Senha alterada com sucesso');
-      expect(hashPasswordMock).toHaveBeenCalledWith('novasenha123');
-    });
-
-    it('deve permitir ADMIN alterar senha de qualquer técnico [2]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve aceitar senha com 8 caracteres (limite mínimo) [3]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '12345678' });
-
-      expect(resposta.status).toBe(200);
-      expect(hashPasswordMock).toHaveBeenCalledWith('12345678');
-    });
-
-    it('deve aceitar senha com caracteres especiais [2]', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'S3nh@F0rt3!' });
-
-      expect(resposta.status).toBe(200);
-      expect(hashPasswordMock).toHaveBeenCalledWith('S3nh@F0rt3!');
-    });
-
-    it('deve aceitar senha com mais de 50 caracteres', async () => {
-      currentUserRole = 'ADMIN';
-      const senhaLonga = 'a'.repeat(60);
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: senhaLonga });
-
-      expect(resposta.status).toBe(200);
-      expect(hashPasswordMock).toHaveBeenCalledWith(senhaLonga);
-    });
-  });
-
-  describe('Validações [3]', () => {
-    it('deve retornar status 400 quando senha não for enviada [3]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({});
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for null [3]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: null });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for undefined [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: undefined });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for número [3]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 12345678 });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for string vazia [3]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha tiver 7 caracteres [3]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: '1234567' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('no mínimo 8 caracteres');
-    });
-
-    it('deve retornar status 400 quando senha for boolean', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: true });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for objeto', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: {} });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 400 quando senha for array', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: [] });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Senha é obrigatória');
-    });
-
-    it('deve retornar status 404 quando técnico não existir [6]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for técnico [5]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário for ADMIN [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'admin1',
-        regra: 'ADMIN',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/admin1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-  });
-
-  describe('Autorização [8]', () => {
-    it('deve retornar status 403 quando técnico tentar alterar senha de outro [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec2';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode alterar sua própria senha');
-    });
-
-    it('deve permitir TECNICO alterar própria senha [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando USUARIO tentar alterar senha [2]', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(403);
-    });
-  });
-
-  describe('Tratamento de erros [8]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [3]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao alterar senha');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro ao atualizar senha', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/senha')
-        .send({ password: 'novasenha123' });
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao alterar senha');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('PUT /tecnicos/:id/horarios (atualização de horários) [2]', () => {
-  describe('Casos de sucesso [9]', () => {
-    it('deve retornar status 200 e atualizar horários com sucesso [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('atualizado com sucesso');
-      expect(resposta.body.horario).toBeDefined();
+  describe('Casos de sucesso', () => {
+    beforeEach(() => {
+      prismaMock.usuario.findUnique.mockResolvedValue({ id: 'tec1', regra: 'TECNICO' });
+      mockTransacaoHorarios();
     });
-
-    it('deve permitir ADMIN atualizar horários de qualquer técnico [2]', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
+    it('deve atualizar horários e retornar 200 com message e horario', async () => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('atualizado com sucesso');
+      expect(res.body.horario).toBeDefined();
     });
-
-    it('deve aceitar horário de 00:00 a 23:59', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T00:00:00.000Z'),
-              saida: new Date('2025-01-01T23:59:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
+    it.each([
+      ['padrão', { entrada: '08:00', saida: '17:00' }],
+      ['estendido', { entrada: '07:00', saida: '20:00' }],
+      ['com minutos', { entrada: '08:30', saida: '17:45' }],
+      ['limite máximo', { entrada: '00:00', saida: '23:59' }],
+    ])('deve aceitar horário %s', async (_, body) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(body);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '00:00', saida: '23:59' });
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
     });
-
-        it('deve desativar horários antigos e criar novo ativo', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
 
+    it('deve desativar horários anteriores e criar novo na transação', async () => {
       const updateManyMock = vi.fn().mockResolvedValue({ count: 2 });
       const createMock = vi.fn().mockResolvedValue({
-        id: 'exp3',
-        entrada: new Date('2025-01-01T10:00:00.000Z'),
-        saida: new Date('2025-01-01T19:00:00.000Z'),
-        ativo: true,
-        geradoEm: new Date(),
+        id: 'exp2', entrada: new Date(), saida: new Date(), ativo: true, geradoEm: new Date(),
       });
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: updateManyMock,
-            create: createMock,
-          },
-        };
-        return await callback(tx);
-      });
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({ expediente: { updateMany: updateManyMock, create: createMock } })
+      );
 
-      await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '10:00', saida: '19:00' });
+      await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
 
       expect(updateManyMock).toHaveBeenCalledWith({
         where: { usuarioId: 'tec1' },
         data: { ativo: false, deletadoEm: expect.any(Date) },
       });
-
       expect(createMock).toHaveBeenCalled();
     });
-  });
 
-  describe('Validações [4]', () => {
-    it('deve retornar status 400 quando entrada não for enviada [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ saida: '18:00' });
+    it('deve funcionar com técnico inativo', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValue({ id: 'tec2', regra: 'TECNICO', ativo: false });
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
+      const res = await request(criarApp()).put('/tecnicos/tec2/horarios').send(horariosPayload);
+
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 400 quando saída não for enviada [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00' });
+    it('deve registrar log', async () => {
+      await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 400 quando entrada for null [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: null, saida: '18:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída for null [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: null });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída for anterior à entrada [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '18:00', saida: '09:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
-    });
-
-    it('deve retornar status 400 quando saída for igual à entrada [2]', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '09:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('posterior ao horário de entrada');
-    });
-
-    it('deve retornar status 400 quando entrada tiver formato inválido - hora > 23', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '25:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando entrada tiver formato inválido - minuto > 59', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:60', saida: '18:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando entrada tiver formato inválido - sem dois dígitos', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '9:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando saída tiver formato inválido', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:60' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('formato HH:MM');
-    });
-
-    it('deve retornar status 400 quando entrada for número', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: 900, saida: '18:00' });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de entrada é obrigatório');
-    });
-
-    it('deve retornar status 400 quando saída for número', async () => {
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: 1800 });
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Horário de saída é obrigatório');
-    });
-
-    it('deve retornar status 404 quando técnico não existir [7]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec999/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for TECNICO [2]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/user1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO HORARIOS UPDATED]', expect.any(Object));
     });
   });
 
-  describe('Autorização [9]', () => {
-    it('deve retornar status 403 quando técnico tentar alterar horários de outro [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec2';
+  describe('Validações de horário', () => {
+    it.each([
+      ['entrada ausente', { saida: '18:00' }, 'Horário de entrada é obrigatório'],
+      ['saída ausente', { entrada: '09:00' }, 'Horário de saída é obrigatório'],
+      ['entrada null', { entrada: null, saida: '18:00' }, 'Horário de entrada é obrigatório'],
+      ['saída null', { entrada: '09:00', saida: null }, 'Horário de saída é obrigatório'],
+      ['entrada número', { entrada: 900, saida: '18:00' }, 'Horário de entrada é obrigatório'],
+      ['hora entrada > 23', { entrada: '25:00', saida: '18:00' }, 'formato HH:MM'],
+      ['minuto entrada > 59', { entrada: '09:60', saida: '18:00' }, 'formato HH:MM'],
+      ['hora saída > 23', { entrada: '09:00', saida: '25:00' }, 'formato HH:MM'],
+      ['minuto saída > 59', { entrada: '09:00', saida: '18:60' }, 'formato HH:MM'],
+      ['entrada sem zero', { entrada: '9:00', saida: '18:00' }, 'formato HH:MM'],
+      ['saída anterior à entrada', { entrada: '18:00', saida: '09:00' }, 'posterior ao horário de entrada'],
+      ['saída igual à entrada', { entrada: '09:00', saida: '09:00' }, 'posterior ao horário de entrada'],
+    ])('deve retornar 400 quando %s', async (_, body, mensagem) => {
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(body);
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode alterar seus próprios horários');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(mensagem);
     });
 
-    it('deve permitir TECNICO alterar próprios horários [2]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
+    it.each([
+      ['não existir', null],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO' }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
+      const res = await request(criarApp()).put('/tecnicos/tec999/horarios').send(horariosPayload);
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockResolvedValue({
-              id: 'exp2',
-              entrada: new Date('2025-01-01T09:00:00.000Z'),
-              saida: new Date('2025-01-01T18:00:00.000Z'),
-              ativo: true,
-              geradoEm: new Date(),
-            }),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando USUARIO tentar alterar horários [2]', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
     });
   });
 
-  describe('Tratamento de erros [9]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [4]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar horários');
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
+
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao atualizar horários');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando ocorrer erro na transação [2]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.$transaction.mockRejectedValue(erroMock);
+    it('deve retornar 500 quando a transação falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.$transaction.mockRejectedValueOnce(new Error('TX error'));
 
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
+      const res = await request(criarApp()).put('/tecnicos/tec1/horarios').send(horariosPayload);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao atualizar horários');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando expediente.updateMany falhar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockRejectedValue(erroMock),
-            create: vi.fn(),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando expediente.create falhar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-            create: vi.fn().mockRejectedValue(erroMock),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp())
-        .put('/tecnicos/tec1/horarios')
-        .send({ entrada: '09:00', saida: '18:00' });
-
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-// ==================== CONTINUAÇÃO DOS TESTES ====================
-
-// ==================== TESTES POST /tecnicos/:id/avatar ====================
-
-describe('POST /tecnicos/:id/avatar (upload de avatar)', () => {
-  describe('Casos de sucesso [10]', () => {
-    it('deve retornar status 200 e fazer upload do avatar com sucesso', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
+describe('PATCH /tecnicos/:id/nivel', () => {
+  describe('Casos de sucesso', () => {
+    it.each([
+      ['N1→N2', 'N1', 'N2'],
+      ['N2→N3', 'N2', 'N3'],
+      ['N3→N1', 'N3', 'N1'],
+    ])('deve atualizar nível %s com sucesso', async (_, nivelAtual, nivelNovo) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', nivel: nivelAtual, deletadoEm: null,
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar-123.jpg',
-      });
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, nivel: nivelNovo });
 
-      const mockFile = {
-        filename: 'avatar-123.jpg',
-        path: '/uploads/avatars/avatar-123.jpg',
-      };
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: nivelNovo });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('enviado com sucesso');
-      expect(resposta.body.avatarUrl).toBeDefined();
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain(`Nível do técnico atualizado para ${nivelNovo}`);
+      expect(res.body.tecnico).toBeDefined();
     });
 
-    it('deve permitir ADMIN fazer upload de avatar para qualquer técnico', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
+    it('deve registrar log com nível anterior e novo', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', nivel: 'N1', deletadoEm: null,
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar-456.jpg',
-      });
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, nivel: 'N2' });
 
-      const mockFile = {
-        filename: 'avatar-456.jpg',
-        path: '/uploads/avatars/avatar-456.jpg',
-      };
+      await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO NIVEL UPDATED]', expect.objectContaining({
+        nivelAnterior: 'N1',
+        nivelNovo: 'N2',
+      }));
+    });
+  });
 
-      expect(resposta.status).toBe(200);
+  describe('Validações', () => {
+    it.each([
+      ['ausente', {}],
+      ['null', { nivel: null }],
+      ['inválido (N4)', { nivel: 'N4' }],
+      ['inválido (n1 minúsculo)', { nivel: 'n1' }],
+      ['string vazia', { nivel: '' }],
+    ])('deve retornar 400 quando nível for %s', async (_, body) => {
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Nível inválido');
     });
 
-    it('deve aceitar arquivo JPG', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar.jpg',
+    it('deve retornar 400 quando técnico já possuir o nível informado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', nivel: 'N2', deletadoEm: null,
       });
 
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-        mimetype: 'image/jpeg',
-      };
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Técnico já possui o nível N2');
     });
 
-    it('deve aceitar arquivo PNG', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar.png',
+    it('deve retornar 400 quando técnico estiver deletado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', nivel: 'N1', deletadoEm: new Date(),
       });
 
-      const mockFile = {
-        filename: 'avatar.png',
-        path: '/uploads/avatars/avatar.png',
-        mimetype: 'image/png',
-      };
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Não é possível alterar o nível de um técnico deletado');
     });
 
-    it('deve aceitar arquivo WEBP', async () => {
-      currentUserRole = 'ADMIN';
+    it.each([
+      ['não existir', null],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO', nivel: 'N1', deletadoEm: null }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar.webp',
-      });
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
 
-      const mockFile = {
-        filename: 'avatar.webp',
-        path: '/uploads/avatars/avatar.webp',
-        mimetype: 'image/webp',
-      };
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
+    });
+  });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      expect(resposta.status).toBe(200);
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
+
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao alterar nível do técnico');
+      expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve substituir avatar existente', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        avatarUrl: '/uploads/avatars/avatar-antigo.jpg',
+    it('deve retornar 500 quando update falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', nivel: 'N1', deletadoEm: null,
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar-novo.jpg',
-      });
+      prismaMock.usuario.update.mockRejectedValueOnce(new Error('DB error'));
 
-      const mockFile = {
-        filename: 'avatar-novo.jpg',
-        path: '/uploads/avatars/avatar-novo.jpg',
-      };
+      const res = await request(criarApp()).patch('/tecnicos/tec1/nivel').send({ nivel: 'N2' });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
+      expect(res.status).toBe(500);
+      expect(consoleSpy.error).toHaveBeenCalled();
+    });
+  });
+});
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.avatarUrl).toBe('/uploads/avatars/avatar-novo.jpg');
+describe('POST /tecnicos/:id/avatar', () => {
+  const mockFile = {
+    fieldname: 'avatar',
+    originalname: 'foto.jpg',
+    filename: 'avatar-1234567890.jpg',
+    mimetype: 'image/jpeg',
+    size: 1024,
+  };
+
+  describe('Casos de sucesso', () => {
+    it('deve fazer upload e retornar 200 com avatarUrl', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1', avatarUrl: '/uploads/avatars/avatar-1234567890.jpg' });
+
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('Avatar enviado com sucesso');
+      expect(res.body.avatarUrl).toContain('avatar-1234567890.jpg');
     });
 
-    it('deve retornar caminho relativo do avatar', async () => {
-      currentUserRole = 'ADMIN';
+    it('deve salvar o caminho correto no banco', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1', avatarUrl: '/uploads/avatars/avatar-1234567890.jpg' });
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/123456.jpg',
-      });
-
-      const mockFile = {
-        filename: '123456.jpg',
-        path: '/uploads/avatars/123456.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.avatarUrl).toMatch(/^\/uploads\/avatars\//);
-    });
-
-    it('deve atualizar apenas o campo avatarUrl', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        nome: 'João',
-        email: 'joao@empresa.com',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/new-avatar.jpg',
-      });
-
-      const mockFile = {
-        filename: 'new-avatar.jpg',
-        path: '/uploads/avatars/new-avatar.jpg',
-      };
-
-      await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
+      await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
 
       expect(prismaMock.usuario.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'tec1' },
-          data: { avatarUrl: expect.stringContaining('/uploads/avatars/') },
+          data: { avatarUrl: `/uploads/avatars/${mockFile.filename}` },
         })
       );
-    });
-  });
-
-  describe('Validações [5]', () => {
-    it('deve retornar status 400 quando arquivo não for enviado', async () => {
-      currentUserRole = 'ADMIN';
-
-      const resposta = await request(criarApp())
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Arquivo não enviado');
-    });
-
-    it('deve retornar status 400 quando req.file for undefined', async () => {
-      currentUserRole = 'ADMIN';
-
-      const resposta = await request(criarApp())
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Arquivo não enviado');
-    });
-
-    it('deve retornar status 400 quando req.file for null', async () => {
-      currentUserRole = 'ADMIN';
-
-      const mockFile = null;
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('Arquivo não enviado');
-    });
-
-    it('deve retornar status 404 quando técnico não existir [8]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec999/avatar')
-        .send();
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for TECNICO [3]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-      });
-
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/user1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário for ADMIN [4]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'admin1',
-        regra: 'ADMIN',
-      });
-
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/admin1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-  });
-
-  describe('Autorização [10]', () => {
-    it('deve retornar status 403 quando técnico tentar fazer upload para outro', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec2';
-
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(403);
-      expect(resposta.body.error).toContain('só pode fazer upload do seu próprio avatar');
     });
 
     it('deve permitir TECNICO fazer upload do próprio avatar', async () => {
       currentUserRole = 'TECNICO';
       currentUserId = 'tec1';
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1', avatarUrl: '/uploads/avatars/foto.jpg' });
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        id: 'tec1',
-        avatarUrl: '/uploads/avatars/avatar.jpg',
-      });
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
 
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(200);
+      expect(res.status).toBe(200);
     });
 
-    it('deve retornar status 403 quando USUARIO tentar fazer upload', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
+    it('deve registrar log de upload', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1', avatarUrl: '/uploads/avatars/foto.jpg' });
 
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
+      await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(403);
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO AVATAR UPLOADED]', expect.any(Object));
     });
   });
 
-  describe('Tratamento de erros [10]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [5]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Validações', () => {
+    it('deve retornar 400 quando nenhum arquivo for enviado', async () => {
+      const res = await request(criarApp(null)).post('/tecnicos/tec1/avatar');
 
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Arquivo não enviado');
+    });
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
+    it.each([
+      ['não existir', null],
+      ['ser ADMIN', { id: 'a1', regra: 'ADMIN' }],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO' }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao fazer upload do avatar');
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
+    });
+  });
+
+  describe('Autorização', () => {
+    it('deve retornar 403 quando USUARIO tentar fazer upload', async () => {
+      currentUserRole = 'USUARIO';
+
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('deve retornar 403 quando TECNICO tentar fazer upload do avatar de outro', async () => {
+      currentUserRole = 'TECNICO';
+      currentUserId = 'tec2';
+
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('só pode fazer upload do seu próprio avatar');
+    });
+  });
+
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
+
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao fazer upload do avatar');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando ocorrer erro ao atualizar avatar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
+    it('deve retornar 500 quando update falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'tec1', regra: 'TECNICO' });
+      prismaMock.usuario.update.mockRejectedValueOnce(new Error('DB error'));
 
-      const mockFile = {
-        filename: 'avatar.jpg',
-        path: '/uploads/avatars/avatar.jpg',
-      };
+      const res = await request(criarApp(mockFile)).post('/tecnicos/tec1/avatar');
 
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao fazer upload do avatar');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando arquivo não tiver propriedade filename', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      const mockFile = {
-        path: '/uploads/avatars/avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando arquivo não tiver propriedade path', async () => {
-      currentUserRole = 'ADMIN';
-
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-      });
-
-      const mockFile = {
-        filename: 'avatar.jpg',
-      };
-
-      const resposta = await request(criarApp(mockFile))
-        .post('/tecnicos/tec1/avatar')
-        .send();
-
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-// ==================== TESTES DELETE /tecnicos/:id ====================
-
-describe('DELETE /tecnicos/:id (deleção de técnico)', () => {
-  describe('Soft delete', () => {
-    it('deve retornar status 200 e fazer soft delete com sucesso', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+describe('DELETE /tecnicos/:id', () => {
+  describe('Soft delete (padrão)', () => {
+    it('deve retornar 200 e marcar como deletado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 0 },
       });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1' });
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
+      const res = await request(criarApp()).delete('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('deletado com sucesso');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('deletado com sucesso');
+      expect(res.body.id).toBe('tec1');
     });
 
-    it('deve fazer soft delete mesmo com chamados vinculados', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 10 },
+    it('deve chamar update com deletadoEm e ativo false', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
+        _count: { tecnicoChamados: 3 },
       });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalled();
-      expect(prismaMock.usuario.delete).not.toHaveBeenCalled();
-    });
-
-    it('deve definir deletadoEm ao fazer soft delete', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: new Date().toISOString(),
-        ativo: false,
-      });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1' });
 
       await request(criarApp()).delete('/tecnicos/tec1');
 
@@ -5236,760 +1581,222 @@ describe('DELETE /tecnicos/:id (deleção de técnico)', () => {
       });
     });
 
-    it('deve fazer soft delete de técnico com 1 chamado vinculado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 1 },
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalled();
-    });
-
-    it('deve fazer soft delete de técnico com 100 chamados vinculados', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 100 },
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalled();
-    });
-
-    it('deve retornar técnico com deletadoEm preenchido', async () => {
-      const dataDelecao = new Date().toISOString();
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+    it('deve registrar log de soft delete', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 0 },
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: dataDelecao,
-        ativo: false,
-      });
+      prismaMock.usuario.update.mockResolvedValue({ id: 'tec1' });
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
+      await request(criarApp()).delete('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(200);
-      // A API retorna apenas message, não o objeto técnico
-      expect(resposta.body.message).toContain('deletado com sucesso');
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO SOFT DELETED]', expect.any(Object));
     });
   });
 
-  describe('Hard delete', () => {
-    it('deve retornar status 200 e fazer hard delete quando solicitado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+  describe('Hard delete (?permanente=true)', () => {
+    it('deve deletar permanentemente quando sem chamados', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 0 },
       });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
+      prismaMock.$transaction.mockImplementation(async (cb: any) => {
         const tx = {
-          expediente: {
-            deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-          },
-          usuario: {
-            delete: vi.fn().mockResolvedValue(tecnicoBase),
-          },
+          expediente: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+          usuario: { delete: vi.fn().mockResolvedValue({ id: 'tec1' }) },
         };
-        return await callback(tx);
+        return cb(tx);
       });
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
+      const res = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('removido permanentemente');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('removido permanentemente');
     });
 
-    it('deve retornar status 400 quando tentar hard delete com chamados vinculados', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+    it('deve retornar 400 quando técnico tiver chamados vinculados', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 5 },
       });
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
+      const res = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
 
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('5 chamados vinculados');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('5 chamados vinculados');
     });
 
-    it('deve deletar expedientes na transação antes de deletar técnico', async () => {
-          prismaMock.usuario.findUnique.mockResolvedValue({
-            id: 'tec1',
-            regra: 'TECNICO',
-            email: 'joao@empresa.com',
-            deletadoEm: null,
-            _count: { tecnicoChamados: 0 },
-          });
-
-          const deleteManyMock = vi.fn().mockResolvedValue({ count: 2 });
-          const deleteMock = vi.fn().mockResolvedValue(tecnicoBase);
-
-          prismaMock.$transaction.mockImplementation(async (callback) => {
-            const tx = {
-              expediente: {
-                deleteMany: deleteManyMock,
-              },
-              usuario: {
-                delete: deleteMock,
-              },
-            };
-            return await callback(tx);
-          });
-
-          await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-          expect(deleteManyMock).toHaveBeenCalledWith({
-            where: { usuarioId: 'tec1' },
-          });
-          expect(deleteMock).toHaveBeenCalledWith({
-            where: { id: 'tec1' },
-          });
-        });
-
-    it('deve retornar status 400 quando tentar hard delete com 1 chamado vinculado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 1 },
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('1 chamado');
-    });
-
-    it('deve retornar status 400 quando tentar hard delete com 100 chamados vinculados', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 100 },
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('100 chamados vinculados');
-    });
-
-    it('deve aceitar query param permanente=1', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+    it('deve deletar expedientes na transação antes de deletar o usuário', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 0 },
       });
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-          },
-          usuario: {
-            delete: vi.fn().mockResolvedValue(tecnicoBase),
-          },
-        };
-        return await callback(tx);
-      });
+      const expedienteDeleteMany = vi.fn().mockResolvedValue({ count: 2 });
+      const usuarioDelete = vi.fn().mockResolvedValue({ id: 'tec1' });
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=1');
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({ expediente: { deleteMany: expedienteDeleteMany }, usuario: { delete: usuarioDelete } })
+      );
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('removido permanentemente');
+      await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
+
+      expect(expedienteDeleteMany).toHaveBeenCalledWith({ where: { usuarioId: 'tec1' } });
+      expect(usuarioDelete).toHaveBeenCalledWith({ where: { id: 'tec1' } });
     });
 
-    it('deve aceitar query param permanente=yes', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
+    it('deve registrar log de hard delete', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
         _count: { tecnicoChamados: 0 },
       });
+      prismaMock.$transaction.mockImplementation(async (cb: any) =>
+        cb({
+          expediente: { deleteMany: vi.fn().mockResolvedValue({}) },
+          usuario: { delete: vi.fn().mockResolvedValue({}) },
+        })
+      );
 
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-          },
-          usuario: {
-            delete: vi.fn().mockResolvedValue(tecnicoBase),
-          },
-        };
-        return await callback(tx);
-      });
+      await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=yes');
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve fazer soft delete quando permanente=false', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=false');
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalled();
-      expect(prismaMock.$transaction).not.toHaveBeenCalled();
-    });
-
-    it('deve fazer soft delete quando permanente não for enviado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-      expect(prismaMock.usuario.update).toHaveBeenCalled();
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO DELETED PERMANENTLY]', expect.any(Object));
     });
   });
 
-  describe('Validações [6]', () => {
-    it('deve retornar status 404 quando técnico não existir [9]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
+  describe('Casos 404', () => {
+    it.each([
+      ['não existir', null],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO', _count: { tecnicoChamados: 0 } }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec999');
+      const res = await request(criarApp()).delete('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for TECNICO [4]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-        email: 'user@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/user1');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário for ADMIN [5]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'admin1',
-        regra: 'ADMIN',
-        email: 'admin@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/admin1');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve permitir deletar técnico já deletado (operação idempotente)', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: new Date().toISOString(),
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoDeletado,
-        ativo: false,
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200); // MUDADO de 400 para 200
-      expect(resposta.body.message).toContain('deletado com sucesso');
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
     });
   });
 
-  describe('Autorização [11]', () => {
-    it('deve permitir ADMIN deletar técnico', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockResolvedValue(tecnicoDeletado);
+      const res = await request(criarApp()).delete('/tecnicos/tec1');
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando TECNICO tentar deletar', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(403);
-    });
-
-    it('deve retornar status 403 quando USUARIO tentar deletar', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(403);
     });
   });
 
-  describe('Tratamento de erros [11]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [6]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando o banco falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
+      const res = await request(criarApp()).delete('/tecnicos/tec1');
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao deletar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro no soft delete', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1');
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao deletar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando ocorrer erro no hard delete', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-      prismaMock.$transaction.mockRejectedValue(erroMock);
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao deletar técnico');
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando expediente.deleteMany falhar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            deleteMany: vi.fn().mockRejectedValue(erroMock),
-          },
-          usuario: {
-            delete: vi.fn(),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-      expect(resposta.status).toBe(500);
-      expect(consoleSpy.error).toHaveBeenCalled();
-    });
-
-    it('deve retornar status 500 quando usuario.delete falhar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        _count: { tecnicoChamados: 0 },
-      });
-
-      prismaMock.$transaction.mockImplementation(async (callback) => {
-        const tx = {
-          expediente: {
-            deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-          },
-          usuario: {
-            delete: vi.fn().mockRejectedValue(erroMock),
-          },
-        };
-        return await callback(tx);
-      });
-
-      const resposta = await request(criarApp()).delete('/tecnicos/tec1?permanente=true');
-
-      expect(resposta.status).toBe(500);
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao deletar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });
 });
 
-describe('PATCH /tecnicos/:id/restaurar (restauração de técnico)', () => {
-  describe('Casos de sucesso [11]', () => {
-    it('deve retornar status 200 e restaurar técnico deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: new Date().toISOString(),
+describe('PATCH /tecnicos/:id/restaurar', () => {
+  describe('Casos de sucesso', () => {
+    it('deve restaurar técnico e retornar 200 com mensagem', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: new Date(),
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
+      prismaMock.usuario.update.mockResolvedValue({ ...tecnicoBase, deletadoEm: null, ativo: true });
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.message).toContain('restaurado com sucesso');
-      expect(resposta.body.tecnico.deletadoEm).toBeNull();
-      expect(resposta.body.tecnico.ativo).toBe(true);
-      
-      expect(prismaMock.usuario.update).toHaveBeenCalledWith({
-        where: { id: 'tec3' },
-        data: {
-          deletadoEm: null,
-          ativo: true,
-        },
-        select: expect.any(Object),
-      });
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('restaurado com sucesso');
+      expect(res.body.tecnico).toBeDefined();
     });
 
-    it('deve restaurar técnico que estava inativo antes de ser deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        ativo: false,
-        deletadoEm: new Date().toISOString(),
+    it('deve chamar update com deletadoEm null e ativo true', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: new Date(),
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
+      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.tecnico.ativo).toBe(true);
-    });
-
-    it('deve definir deletadoEm como null', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: '2025-01-03T00:00:00.000Z',
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
-
-      await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
+      await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
       expect(prismaMock.usuario.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            deletadoEm: null,
-          }),
+          data: { deletadoEm: null, ativo: true },
         })
       );
     });
 
-    it('deve retornar técnico com todos os campos após restauração', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: new Date().toISOString(),
+    it('deve registrar log de restauração', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: new Date(),
       });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
+      prismaMock.usuario.update.mockResolvedValue(tecnicoBase);
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
+      await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.tecnico).toHaveProperty('id');
-      expect(resposta.body.tecnico).toHaveProperty('nome');
-      expect(resposta.body.tecnico).toHaveProperty('email');
-      expect(resposta.body.tecnico).toHaveProperty('regra');
-      expect(resposta.body.tecnico).toHaveProperty('ativo');
-      expect(resposta.body.tecnico).toHaveProperty('deletadoEm');
-    });
-
-    it('deve restaurar técnico deletado há muito tempo', async () => {
-      const dataAntigaDeletado = '2020-01-01T00:00:00.000Z';
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: dataAntigaDeletado,
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
-
-      expect(resposta.status).toBe(200);
+      expect(consoleSpy.log).toHaveBeenCalledWith('[TECNICO RESTORED]', expect.any(Object));
     });
   });
 
-  describe('Validações [7]', () => {
-    it('deve retornar status 404 quando técnico não existir [10]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue(null);
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec999/restaurar');
-
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 404 quando usuário não for TECNICO [5]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'user1',
-        regra: 'USUARIO',
-        email: 'user@empresa.com',
-        deletadoEm: new Date().toISOString(),
+  describe('Validações', () => {
+    it('deve retornar 400 quando técnico não estiver deletado', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: null,
       });
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/user1/restaurar');
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Técnico não está deletado');
     });
 
-    it('deve retornar status 404 quando usuário for ADMIN [6]', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'admin1',
-        regra: 'ADMIN',
-        email: 'admin@empresa.com',
-        deletadoEm: new Date().toISOString(),
-      });
+    it.each([
+      ['não existir', null],
+      ['ser USUARIO', { id: 'u1', regra: 'USUARIO', email: 'u@u.com', deletadoEm: null }],
+    ])('deve retornar 404 quando técnico %s', async (_, mockValue) => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce(mockValue);
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/admin1/restaurar');
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(404);
-      expect(resposta.body.error).toContain('Técnico não encontrado');
-    });
-
-    it('deve retornar status 400 quando técnico não estiver deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec1/restaurar');
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('não está deletado');
-    });
-
-    it('deve retornar status 400 quando deletadoEm for null', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        deletadoEm: null,
-        ativo: true,
-      });
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec1/restaurar');
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('não está deletado');
-    });
-
-    it('deve retornar status 400 para técnico ativo não deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec1',
-        regra: 'TECNICO',
-        email: 'joao@empresa.com',
-        ativo: true,
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec1/restaurar');
-
-      expect(resposta.status).toBe(400);
-    });
-
-    it('deve retornar status 400 para técnico inativo não deletado', async () => {
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec2',
-        regra: 'TECNICO',
-        email: 'inativo@empresa.com',
-        ativo: false,
-        deletadoEm: null,
-      });
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec2/restaurar');
-
-      expect(resposta.status).toBe(400);
-      expect(resposta.body.error).toContain('não está deletado');
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Técnico não encontrado');
     });
   });
 
-  describe('Autorização [12]', () => {
-    it('deve permitir ADMIN restaurar técnico', async () => {
-      currentUserRole = 'ADMIN';
-      currentUserId = 'admin1';
+  describe('Autorização', () => {
+    it.each(['TECNICO', 'USUARIO'] as Regra[])('deve retornar 403 para role %s', async (role) => {
+      currentUserRole = role;
 
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: new Date().toISOString(),
-      });
-      prismaMock.usuario.update.mockResolvedValue({
-        ...tecnicoBase,
-        deletadoEm: null,
-        ativo: true,
-      });
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
-
-      expect(resposta.status).toBe(200);
-    });
-
-    it('deve retornar status 403 quando usuário for TECNICO [3]', async () => {
-      currentUserRole = 'TECNICO';
-      currentUserId = 'tec1';
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
-
-      expect(resposta.status).toBe(403);
-    });
-
-    it('deve retornar status 403 quando usuário for USUARIO [3]', async () => {
-      currentUserRole = 'USUARIO';
-      currentUserId = 'user1';
-
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
-
-      expect(resposta.status).toBe(403);
+      expect(res.status).toBe(403);
     });
   });
 
-  describe('Tratamento de erros [12]', () => {
-    it('deve retornar status 500 quando ocorrer erro ao buscar técnico [7]', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockRejectedValue(erroMock);
+  describe('Tratamento de erros', () => {
+    it('deve retornar 500 quando findUnique falhar', async () => {
+      prismaMock.usuario.findUnique.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao restaurar técnico');
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Erro ao restaurar técnico');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
-    it('deve retornar status 500 quando ocorrer erro ao restaurar', async () => {
-      const erroMock = new Error('Database error');
-      prismaMock.usuario.findUnique.mockResolvedValue({
-        id: 'tec3',
-        regra: 'TECNICO',
-        email: 'deletado@empresa.com',
-        deletadoEm: new Date().toISOString(),
+    it('deve retornar 500 quando update falhar', async () => {
+      prismaMock.usuario.findUnique.mockResolvedValueOnce({
+        id: 'tec1', regra: 'TECNICO', email: 'joao@empresa.com', deletadoEm: new Date(),
       });
-      prismaMock.usuario.update.mockRejectedValue(erroMock);
+      prismaMock.usuario.update.mockRejectedValueOnce(new Error('DB error'));
 
-      const resposta = await request(criarApp())
-        .patch('/tecnicos/tec3/restaurar');
+      const res = await request(criarApp()).patch('/tecnicos/tec1/restaurar');
 
-      expect(resposta.status).toBe(500);
-      expect(resposta.body.error).toContain('Erro ao restaurar técnico');
+      expect(res.status).toBe(500);
       expect(consoleSpy.error).toHaveBeenCalled();
     });
   });

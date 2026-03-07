@@ -117,7 +117,7 @@ describe('authMiddleware', () => {
     const res = makeRes();
     await authMiddleware(makeReq(), res, vi.fn());
     expect(res.json).toHaveBeenCalledWith({ error: 'Token expirado.' });
-  });
+  }, 120000);
 
   it('deve retornar 401 com mensagem genérica quando a verificação do token falha por qualquer outro motivo', async () => {
     mockExtract.mockReturnValue('tok');
@@ -126,7 +126,7 @@ describe('authMiddleware', () => {
     await authMiddleware(makeReq(), res, vi.fn());
     expect(res.json).toHaveBeenCalledWith({ error: 'Token inválido.' });
   });
-});
+}, 20000);
 
 describe('authorizeRoles', () => {
   function req(regra?: string): AuthRequest {

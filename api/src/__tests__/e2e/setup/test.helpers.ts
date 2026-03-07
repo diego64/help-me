@@ -5,7 +5,7 @@ import type { Usuario } from '@prisma/client';
 interface LoginResponse {
   accessToken: string;
   refreshToken: string;
-  expiresIn: number;
+  expiresIn: number | string;
   usuario: Omit<Usuario, 'password' | 'refreshToken'>;
 }
 
@@ -17,13 +17,13 @@ export async function loginUser(
     .post('/api/auth/login')
     .send({ email, password })
     .expect(200);
-  
+
   return response.body;
 }
 
 export class AuthenticatedClient {
-  private accessToken: string;
-  
+  readonly accessToken: string;
+
   constructor(accessToken: string) {
     this.accessToken = accessToken;
   }
@@ -38,36 +38,24 @@ export class AuthenticatedClient {
     const req = request(app)
       .post(url)
       .set('Authorization', `Bearer ${this.accessToken}`);
-    
-    if (body) {
-      req.send(body);
-    }
-    
-    return req;
+
+    return body ? req.send(body) : req;
   }
 
   put(url: string, body?: any) {
     const req = request(app)
       .put(url)
       .set('Authorization', `Bearer ${this.accessToken}`);
-    
-    if (body) {
-      req.send(body);
-    }
-    
-    return req;
+
+    return body ? req.send(body) : req;
   }
 
   patch(url: string, body?: any) {
     const req = request(app)
       .patch(url)
       .set('Authorization', `Bearer ${this.accessToken}`);
-    
-    if (body) {
-      req.send(body);
-    }
-    
-    return req;
+
+    return body ? req.send(body) : req;
   }
 
   delete(url: string) {
@@ -97,26 +85,23 @@ export function generateUniqueEmail(prefix = 'test'): string {
 
 export function generateCPF(): string {
   const randomDigits = () => Math.floor(Math.random() * 10);
-  
-  // Gera 9 primeiros dígitos
+
   const digits = Array.from({ length: 9 }, randomDigits);
-  
-  // Calcula primeiro dígito verificador
+
   let sum = 0;
   for (let i = 0; i < 9; i++) {
     sum += digits[i] * (10 - i);
   }
   const firstCheck = (sum * 10) % 11;
   digits.push(firstCheck === 10 ? 0 : firstCheck);
-  
-  // Calcula segundo dígito verificador
+
   sum = 0;
   for (let i = 0; i < 10; i++) {
     sum += digits[i] * (11 - i);
   }
   const secondCheck = (sum * 10) % 11;
   digits.push(secondCheck === 10 ? 0 : secondCheck);
-  
+
   return digits.join('');
 }
 
@@ -125,7 +110,7 @@ export function formatCPF(cpf: string): string {
 }
 
 export function generatePhone(): string {
-  const ddd = Math.floor(Math.random() * 89) + 11; // 11-99
+  const ddd = Math.floor(Math.random() * 89) + 11;
   const firstPart = 90000 + Math.floor(Math.random() * 9999);
   const secondPart = 1000 + Math.floor(Math.random() * 8999);
   return `(${ddd}) ${firstPart}-${secondPart}`;
@@ -146,14 +131,12 @@ export async function waitUntil(
   interval = 100
 ): Promise<void> {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
-    if (await condition()) {
-      return;
-    }
+    if (await condition()) return;
     await sleep(interval);
   }
-  
+
   throw new Error(`Timeout: condição não foi satisfeita em ${timeout}ms`);
 }
 
@@ -167,13 +150,13 @@ export function createUserTestData(overrides?: Partial<{
   ramal: string;
 }>) {
   return {
-    nome: overrides?.nome || 'João',
-    sobrenome: overrides?.sobrenome || 'Silva',
-    email: overrides?.email || generateUniqueEmail('user'),
-    password: overrides?.password || 'Senha123!',
-    setor: overrides?.setor || 'TECNOLOGIA_INFORMACAO',
-    telefone: overrides?.telefone || generatePhone(),
-    ramal: overrides?.ramal || '1234',
+    nome: overrides?.nome ?? 'João',
+    sobrenome: overrides?.sobrenome ?? 'Silva',
+    email: overrides?.email ?? generateUniqueEmail('user'),
+    password: overrides?.password ?? 'Senha123!',
+    setor: overrides?.setor ?? 'TECNOLOGIA_INFORMACAO',
+    telefone: overrides?.telefone ?? generatePhone(),
+    ramal: overrides?.ramal ?? '1234',
   };
 }
 
@@ -183,29 +166,21 @@ export function createChamadoTestData(overrides?: Partial<{
   prioridade: 'BAIXA' | 'NORMAL' | 'ALTA' | 'URGENTE';
 }>) {
   return {
-    descricao: overrides?.descricao || 'O computador não está ligando',
-    servicoId: overrides?.servicoId || '1',
-    prioridade: overrides?.prioridade || 'NORMAL',
+    descricao: overrides?.descricao ?? 'O computador não está ligando',
+    servicoId: overrides?.servicoId ?? '1',
+    prioridade: overrides?.prioridade ?? 'NORMAL',
   };
 }
 
 export function extractErrorMessage(response: any): string {
-  if (typeof response.body === 'string') {
-    return response.body;
-  }
-  
+  if (typeof response.body === 'string') return response.body;
+
   if (response.body?.error) {
-    if (typeof response.body.error === 'string') {
-      return response.body.error;
-    }
-    if (response.body.error.message) {
-      return response.body.error.message;
-    }
+    if (typeof response.body.error === 'string') return response.body.error;
+    if (response.body.error.message) return response.body.error.message;
   }
-  
-  if (response.body?.message) {
-    return response.body.message;
-  }
-  
+
+  if (response.body?.message) return response.body.message;
+
   return 'Erro desconhecido';
 }

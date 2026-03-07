@@ -4,22 +4,19 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-          '@application': resolve(__dirname, 'src/application'),
-          '@infrastructure': resolve(__dirname, 'src/infrastructure'),
-          '@presentation': resolve(__dirname, 'src/presentation'),
-          '@shared': resolve(__dirname, 'src/shared'),
-          '@templates': resolve(__dirname, 'src/templates'),
+      '@application':   resolve(__dirname, 'src/application'),
+      '@infrastructure': resolve(__dirname, 'src/infrastructure'),
+      '@presentation':  resolve(__dirname, 'src/presentation'),
+      '@shared':        resolve(__dirname, 'src/shared'),
+      '@templates':     resolve(__dirname, 'src/templates'),
     },
   },
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: [
-      './vitest.setup.ts',
-    ],
-    include: [
-      'src/__tests__/unit/**/*.test.ts',
-    ],
+    setupFiles: ['./vitest.setup.ts'],
+
+    include: ['src/__tests__/unit/**/*.test.ts'],
     exclude: [
       'node_modules/**',
       'dist/**',
@@ -27,10 +24,13 @@ export default defineConfig({
       'src/__tests__/e2e/**',
       'src/__tests__/performance/**',
     ],
-    isolate: true,
-    fileParallelism: true,
     pool: 'forks',
-    testTimeout: 30000,
+    isolate: true,
+    clearMocks: true,
+    mockReset: false,
+    restoreMocks: true,
+    testTimeout: 120000,
+    hookTimeout: 120000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
@@ -52,9 +52,9 @@ export default defineConfig({
         'prisma/**',
       ],
       thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 80,
+        lines:      80,
+        functions:  80,
+        branches:   80,
         statements: 80,
       },
     },

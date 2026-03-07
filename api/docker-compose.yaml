@@ -130,6 +130,50 @@ services:
       - "com.helpme.environment=production"
 
   # ============================================
+  # STORAGE - MinIO
+  # ============================================
+  minio_helpme:
+    image: minio/minio:latest
+    container_name: minio_helpme
+    hostname: minio_helpme
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      TZ: America/Sao_Paulo
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=storage"
+      - "com.helpme.storage.type=minio"
+      - "com.helpme.environment=production"
+
+  # ============================================
   # MESSAGE BROKER - Kafka
   # ============================================
   zookeeper_helpme:
@@ -833,6 +877,50 @@ services:
       - "com.helpme.database.type=mongodb"
       - "com.helpme.environment=test"
 
+# ============================================
+  # STORAGE - MinIO (Teste)
+  # ============================================
+  minio_helpme_teste:
+    image: minio/minio:latest
+    container_name: minio_helpme_teste
+    hostname: minio_helpme_teste
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER_TESTE:-minio_teste}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD_TESTE:-minio_teste_senha}
+      TZ: America/Sao_Paulo
+    command: server /data --console-address ":9003"
+    ports:
+      - "${MINIO_PORT_TESTE:-9002}:9000"
+      - "${MINIO_CONSOLE_PORT_TESTE:-9003}:9003"
+    volumes:
+      - minio_data_teste:/data
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=storage"
+      - "com.helpme.storage.type=minio"
+      - "com.helpme.environment=test"
+
   # ============================================
   # CACHE - Redis (Teste)
   # ============================================
@@ -1086,6 +1174,14 @@ volumes:
   mongodb_teste_data:
     driver: local
     name: mongodb_helpme_teste_data
+
+  minio_data:
+    driver: local
+    name: minio_helpme_data
+
+  minio_data_teste:
+    driver: local
+    name: minio_helpme_data_teste
 
   influxdb_data_teste:
     driver: local

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { Setor, Regra } from '@prisma/client';
+import { Setor, Regra, NivelTecnico } from '@prisma/client';
 import { getStringParam, getStringParamRequired, getNumberParamClamped, getBooleanParam } from '@shared/utils/request-params';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
@@ -23,6 +23,8 @@ const DEFAULT_SAIDA = '17:00';
 const UPLOAD_DIR = 'uploads/avatars';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+const NIVEIS_VALIDOS: NivelTecnico[] = ['N1', 'N2', 'N3'];
 
 interface PaginationParams {
   page: number;
@@ -77,11 +79,9 @@ function validarEmail(email: string): { valido: boolean; erro?: string } {
   if (!email || typeof email !== 'string') {
     return { valido: false, erro: 'Email é obrigatório' };
   }
-
   if (!EMAIL_REGEX.test(email)) {
     return { valido: false, erro: 'Email inválido' };
   }
-
   return { valido: true };
 }
 
@@ -89,14 +89,12 @@ function validarSenha(password: string): { valida: boolean; erro?: string } {
   if (!password || typeof password !== 'string') {
     return { valida: false, erro: 'Senha é obrigatória' };
   }
-
   if (password.length < MIN_PASSWORD_LENGTH) {
     return {
       valida: false,
       erro: `Senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres`,
     };
   }
-
   return { valida: true };
 }
 
@@ -104,23 +102,19 @@ function validarNome(nome: string, campo: string): { valido: boolean; erro?: str
   if (!nome || typeof nome !== 'string') {
     return { valido: false, erro: `${campo} é obrigatório` };
   }
-
   const nomeLimpo = nome.trim();
-
   if (nomeLimpo.length < MIN_NOME_LENGTH) {
     return {
       valido: false,
       erro: `${campo} deve ter no mínimo ${MIN_NOME_LENGTH} caracteres`,
     };
   }
-
   if (nomeLimpo.length > MAX_NOME_LENGTH) {
     return {
       valido: false,
       erro: `${campo} deve ter no máximo ${MAX_NOME_LENGTH} caracteres`,
     };
   }
-
   return { valido: true };
 }
 
@@ -128,31 +122,26 @@ function validarHorario(horario: string, campo: string): { valido: boolean; erro
   if (!horario || typeof horario !== 'string') {
     return { valido: false, erro: `${campo} é obrigatório` };
   }
-
   if (!HORARIO_REGEX.test(horario)) {
     return {
       valido: false,
       erro: `${campo} deve estar no formato HH:MM (ex: 08:00)`,
     };
   }
-
   return { valido: true };
 }
 
 function validarIntervaloHorario(entrada: string, saida: string): { valido: boolean; erro?: string } {
   const [entradaH, entradaM] = entrada.split(':').map(Number);
   const [saidaH, saidaM] = saida.split(':').map(Number);
-
   const entradaMinutos = entradaH * 60 + entradaM;
   const saidaMinutos = saidaH * 60 + saidaM;
-
   if (saidaMinutos <= entradaMinutos) {
     return {
       valido: false,
       erro: 'Horário de saída deve ser posterior ao horário de entrada',
     };
   }
-
   return { valido: true };
 }
 
@@ -160,7 +149,6 @@ function getPaginationParams(query: any): PaginationParams {
   const page = getNumberParamClamped(query.page, DEFAULT_PAGE, 1);
   const limit = getNumberParamClamped(query.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const skip = (page - 1) * limit;
-
   return { page, limit, skip };
 }
 
@@ -171,7 +159,6 @@ function createPaginatedResponse<T>(
   limit: number
 ): ListagemResponse<T> {
   const totalPages = Math.ceil(total / limit);
-
   return {
     data,
     pagination: {
@@ -190,6 +177,7 @@ const TECNICO_SELECT = {
   nome: true,
   sobrenome: true,
   email: true,
+  nivel: true,
   telefone: true,
   ramal: true,
   setor: true,
@@ -357,9 +345,7 @@ router.post(
             error: 'Já existe um usuário deletado com este email. Restaure ou use outro email.',
           });
         }
-        return res.status(409).json({
-          error: 'Email já cadastrado',
-        });
+        return res.status(409).json({ error: 'Email já cadastrado' });
       }
 
       const hashedPassword = hashPassword(password);
@@ -374,6 +360,7 @@ router.post(
             telefone: telefone?.trim() || null,
             ramal: ramal?.trim() || null,
             regra: Regra.TECNICO,
+            nivel: NivelTecnico.N1,
             setor,
           },
           select: { id: true },
@@ -398,14 +385,13 @@ router.post(
       console.log('[TECNICO CREATED]', {
         id: tecnicoId,
         email: email.toLowerCase(),
+        nivel: NivelTecnico.N1,
       });
 
       res.status(201).json(tecnico);
     } catch (err: any) {
       console.error('[TECNICO CREATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao criar técnico',
-      });
+      res.status(500).json({ error: 'Erro ao criar técnico' });
     }
   }
 );
@@ -446,6 +432,11 @@ router.post(
  *         schema:
  *           type: string
  *       - in: query
+ *         name: nivel
+ *         schema:
+ *           type: string
+ *           enum: [N1, N2, N3]
+ *       - in: query
  *         name: busca
  *         schema:
  *           type: string
@@ -469,22 +460,16 @@ router.get(
       const incluirInativos = getBooleanParam(req.query.incluirInativos);
       const incluirDeletados = getBooleanParam(req.query.incluirDeletados);
       const setor = getStringParam(req.query.setor);
+      const nivel = getStringParam(req.query.nivel);
       const busca = getStringParam(req.query.busca);
 
-      const where: any = {
-        regra: Regra.TECNICO,
-      };
+      const where: any = { regra: Regra.TECNICO };
 
-      if (!incluirInativos) {
-        where.ativo = true;
-      }
-
-      if (!incluirDeletados) {
-        where.deletadoEm = null;
-      }
-
-      if (setor) {
-        where.setor = setor as Setor;
+      if (!incluirInativos) where.ativo = true;
+      if (!incluirDeletados) where.deletadoEm = null;
+      if (setor) where.setor = setor as Setor;
+      if (nivel && NIVEIS_VALIDOS.includes(nivel as NivelTecnico)) {
+        where.nivel = nivel as NivelTecnico;
       }
 
       if (busca) {
@@ -506,14 +491,10 @@ router.get(
         }),
       ]);
 
-      const response = createPaginatedResponse(tecnicos, total, page, limit);
-
-      res.json(response);
+      res.json(createPaginatedResponse(tecnicos, total, page, limit));
     } catch (err: any) {
       console.error('[TECNICO LIST ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao listar técnicos',
-      });
+      res.status(500).json({ error: 'Erro ao listar técnicos' });
     }
   }
 );
@@ -523,7 +504,7 @@ router.get(
  * /api/tecnicos/{id}:
  *   get:
  *     summary: Busca um técnico por ID
- *     description: Retorna os detalhes de um técnico específico. Requer autenticação e perfil ADMIN.
+ *     description: Retorna os detalhes de um técnico específico. Requer autenticação e perfil ADMIN ou TECNICO.
  *     tags: [Técnicos]
  *     security:
  *       - bearerAuth: []
@@ -559,17 +540,13 @@ router.get(
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       res.json(tecnico);
     } catch (err: any) {
       console.error('[TECNICO GET ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao buscar técnico',
-      });
+      res.status(500).json({ error: 'Erro ao buscar técnico' });
     }
   }
 );
@@ -633,91 +610,60 @@ router.put(
       const { nome, sobrenome, email, telefone, ramal, setor } = req.body;
 
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
-        return res.status(403).json({
-          error: 'Você só pode editar seu próprio perfil',
-        });
+        return res.status(403).json({ error: 'Você só pode editar seu próprio perfil' });
       }
 
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
-        select: {
-          id: true,
-          regra: true,
-          email: true,
-          deletadoEm: true,
-        },
+        select: { id: true, regra: true, email: true, deletadoEm: true },
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       if (tecnico.deletadoEm) {
-        return res.status(400).json({
-          error: 'Não é possível editar um técnico deletado',
-        });
+        return res.status(400).json({ error: 'Não é possível editar um técnico deletado' });
       }
 
       const dataToUpdate: any = {};
 
       if (nome !== undefined) {
         const validacao = validarNome(nome, 'Nome');
-        if (!validacao.valido) {
-          return res.status(400).json({ error: validacao.erro });
-        }
+        if (!validacao.valido) return res.status(400).json({ error: validacao.erro });
         dataToUpdate.nome = nome.trim();
       }
 
       if (sobrenome !== undefined) {
         const validacao = validarNome(sobrenome, 'Sobrenome');
-        if (!validacao.valido) {
-          return res.status(400).json({ error: validacao.erro });
-        }
+        if (!validacao.valido) return res.status(400).json({ error: validacao.erro });
         dataToUpdate.sobrenome = sobrenome.trim();
       }
 
       if (email !== undefined) {
         const validacao = validarEmail(email);
-        if (!validacao.valido) {
-          return res.status(400).json({ error: validacao.erro });
-        }
+        if (!validacao.valido) return res.status(400).json({ error: validacao.erro });
 
         const emailLower = email.toLowerCase();
-
         if (emailLower !== tecnico.email) {
           const emailExistente = await prisma.usuario.findUnique({
             where: { email: emailLower },
           });
-
           if (emailExistente && emailExistente.id !== id) {
-            return res.status(409).json({
-              error: 'Email já está em uso',
-            });
+            return res.status(409).json({ error: 'Email já está em uso' });
           }
-
           dataToUpdate.email = emailLower;
         }
       }
 
-      if (telefone !== undefined) {
-        dataToUpdate.telefone = telefone?.trim() || null;
-      }
-
-      if (ramal !== undefined) {
-        dataToUpdate.ramal = ramal?.trim() || null;
-      }
-
+      if (telefone !== undefined) dataToUpdate.telefone = telefone?.trim() || null;
+      if (ramal !== undefined) dataToUpdate.ramal = ramal?.trim() || null;
       if (setor !== undefined && req.usuario!.regra === Regra.ADMIN) {
         dataToUpdate.setor = setor as Setor;
       }
 
       if (Object.keys(dataToUpdate).length === 0) {
-        const current = await prisma.usuario.findUnique({
-          where: { id },
-          select: TECNICO_SELECT,
-        });
+        const current = await prisma.usuario.findUnique({ where: { id }, select: TECNICO_SELECT });
         return res.json(current);
       }
 
@@ -732,9 +678,7 @@ router.put(
       res.json(updated);
     } catch (err: any) {
       console.error('[TECNICO UPDATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao atualizar técnico',
-      });
+      res.status(500).json({ error: 'Erro ao atualizar técnico' });
     }
   }
 );
@@ -791,15 +735,11 @@ router.put(
       const { password } = req.body;
 
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
-        return res.status(403).json({
-          error: 'Você só pode alterar sua própria senha',
-        });
+        return res.status(403).json({ error: 'Você só pode alterar sua própria senha' });
       }
 
       const validacao = validarSenha(password);
-      if (!validacao.valida) {
-        return res.status(400).json({ error: validacao.erro });
-      }
+      if (!validacao.valida) return res.status(400).json({ error: validacao.erro });
 
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
@@ -807,28 +747,20 @@ router.put(
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
-
-      const hashedPassword = hashPassword(password);
 
       await prisma.usuario.update({
         where: { id },
-        data: { password: hashedPassword },
+        data: { password: hashPassword(password) },
       });
 
       console.log('[TECNICO PASSWORD UPDATED]', { id });
 
-      res.json({
-        message: 'Senha alterada com sucesso',
-      });
+      res.json({ message: 'Senha alterada com sucesso' });
     } catch (err: any) {
       console.error('[TECNICO PASSWORD ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao alterar senha',
-      });
+      res.status(500).json({ error: 'Erro ao alterar senha' });
     }
   }
 );
@@ -881,32 +813,24 @@ router.put(
 router.put(
   '/:id/horarios',
   authMiddleware,
-  authorizeRoles('ADMIN', 'TECNICO'),
+  authorizeRoles('ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = getStringParamRequired(req.params.id);
       const { entrada, saida } = req.body;
 
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
-        return res.status(403).json({
-          error: 'Você só pode alterar seus próprios horários',
-        });
+        return res.status(403).json({ error: 'Somente usuários com perfil ADMIN podem alterar horários' });
       }
 
       const validacaoEntrada = validarHorario(entrada, 'Horário de entrada');
-      if (!validacaoEntrada.valido) {
-        return res.status(400).json({ error: validacaoEntrada.erro });
-      }
+      if (!validacaoEntrada.valido) return res.status(400).json({ error: validacaoEntrada.erro });
 
       const validacaoSaida = validarHorario(saida, 'Horário de saída');
-      if (!validacaoSaida.valido) {
-        return res.status(400).json({ error: validacaoSaida.erro });
-      }
+      if (!validacaoSaida.valido) return res.status(400).json({ error: validacaoSaida.erro });
 
       const validacaoIntervalo = validarIntervaloHorario(entrada, saida);
-      if (!validacaoIntervalo.valido) {
-        return res.status(400).json({ error: validacaoIntervalo.erro });
-      }
+      if (!validacaoIntervalo.valido) return res.status(400).json({ error: validacaoIntervalo.erro });
 
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
@@ -914,9 +838,7 @@ router.put(
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       const horario = await prisma.$transaction(async (tx) => {
@@ -949,9 +871,124 @@ router.put(
       });
     } catch (err: any) {
       console.error('[TECNICO HORARIOS ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao atualizar horários',
+      res.status(500).json({ error: 'Erro ao atualizar horários' });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/tecnicos/{id}/nivel:
+ *   patch:
+ *     summary: Altera o nível de um técnico
+ *     description: Define o nível de atendimento do técnico (N1, N2 ou N3). Somente ADMIN pode alterar. N1 atende P4/P5, N2 atende P2/P3, N3 atende qualquer prioridade.
+ *     tags: [Técnicos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nivel
+ *             properties:
+ *               nivel:
+ *                 type: string
+ *                 enum: [N1, N2, N3]
+ *     responses:
+ *       200:
+ *         description: Nível atualizado com sucesso
+ *       400:
+ *         description: Nível inválido ou técnico já possui o nível informado
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Técnico não encontrado
+ *       500:
+ *         description: Erro ao alterar nível
+ */
+router.patch(
+  '/:id/nivel',
+  authMiddleware,
+  authorizeRoles('ADMIN'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const id = getStringParamRequired(req.params.id);
+      const { nivel } = req.body;
+
+      if (!nivel || !NIVEIS_VALIDOS.includes(nivel as NivelTecnico)) {
+        return res.status(400).json({
+          error: `Nível inválido. Use: ${NIVEIS_VALIDOS.join(', ')}`,
+        });
+      }
+
+      const tecnico = await prisma.usuario.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          regra: true,
+          email: true,
+          nivel: true,
+          deletadoEm: true,
+        },
       });
+
+      if (!tecnico || tecnico.regra !== Regra.TECNICO) {
+        return res.status(404).json({ error: 'Técnico não encontrado' });
+      }
+
+      if (tecnico.deletadoEm) {
+        return res.status(400).json({
+          error: 'Não é possível alterar o nível de um técnico deletado',
+        });
+      }
+
+      if (tecnico.nivel === nivel) {
+        return res.status(400).json({
+          error: `Técnico já possui o nível ${nivel}`,
+        });
+      }
+
+      const updated = await prisma.usuario.update({
+        where: { id },
+        data: { nivel: nivel as NivelTecnico },
+        select: {
+          id: true,
+          nome: true,
+          sobrenome: true,
+          email: true,
+          nivel: true,
+          regra: true,
+          ativo: true,
+          atualizadoEm: true,
+        },
+      });
+
+      console.log('[TECNICO NIVEL UPDATED]', {
+        id,
+        email: tecnico.email,
+        nivelAnterior: tecnico.nivel,
+        nivelNovo: nivel,
+        alteradoPor: req.usuario!.id,
+      });
+
+      res.json({
+        message: `Nível do técnico atualizado para ${nivel} com sucesso`,
+        tecnico: updated,
+      });
+    } catch (err: any) {
+      console.error('[TECNICO NIVEL ERROR]', err);
+      res.status(500).json({ error: 'Erro ao alterar nível do técnico' });
     }
   }
 );
@@ -1008,15 +1045,11 @@ router.post(
       const file = req.file;
 
       if (req.usuario!.regra === Regra.TECNICO && req.usuario!.id !== id) {
-        return res.status(403).json({
-          error: 'Você só pode fazer upload do seu próprio avatar',
-        });
+        return res.status(403).json({ error: 'Você só pode fazer upload do seu próprio avatar' });
       }
 
       if (!file) {
-        return res.status(400).json({
-          error: 'Arquivo não enviado',
-        });
+        return res.status(400).json({ error: 'Arquivo não enviado' });
       }
 
       const tecnico = await prisma.usuario.findUnique({
@@ -1025,24 +1058,16 @@ router.post(
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       const updated = await prisma.usuario.update({
         where: { id },
         data: { avatarUrl: `/uploads/avatars/${file.filename}` },
-        select: {
-          id: true,
-          avatarUrl: true,
-        },
+        select: { id: true, avatarUrl: true },
       });
 
-      console.log('[TECNICO AVATAR UPLOADED]', {
-        id,
-        file: file.filename,
-      });
+      console.log('[TECNICO AVATAR UPLOADED]', { id, file: file.filename });
 
       res.json({
         message: 'Avatar enviado com sucesso',
@@ -1050,9 +1075,7 @@ router.post(
       });
     } catch (err: any) {
       console.error('[TECNICO AVATAR ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao fazer upload do avatar',
-      });
+      res.status(500).json({ error: 'Erro ao fazer upload do avatar' });
     }
   }
 );
@@ -1108,18 +1131,14 @@ router.delete(
           deletadoEm: true,
           _count: {
             select: {
-              tecnicoChamados: {
-                where: { deletadoEm: null },
-              },
+              tecnicoChamados: { where: { deletadoEm: null } },
             },
           },
         },
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       if (permanente) {
@@ -1134,39 +1153,22 @@ router.delete(
           await tx.usuario.delete({ where: { id } });
         });
 
-        console.log('[TECNICO DELETED PERMANENTLY]', { 
-          id, 
-          email: tecnico.email 
-        });
+        console.log('[TECNICO DELETED PERMANENTLY]', { id, email: tecnico.email });
 
-        return res.json({
-          message: 'Técnico removido permanentemente',
-          id,
-        });
+        return res.json({ message: 'Técnico removido permanentemente', id });
       }
 
       await prisma.usuario.update({
         where: { id },
-        data: {
-          deletadoEm: new Date(),
-          ativo: false,
-        },
+        data: { deletadoEm: new Date(), ativo: false },
       });
 
-      console.log('[TECNICO SOFT DELETED]', { 
-        id, 
-        email: tecnico.email 
-      });
+      console.log('[TECNICO SOFT DELETED]', { id, email: tecnico.email });
 
-      res.json({
-        message: 'Técnico deletado com sucesso',
-        id,
-      });
+      res.json({ message: 'Técnico deletado com sucesso', id });
     } catch (err: any) {
       console.error('[TECNICO DELETE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao deletar técnico',
-      });
+      res.status(500).json({ error: 'Erro ao deletar técnico' });
     }
   }
 );
@@ -1210,32 +1212,20 @@ router.patch(
 
       const tecnico = await prisma.usuario.findUnique({
         where: { id },
-        select: {
-          id: true,
-          regra: true,
-          email: true,
-          deletadoEm: true,
-        },
+        select: { id: true, regra: true, email: true, deletadoEm: true },
       });
 
       if (!tecnico || tecnico.regra !== Regra.TECNICO) {
-        return res.status(404).json({
-          error: 'Técnico não encontrado',
-        });
+        return res.status(404).json({ error: 'Técnico não encontrado' });
       }
 
       if (!tecnico.deletadoEm) {
-        return res.status(400).json({
-          error: 'Técnico não está deletado',
-        });
+        return res.status(400).json({ error: 'Técnico não está deletado' });
       }
 
       const restaurado = await prisma.usuario.update({
         where: { id },
-        data: {
-          deletadoEm: null,
-          ativo: true,
-        },
+        data: { deletadoEm: null, ativo: true },
         select: TECNICO_SELECT,
       });
 
@@ -1247,9 +1237,7 @@ router.patch(
       });
     } catch (err: any) {
       console.error('[TECNICO RESTORE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao restaurar técnico',
-      });
+      res.status(500).json({ error: 'Erro ao restaurar técnico' });
     }
   }
 );

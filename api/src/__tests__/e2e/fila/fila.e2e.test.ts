@@ -30,7 +30,7 @@ describe('E2E: Fila de Chamados', () => {
     servicoNome = servico!.nome;
   });
 
-  describe('GET /api/fila-chamados/meus-chamados - Chamados do Usuário', () => {
+  describe('GET /api/fila/meus-chamados - Chamados do Usuário', () => {
     it('usuário deve poder listar seus próprios chamados', async () => {
       // Criar chamado para ter pelo menos um
       await usuarioClient.post('/api/chamados/abertura-chamado', {
@@ -39,7 +39,7 @@ describe('E2E: Fila de Chamados', () => {
       });
 
       const response = await usuarioClient
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('data');
@@ -50,7 +50,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve retornar apenas os chamados do próprio usuário', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(200);
 
@@ -69,7 +69,7 @@ describe('E2E: Fila de Chamados', () => {
       });
 
       const response = await usuarioClient
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(200);
 
@@ -85,7 +85,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve suportar paginação', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/meus-chamados?page=1&limit=2');
+        .get('/api/fila/meus-chamados?page=1&limit=2');
 
       expect(response.status).toBe(200);
       expect(response.body.pagination.page).toBe(1);
@@ -95,7 +95,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve filtrar por status', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/meus-chamados?status=ABERTO');
+        .get('/api/fila/meus-chamados?status=ABERTO');
 
       expect(response.status).toBe(200);
 
@@ -106,30 +106,30 @@ describe('E2E: Fila de Chamados', () => {
 
     it('técnico NÃO deve poder acessar meus-chamados', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(403);
     });
 
     it('admin NÃO deve poder acessar meus-chamados', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(403);
     });
 
     it('deve rejeitar sem autenticação', async () => {
       const response = await request(app)
-        .get('/api/fila-chamados/meus-chamados');
+        .get('/api/fila/meus-chamados');
 
       expect(response.status).toBe(401);
     });
   });
 
-  describe('GET /api/fila-chamados/chamados-atribuidos - Chamados do Técnico', () => {
+  describe('GET /api/fila/chamados-atribuidos - Chamados do Técnico', () => {
     it('técnico deve poder listar chamados atribuídos', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos');
+        .get('/api/fila/chamados-atribuidos');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('data');
@@ -139,7 +139,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve retornar apenas chamados EM_ATENDIMENTO ou REABERTO', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos');
+        .get('/api/fila/chamados-atribuidos');
 
       expect(response.status).toBe(200);
 
@@ -150,32 +150,32 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve suportar paginação', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos?page=1&limit=5');
+        .get('/api/fila/chamados-atribuidos?page=1&limit=5');
 
       expect(response.status).toBe(200);
       expect(response.body.pagination.page).toBe(1);
       expect(response.body.pagination.limit).toBe(5);
     });
 
-    it('deve suportar filtro por prioridade recentes', async () => {
+    it('deve suportar filtro por ordenacao recentes', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos?prioridade=recentes');
+        .get('/api/fila/chamados-atribuidos?ordenacao=recentes');
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
     });
 
-    it('deve suportar filtro por prioridade antigos', async () => {
+    it('deve suportar filtro por ordenacao antigos', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos?prioridade=antigos');
+        .get('/api/fila/chamados-atribuidos?ordenacao=antigos');
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
     });
 
-    it('deve suportar filtro por prioridade reabertos', async () => {
+    it('deve suportar filtro por ordenacao reabertos', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/chamados-atribuidos?prioridade=reabertos');
+        .get('/api/fila/chamados-atribuidos?ordenacao=reabertos');
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -183,23 +183,23 @@ describe('E2E: Fila de Chamados', () => {
 
     it('usuário NÃO deve poder acessar chamados-atribuidos', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/chamados-atribuidos');
+        .get('/api/fila/chamados-atribuidos');
 
       expect(response.status).toBe(403);
     });
 
     it('admin NÃO deve poder acessar chamados-atribuidos', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/chamados-atribuidos');
+        .get('/api/fila/chamados-atribuidos');
 
       expect(response.status).toBe(403);
     });
   });
 
-  describe('GET /api/fila-chamados/todos-chamados - Todos os Chamados (Admin)', () => {
+  describe('GET /api/fila/todos-chamados - Todos os Chamados (Admin)', () => {
     it('admin deve poder listar todos os chamados', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados');
+        .get('/api/fila/todos-chamados');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('data');
@@ -209,7 +209,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve suportar paginação', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?page=1&limit=5');
+        .get('/api/fila/todos-chamados?page=1&limit=5');
 
       expect(response.status).toBe(200);
       expect(response.body.pagination.page).toBe(1);
@@ -219,7 +219,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve filtrar por status ABERTO', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?status=ABERTO');
+        .get('/api/fila/todos-chamados?status=ABERTO');
 
       expect(response.status).toBe(200);
 
@@ -230,7 +230,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve filtrar por status ENCERRADO', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?status=ENCERRADO');
+        .get('/api/fila/todos-chamados?status=ENCERRADO');
 
       expect(response.status).toBe(200);
 
@@ -241,7 +241,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve rejeitar status inválido', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?status=STATUS_INVALIDO');
+        .get('/api/fila/todos-chamados?status=STATUS_INVALIDO');
 
       expect(response.status).toBe(400);
       expect(extractErrorMessage(response)).toMatch(/status.*inválido/i);
@@ -251,7 +251,7 @@ describe('E2E: Fila de Chamados', () => {
     it('deve filtrar por data início', async () => {
       const hoje = new Date().toISOString().split('T')[0];
       const response = await adminClient
-        .get(`/api/fila-chamados/todos-chamados?dataInicio=${hoje}`);
+        .get(`/api/fila/todos-chamados?dataInicio=${hoje}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -260,7 +260,7 @@ describe('E2E: Fila de Chamados', () => {
     it('deve filtrar por intervalo de datas', async () => {
       const hoje = new Date().toISOString().split('T')[0];
       const response = await adminClient
-        .get(`/api/fila-chamados/todos-chamados?dataInicio=${hoje}&dataFim=${hoje}`);
+        .get(`/api/fila/todos-chamados?dataInicio=${hoje}&dataFim=${hoje}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -268,7 +268,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve filtrar por busca (OS ou descrição)', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?busca=INC');
+        .get('/api/fila/todos-chamados?busca=INC');
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -276,7 +276,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve incluir chamados deletados com incluirInativos=true', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/todos-chamados?incluirInativos=true');
+        .get('/api/fila/todos-chamados?incluirInativos=true');
 
       expect(response.status).toBe(200);
       expect(response.body.pagination.total).toBeGreaterThanOrEqual(0);
@@ -284,23 +284,23 @@ describe('E2E: Fila de Chamados', () => {
 
     it('técnico NÃO deve poder acessar todos-chamados', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/todos-chamados');
+        .get('/api/fila/todos-chamados');
 
       expect(response.status).toBe(403);
     });
 
     it('usuário NÃO deve poder acessar todos-chamados', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/todos-chamados');
+        .get('/api/fila/todos-chamados');
 
       expect(response.status).toBe(403);
     });
   });
 
-  describe('GET /api/fila-chamados/estatisticas - Estatísticas', () => {
+  describe('GET /api/fila/estatisticas - Estatísticas', () => {
     it('admin deve poder ver estatísticas', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('total');
@@ -312,7 +312,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('deve retornar contadores por status', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(200);
       expect(response.body.porStatus).toHaveProperty('abertos');
@@ -324,7 +324,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('pendentes deve ser soma de abertos e reabertos', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(200);
 
@@ -334,7 +334,7 @@ describe('E2E: Fila de Chamados', () => {
 
     it('total deve ser número não negativo', async () => {
       const response = await adminClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(200);
       expect(response.body.total).toBeGreaterThanOrEqual(0);
@@ -342,14 +342,14 @@ describe('E2E: Fila de Chamados', () => {
 
     it('técnico NÃO deve poder ver estatísticas', async () => {
       const response = await tecnicoClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(403);
     });
 
     it('usuário NÃO deve poder ver estatísticas', async () => {
       const response = await usuarioClient
-        .get('/api/fila-chamados/estatisticas');
+        .get('/api/fila/estatisticas');
 
       expect(response.status).toBe(403);
     });

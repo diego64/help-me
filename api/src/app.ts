@@ -1,3 +1,4 @@
+import http from 'http';
 import express, { Request, Response, NextFunction, Express } from 'express';
 import session from 'express-session';
 import compression from 'compression';
@@ -8,6 +9,9 @@ import { redisClient } from './infrastructure/database/redis/client';
 import { errorLoggerMiddleware } from './infrastructure/http/middlewares/error-logger.middleware';
 import { requestLoggerMiddleware } from './infrastructure/http/middlewares/request-logger.middleware';
 import routes from './presentation/http/routes';
+import { initSocketIO } from './infrastructure/websocket/socket';
+import { startNotificacaoConsumer, stopNotificacaoConsumer } from './infrastructure/messaging/kafka/consumers/notificacao.consumer';
+import { startSLAJob } from './infrastructure/jobs/sla.job';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -45,7 +49,7 @@ app.use(session({
 app.get('/', (req: Request, res: Response) => {
   res.json({
     message: 'Help-Me API',
-    version: '1.1.1',
+    version: '1.2.1',
     docs: '/api-docs',
     health: '/health'
   });
@@ -66,7 +70,7 @@ app.use(
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     swaggerOptions: {
-      defaultModelsExpandDepth: -1, // segurança extra no UI
+      defaultModelsExpandDepth: -1,
     },
   }),
 );
@@ -97,5 +101,34 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     requestId: req.id,
   });
 });
+
+export const httpServer = http.createServer(app);
+initSocketIO(httpServer);
+
+let slaJob: NodeJS.Timeout | null = null;
+
+export async function startServices(): Promise<void> {
+  await startNotificacaoConsumer();
+  slaJob = startSLAJob();
+}
+
+async function shutdown(signal: string): Promise<void> {
+  app.locals.logger?.info(`[SHUTDOWN] Sinal recebido: ${signal}`);
+
+  if (slaJob) clearInterval(slaJob);
+
+  await stopNotificacaoConsumer();
+
+  httpServer.close(() => {
+    app.locals.logger?.info('[SHUTDOWN] Servidor encerrado');
+    process.exit(0);
+  });
+
+  // Força saída após 10s caso algo trave
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
 export default app;

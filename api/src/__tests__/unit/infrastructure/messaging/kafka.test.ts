@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { logLevel, LogEntry } from 'kafkajs';
-import { kafka, producer, conectarKafkaProducer, desconectarKafkaProducer, getKafkaConfig, getProducerInstanceForTest, customLogCreator, isKafkaConnected, sendMessage } from '@infrastructure/messaging/kafka/client';
+import { kafka,
+  producer,
+  conectarKafkaProducer,
+  desconectarKafkaProducer,
+  getKafkaConfig,
+  getProducerInstanceForTest,
+  customLogCreator,
+  isKafkaConnected,
+  sendMessage
+} from '@infrastructure/messaging/kafka/client';
 
 vi.mock('@shared/config/logger', () => ({
   logger: {

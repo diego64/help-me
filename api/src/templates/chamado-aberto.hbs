@@ -2,11 +2,11 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Abertura de Chamado - Atendimento Help Me</title>
+    <title>Chamado Atribuído - Help Me</title>
     <style>
       .badge {
         display: inline-block;
-        background: #2546f2;
+        background: #0e9e6e;
         color: #fff;
         padding: 4px 12px;
         border-radius: 16px;
@@ -38,39 +38,41 @@
             <tr>
               <td style="text-align: center;">
                 <img src="https://i.imgur.com/kFtvJ6C.png" alt="Help Me - Logo" style="max-height: 48px; margin-bottom:18px;">
-                <h2 style="color: #2546f2; margin-top:0; margin-bottom:20px;">Chamado Registrado com Sucesso!</h2>
+                <h2 style="color: #0e9e6e; margin-top:0; margin-bottom:20px;">Chamado Atribuído a Você!</h2>
               </td>
             </tr>
             <tr>
               <td>
-                <p>Olá <strong>{{nomeUsuario}}</strong>,</p>
+                <p>Olá <strong>{{nomeDestinatario}}</strong>,</p>
                 <p>
-                  Informamos que seu chamado <span class="badge">#{{idChamado}}</span> foi <strong>registrado</strong> na nossa central de atendimento.<br>
-                  Agora, nossa equipe irá analisar sua solicitação.
+                  O chamado <span class="badge">#{{chamadoOS}}</span> foi <strong>atribuído a você</strong> e está aguardando seu atendimento.
                 </p>
                 <table class="info-table">
                   <tr>
-                    <td><b>Assunto:</b></td><td>{{assuntoChamado}}</td>
+                    <td><b>Chamado:</b></td><td>{{chamadoOS}}</td>
                   </tr>
                   <tr>
-                    <td><b>Data de Abertura:</b></td><td>{{dataAbertura}}</td>
+                    <td><b>Prioridade:</b></td><td>{{prioridade}}</td>
                   </tr>
                   <tr>
-                    <td><b>Status Atual:</b></td><td><span style="color:#2546f2; font-weight:bold;">Aberto</span></td>
+                    <td><b>Solicitante:</b></td><td>{{usuarioNome}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Descrição:</b></td><td>{{descricao}}</td>
+                  </tr>
+                  <tr>
+                    <td><b>Status:</b></td><td><span style="color:#0e9e6e; font-weight:bold;">Em Atendimento</span></td>
                   </tr>
                 </table>
                 <p>
-                  <strong>Você receberá notificações por e-mail sempre que houver atualização no status do chamado.</strong>
-                </p>
-                <p>
-                  Se precisar anexar detalhes novos ou conversar com o técnico, acesse o portal de chamados ou responda este e-mail.
+                  <strong>Acesse o portal para iniciar o atendimento e registrar as atualizações.</strong>
                 </p>
               </td>
             </tr>
             <tr>
               <td class="footer">
                 <hr style="margin-bottom:18px;opacity:0.3;">
-                Help Me &copy; 2025 &mdash; Central de Suporte.<br>
+                Help Me &copy; 2026 &mdash; Central de Suporte.<br>
                 <span style="font-size:11px;">Por favor, não responda este e-mail caso não tenha solicitado suporte.</span>
               </td>
             </tr>
