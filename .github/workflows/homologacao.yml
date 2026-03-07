@@ -549,7 +549,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload resultados do Trivy
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           category: trivy-docker-scan
@@ -742,6 +742,8 @@ jobs:
           4. **Documentação**: Atualizar changelog com as mudanças desta versão
 
           ---
+
+          END_SUMMARY
 
           END_SUMMARY
       
