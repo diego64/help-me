@@ -404,7 +404,6 @@ jobs:
           SMTP_PASS_TESTE=3263bb9ce3c328
           SMTP_FROM_TESTE=test@helpme.com
 
-          # Aliases lidos diretamente pelo código
           SMTP_HOST=sandbox.smtp.mailtrap.io
           SMTP_PORT=2525
           SMTP_USER=e0f224ffc3cf93
@@ -668,24 +667,24 @@ jobs:
 
           | Gate | Status | Detalhes |
           |------|--------|----------|
-          | **Build** | ? Passed | TypeScript compilation successful |
-          | **Unit Tests** | ? Passed | All unit tests passed |
-          | **E2E Tests** | ? Passed | Integration tests validated |
-          | **Security Scan** | ? Passed | Trivy vulnerability scan completed |
-          | **Lint** | ? Passed | Hadolint Docker analysis |
+          | **Build** | ✅ Passed | TypeScript compilation successful |
+          | **Unit Tests** | ✅ Passed | All unit tests passed |
+          | **E2E Tests** | ✅ Passed | Integration tests validated |
+          | **Security Scan** | ✅ Passed | Trivy vulnerability scan completed |
+          | **Lint** | ✅ Passed | Hadolint Docker analysis |
 
           ---
 
           ## Test Results
 
           ### Testes Unitários
-          - [X] Executados com sucesso
-          - [X] Coverage disponível nos artifacts
+          - ✅ Executados com sucesso
+          - ✅ Coverage disponível nos artifacts
 
           ### Testes E2E
-          - [X] Todos os cenários validados
-          - [X] Infraestrutura Docker provisionada automaticamente
-          - [X] Testes gerenciam seus próprios dados (sem overhead de seed)
+          - ✅ Todos os cenários validados
+          - ✅ Infraestrutura Docker provisionada automaticamente
+          - ✅ Testes gerenciam seus próprios dados (sem overhead de seed)
 
           ---
 
@@ -752,11 +751,11 @@ jobs:
           BRANCH_TYPE="${{ inputs.branch-type }}"
           
           case "$BRANCH_TYPE" in
-            develop)  BRANCH_ICON="??" ;;
-            feature)  BRANCH_ICON="??" ;;
-            release)  BRANCH_ICON="??" ;;
-            hotfix)   BRANCH_ICON="??" ;;
-            *)        BRANCH_ICON="?" ;;
+            develop)  BRANCH_ICON=" " ;;
+            feature)  BRANCH_ICON=" " ;;
+            release)  BRANCH_ICON=" " ;;
+            hotfix)   BRANCH_ICON=" " ;;
+            *)        BRANCH_ICON=" " ;;
           esac
 
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -857,11 +856,11 @@ jobs:
 
           ## Quality Metrics
 
-          - [X] **Build**: Passed
-          - [X] **Unit Tests**: All tests passed
-          - [X] **E2E Tests**: Integration validated
-          - [X] **Security Scan**: No critical vulnerabilities
-          - [X] **Docker Build**: Multi-stage optimized
+          - ✅ **Build**: Passed
+          - ✅ **Unit Tests**: All tests passed
+          - ✅ **E2E Tests**: Integration validated
+          - ✅ **Security Scan**: No critical vulnerabilities
+          - ✅ **Docker Build**: Multi-stage optimized
 
           ---
 
@@ -921,15 +920,6 @@ jobs:
 
           ---
 
-          <div align="center">
-
-          **Made with by the Help-Me Team**
-
-          [![Docker Pulls](https://img.shields.io/docker/pulls/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api?style=flat-square)](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-          [![GitHub Stars](https://img.shields.io/github/stars/${{ github.repository }}?style=flat-square)](https://github.com/${{ github.repository }}/stargazers)
-          [![License](https://img.shields.io/github/license/${{ github.repository }}?style=flat-square)](https://github.com/${{ github.repository }}/blob/main/LICENSE)
-
-          </div>
           NOTES_END
 
           sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" notes.md
@@ -938,8 +928,10 @@ jobs:
           sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" notes.md
 
           echo "Notes geradas!"
-      
-      - name: Create GitHub
+
+      # FIX: steps unificados em um só — evita race condition entre Create e Upload Assets
+      # FIX: generate_notes removido — não é um input válido para softprops/action-gh-release@v2
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
@@ -947,15 +939,7 @@ jobs:
           body_path: notes.md
           draft: false
           prerelease: false
-          generate_notes: false
           make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.build.outputs.version }}
           files: |
             ./api/docker-compose.yaml
             ./api/package.json
