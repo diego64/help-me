@@ -8,10 +8,11 @@ import { swaggerSpec } from './shared/config/swagger';
 import { redisClient } from './infrastructure/database/redis/client';
 import { errorLoggerMiddleware } from './infrastructure/http/middlewares/error-logger.middleware';
 import { requestLoggerMiddleware } from './infrastructure/http/middlewares/request-logger.middleware';
+import { tracingMiddleware } from '@infrastructure/http/middlewares/tracing.middleware';
 import routes from './presentation/http/routes';
 import { initSocketIO } from './infrastructure/websocket/socket';
-import { startNotificacaoConsumer, stopNotificacaoConsumer } from './infrastructure/messaging/kafka/consumers/notificacao.consumer';
-import { startSLAJob } from './infrastructure/jobs/sla.job';
+import { startNotificacaoConsumer } from '@infrastructure/messaging/kafka/consumers/notificacao.consumer';
+import { startSLAJob } from '@infrastructure/jobs/sla.job';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -42,38 +43,29 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 8 * 60 * 60 * 1000,
-    sameSite: 'lax'
-  }
+    sameSite: 'lax',
+  },
 }));
 
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    message: 'Help-Me API',
-    version: '1.2.1',
-    docs: '/api-docs',
-    health: '/health'
-  });
+app.get('/', (_req: Request, res: Response) => {
+  res.json({ message: 'Help-Me API', version: '1.2.5', docs: '/api-docs', health: '/health' });
 });
 
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     service: 'helpme-api',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
-app.use(
-  '/api-docs',
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    swaggerOptions: {
-      defaultModelsExpandDepth: -1,
-    },
-  }),
-);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  swaggerOptions: { defaultModelsExpandDepth: -1 },
+}));
+
+app.use(tracingMiddleware);
 
 app.use('/api', routes);
 
@@ -90,45 +82,24 @@ app.use((req: Request, res: Response) => {
 
 app.use(errorLoggerMiddleware);
 
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
   const statusCode = err.status || err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
+    requestId: req.id,
     error: {
       message: err.message || 'Erro interno do servidor',
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
     },
-    requestId: req.id,
   });
 });
 
 export const httpServer = http.createServer(app);
 initSocketIO(httpServer);
 
-let slaJob: NodeJS.Timeout | null = null;
-
 export async function startServices(): Promise<void> {
   await startNotificacaoConsumer();
-  slaJob = startSLAJob();
+  startSLAJob();
 }
-
-async function shutdown(signal: string): Promise<void> {
-  app.locals.logger?.info(`[SHUTDOWN] Sinal recebido: ${signal}`);
-
-  if (slaJob) clearInterval(slaJob);
-
-  await stopNotificacaoConsumer();
-
-  httpServer.close(() => {
-    app.locals.logger?.info('[SHUTDOWN] Servidor encerrado');
-    process.exit(0);
-  });
-
-  // Força saída após 10s caso algo trave
-  setTimeout(() => process.exit(1), 10_000).unref();
-}
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
 
 export default app;

@@ -11,6 +11,7 @@
     },
     "target": "ES2023",
     "module": "ESNext",
+    //"module": "CommonJS",
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "strict": true,

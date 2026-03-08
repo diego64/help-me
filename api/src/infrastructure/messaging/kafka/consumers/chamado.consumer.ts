@@ -324,7 +324,12 @@ export async function startChamadoConsumer(): Promise<void> {
 
     // Criar consumer apenas se não existir
     if (!consumerInstance) {
-      consumerInstance = kafka.consumer({ groupId: 'chamado-group' });
+      consumerInstance = kafka.consumer({
+        groupId: 'chamado-group',
+        sessionTimeout: 60000,    // padrão é 30000 — dobrar
+        heartbeatInterval: 5000,  // padrão é 3000
+        maxWaitTimeInMs: 5000,    // tempo máximo de espera por mensagens no Fetch
+      });
       logger.debug('Consumer instance criada');
     }
 

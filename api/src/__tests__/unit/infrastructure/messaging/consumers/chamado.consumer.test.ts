@@ -187,7 +187,6 @@ describe('renderTemplate', () => {
   describe('Erros inesperados', () => {
     it('deve embrulhar erro genérico do readFileSync em TemplateError com originalError', () => {
       const erroIo = new Error('EACCES: permission denied');
-      // Substitui diretamente sem depender do estado acumulado
       fsMock.readFileSync = vi.fn().mockImplementation(() => { throw erroIo; }) as any;
 
       try {
@@ -424,7 +423,10 @@ describe('startChamadoConsumer', () => {
     it('deve conectar, subscrever e iniciar o consumer', async () => {
       await startChamadoConsumer();
 
-      expect(kafkaMock.consumer).toHaveBeenCalledWith({ groupId: 'chamado-group' });
+      // FIX: objectContaining para não quebrar com opções extras de tuning
+      expect(kafkaMock.consumer).toHaveBeenCalledWith(
+        expect.objectContaining({ groupId: 'chamado-group' })
+      );
       expect(kafkaConsumerMock.connect).toHaveBeenCalledOnce();
       expect(kafkaConsumerMock.subscribe).toHaveBeenCalledWith({
         topic: 'chamado-status',

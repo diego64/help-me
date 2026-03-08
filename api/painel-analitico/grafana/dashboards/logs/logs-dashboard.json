@@ -524,7 +524,7 @@
   "refresh": "5s",
   "schemaVersion": 39,
   "tags": [
-    "logs"
+
   ],
   "templating": {
     "list": [
@@ -599,7 +599,7 @@
   },
   "timepicker": {},
   "timezone": "America/Sao_Paulo",
-  "title": "logs-aplicacao",
+  "title": "aplicacao",
   "uid": "logs-v1",
   "version": 3,
   "weekStart": ""

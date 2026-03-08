@@ -1,6 +1,6 @@
 {
   "name": "help-me-api",
-  "version": "1.2.1",
+  "version": "1.2.5",
   "description": "API para help desk",
   "main": "index.js",
   "type": "module",
@@ -11,7 +11,7 @@
     "url": "https://github.com/diego64/help-me.git"
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/server.ts",
+    "dev": "tsx watch --env-file=.env --import src/server.ts",
     "build": "tsup",
     "start": "node --env-file=.env dist/server.js",
     "generate": "dotenv -e .env -- prisma generate",
@@ -43,6 +43,14 @@
   "packageManager": "pnpm@10.28.1",
   "dependencies": {
     "@influxdata/influxdb-client": "^1.35.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "0.57.0",
+    "@opentelemetry/core": "^2.6.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.57.0",
+    "@opentelemetry/resources": "1.30.0",
+    "@opentelemetry/sdk-node": "0.57.0",
+    "@opentelemetry/sdk-trace-base": "1.30.0",
+    "@opentelemetry/semantic-conventions": "1.30.0",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "7.3.0",
     "compression": "^1.8.1",

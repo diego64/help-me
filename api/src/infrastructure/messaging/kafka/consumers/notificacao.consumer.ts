@@ -199,7 +199,12 @@ export async function startNotificacaoConsumer(): Promise<void> {
   }
 
   try {
-    consumerInstance = kafka.consumer({ groupId: 'helpme-notificacoes-group' });
+    consumerInstance = kafka.consumer({
+      groupId: 'helpme-notificacoes-group',
+      sessionTimeout: 60000,
+      heartbeatInterval: 5000,
+      maxWaitTimeInMs: 5000,
+    });
 
     await consumerInstance.connect();
     logger.info('Consumer de notificações conectado');

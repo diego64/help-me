@@ -14,7 +14,9 @@ const pool = new Pool({
   connectionString,
   max: parseInt(process.env.DB_MAX_CONNECTIONS || '10', 10),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // 2s → 10s
+  keepAlive: true,                // evita que o TCP caia silenciosamente
+  keepAliveInitialDelayMillis: 10000,
 });
 
 const adapter = new PrismaPg(pool);

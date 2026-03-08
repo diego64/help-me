@@ -5,7 +5,7 @@ const options = {
     openapi: '3.0.0',
     info: {
       title: 'Help-me API',
-      version: '1.2.1',
+      version: '5',
       description: 'API de Helpdesk',
     },
     servers: [
