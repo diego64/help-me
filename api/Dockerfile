@@ -66,12 +66,14 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 LABEL org.opencontainers.image.vendor="Help-Me Team"
 
-# Instalar dependências do sistema
+# hadolint ignore=DL3018
+# DL3018: Pinar versões de pacotes Alpine quebra builds quando o repositório
+# atualiza por patches de segurança. A imagem base node:20-alpine já é
+# atualizada regularmente com correções de segurança.
 RUN apk add --no-cache \
     dumb-init \
     openssl \
-    curl \
-    && rm -rf /var/cache/apk/*
+    curl
 
 # Habilitar pnpm via corepack no stage de produção
 RUN corepack enable && corepack prepare pnpm@latest --activate
