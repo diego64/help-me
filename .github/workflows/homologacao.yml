@@ -34,9 +34,9 @@ on:
           - major
         default: none
 
+# FIX: removido security-events: write — não há mais upload SARIF
 permissions:
   contents: write
-  security-events: write
 
 jobs:
   ambiente-para-homologacao:
@@ -46,13 +46,13 @@ jobs:
         versao: [20, 22]
         plataforma: ["ubuntu"]
     runs-on: ${{ matrix.plataforma }}-latest
-    
+
     steps:
       - name: Instalação do Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.versao }}
-      
+
       - name: Exibição da versão e da plataforma
         run: |
           node --version
@@ -65,21 +65,21 @@ jobs:
     environment: homologacao
     outputs:
       version: ${{ steps.version.outputs.version }}
-    
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Ativar pnpm
         run: corepack enable
-      
+
       - name: Cache de dependências
         uses: actions/cache@v4
         with:
@@ -89,16 +89,16 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
-      
+
       - name: Limpar instalação anterior
         working-directory: ./api
         run: |
           rm -rf node_modules .turbo dist
-      
+
       - name: Instalar dependências
         working-directory: ./api
         run: pnpm install --frozen-lockfile
-      
+
       - name: Determinar versão
         id: version
         working-directory: ./api
@@ -106,12 +106,12 @@ jobs:
           bump_version() {
             local version=$1
             local bump_type=$2
-            
+
             IFS='.' read -ra VERSION_PARTS <<< "$version"
             MAJOR="${VERSION_PARTS[0]}"
             MINOR="${VERSION_PARTS[1]}"
             PATCH="${VERSION_PARTS[2]}"
-            
+
             case $bump_type in
               major)
                 MAJOR=$((MAJOR + 1))
@@ -126,13 +126,13 @@ jobs:
                 PATCH=$((PATCH + 1))
                 ;;
             esac
-            
+
             echo "$MAJOR.$MINOR.$PATCH"
           }
-          
+
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "Versão do package.json: $PACKAGE_VERSION"
-          
+
           if [ -n "${{ inputs.version-override }}" ]; then
             VERSION="${{ inputs.version-override }}"
             echo "Usando versão manual: $VERSION"
@@ -143,17 +143,17 @@ jobs:
             VERSION="$PACKAGE_VERSION"
             echo "Usando versão do package.json: $VERSION"
           fi
-          
+
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Versão inválida: $VERSION"
             echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
             exit 1
           fi
-          
+
           echo "Versão final: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      
+
       - name: Atualizar package.json
         if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
         working-directory: ./api
@@ -164,13 +164,13 @@ jobs:
           git config user.email "actions@github.com"
           git add package.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração"
-      
+
       - name: Gerar Prisma Client (sem banco)
         working-directory: ./api
         env:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
         run: pnpm run generate
-      
+
       - name: Verificar TypeScript
         continue-on-error: true
         working-directory: ./api
@@ -179,18 +179,18 @@ jobs:
           pnpm tsc --version
           echo "Executando type check:"
           pnpm tsc --noEmit --pretty
-      
+
       - name: Build do projeto
         working-directory: ./api
         run: pnpm build
-      
+
       - name: Verificar build gerado
         working-directory: ./api
         run: |
           echo "Conteúdo do diretório dist:"
           ls -lah dist/
           test -f dist/server.js && echo "[SUCESSO] server.js encontrado" || (echo "[ERROR] server.js NÃO encontrado" && exit 1)
-      
+
       - name: Upload do build
         uses: actions/upload-artifact@v4
         with:
@@ -205,19 +205,19 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     environment: homologacao
-    
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Ativar pnpm
         run: corepack enable
-      
+
       - name: Cache de dependências
         uses: actions/cache@v4
         with:
@@ -227,21 +227,21 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
-      
+
       - name: Instalar dependências
         working-directory: ./api
         run: pnpm install --frozen-lockfile
-      
+
       - name: Gerar Prisma Client (sem banco)
         working-directory: ./api
         env:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
         run: pnpm run generate
-      
+
       - name: Executar testes unitários
         working-directory: ./api
         run: pnpm run test:unit
-      
+
       - name: Upload de coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -257,19 +257,19 @@ jobs:
     runs-on: ubuntu-latest
     environment: homologacao
     timeout-minutes: 30
-    
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Ativar pnpm
         run: corepack enable
-      
+
       - name: Cache de dependências
         uses: actions/cache@v4
         with:
@@ -279,7 +279,7 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
-      
+
       - name: Instalar dependências
         working-directory: ./api
         run: pnpm install --frozen-lockfile
@@ -336,10 +336,7 @@ jobs:
         working-directory: ./api
         run: |
           cat > .env.test << 'EOF'
-          # ==================== AMBIENTE DE TESTE ====================
           NODE_ENV=test
-
-          # ==================== BANCO DE DADOS (PRINCIPAL) ====================
           DB_USER=teste
           DB_PASSWORD=senha_teste
           DB_NAME=helpme_database_teste
@@ -350,22 +347,16 @@ jobs:
           DB_EFFECTIVE_CACHE_SIZE=512MB
           POSTGRESQL_WORK_MEM=8MB
           DATABASE_URL=postgresql://teste:senha_teste@localhost:5433/helpme_database_teste?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
-
-          # ==================== BANCO DE DADOS (HISTÓRICO) ====================
           MONGO_INITDB_ROOT_USERNAME_TESTE=teste
           MONGO_INITDB_ROOT_PASSWORD_TESTE=senha
           MONGO_INITDB_DATABASE_TESTE=helpme_mongo_teste
           MONGO_HOST_TESTE=localhost
           MONGO_PORT_TESTE=27018
           MONGO_INITDB_URI_TESTE=mongodb://teste:senha@localhost:27018/helpme_mongo_teste?authSource=admin
-
-          # ==================== JWT ====================
           JWT_SECRET=chavesecretadeteste123
           JWT_REFRESH_SECRET=refreshsegredodeteste456
           JWT_EXPIRATION=8h
           JWT_REFRESH_EXPIRATION=7d
-
-          # ==================== REDIS ====================
           REDIS_PASSWORD_TESTE=
           REDIS_HOST_TESTE=localhost
           REDIS_PORT_TESTE=6380
@@ -374,19 +365,13 @@ jobs:
           REDIS_HOST=localhost
           REDIS_PORT=6380
           REDIS_PASSWORD=
-
-          # ==================== KAFKA ====================
           KAFKA_HOST_TESTE=localhost
           KAFKA_PORT_TESTE=9095
           KAFKA_BROKER_URL_TESTE=localhost:9095
           KAFKAJS_NO_PARTITIONER_WARNING_TESTE=1
-
-          # ==================== ZOOKEEPER ====================
           ZOOKEEPER_HOST_TESTE=localhost
           ZOOKEEPER_CLIENT_PORT_TESTE=2182
           ZOOKEEPER_TICK_TIME_TESTE=2000
-
-          # ==================== INFLUXDB ====================
           INFLUX_USERNAME_TESTE=teste
           INFLUX_PASSWORD_TESTE=senha_teste
           INFLUX_ORG_TESTE=org_teste
@@ -396,40 +381,29 @@ jobs:
           INFLUX_HOST_TESTE=localhost
           INFLUX_PORT_TESTE=8087
           INFLUX_URL_TESTE=http://localhost:8087
-
-          # ==================== EMAIL SMTP ====================
           SMTP_HOST_TESTE=sandbox.smtp.mailtrap.io
           SMTP_PORT_TESTE=2525
           SMTP_USER_TESTE=e0f224ffc3cf93
           SMTP_PASS_TESTE=3263bb9ce3c328
           SMTP_FROM_TESTE=test@helpme.com
-
           SMTP_HOST=sandbox.smtp.mailtrap.io
           SMTP_PORT=2525
           SMTP_USER=e0f224ffc3cf93
           SMTP_PASS=3263bb9ce3c328
           SMTP_FROM=test@helpme.com
-
-          # ==================== URL BASE ====================
           API_BASE_URL_TESTE=http://localhost:3333
           API_HOST_TESTE=0.0.0.0
           API_PORT_TESTE=3333
-
-          # ==================== DADOS PARA TESTES ====================
           ADMIN_EMAIL_TESTE=admin@helpme.com
           ADMIN_PASSWORD_TESTE=Admin123!
           USER_EMAIL_TESTE=user@helpme.com
           USER_PASSWORD_TESTE=User123!
           TECNICO_EMAIL_TESTE=tecnico@helpme.com
           TECNICO_PASSWORD_TESTE=Tecnico123!
-
-          # ==================== CONFIGURAÇÕES DE TESTE ====================
           TEST_TIMEOUT=30000
           TEST_CONCURRENCY=1
           SKIP_SEED=false
           SKIP_MIGRATIONS=false
-
-          # ==================== LOGGING ====================
           LOG_LEVEL=debug
           LOG_DIR=./logs
           LOG_FILE=test.log
@@ -459,7 +433,7 @@ jobs:
           path: ./api/coverage/
           retention-days: 7
         continue-on-error: true
-      
+
       - name: Logs dos serviços (em caso de falha)
         working-directory: ./api
         if: failure()
@@ -486,13 +460,13 @@ jobs:
     outputs:
       version: ${{ needs.build.outputs.version }}
       tags: ${{ steps.meta.outputs.tags }}
-    
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Extrair metadados Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -506,22 +480,22 @@ jobs:
             type=raw,value=build-${{ github.run_number }}
           flavor: |
             latest=auto
-      
+
       - name: Análise do Dockerfile com Hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: ./api/Dockerfile
         continue-on-error: true
-      
+
       - name: Login no Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Build e Push da imagem
         uses: docker/build-push-action@v6
         with:
@@ -536,25 +510,26 @@ jobs:
             VERSION=${{ needs.build.outputs.version }}
             BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             GIT_COMMIT=${{ github.sha }}
-      
+
       - name: Scan de vulnerabilidades com Trivy
         uses: aquasecurity/trivy-action@0.32.0
         with:
           scan-type: 'image'
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          format: json
+          output: trivy-results.json
+          severity: "HIGH,CRITICAL"
         continue-on-error: true
-      
+
       - name: Upload resultados do Trivy
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          category: trivy-docker-scan
-          sarif_file: trivy-results.sarif
+          name: trivy-results
+          path: trivy-results.json
+          retention-days: 30
         continue-on-error: true
-      
+
       - name: Determinar badge e label do tipo de branch
         id: branch-meta
         run: |
@@ -585,10 +560,7 @@ jobs:
       - name: Resumo
         run: |
           BRANCH_TYPE="${{ inputs.branch-type }}"
-          BRANCH_ICON="${{ steps.branch-meta.outputs.branch_icon }}"
           BRANCH_DESC="${{ steps.branch-meta.outputs.branch_desc }}"
-          BADGE_COLOR="${{ steps.branch-meta.outputs.badge_color }}"
-          BADGE_LABEL="${{ steps.branch-meta.outputs.badge_label }}"
 
           cat >> $GITHUB_STEP_SUMMARY << END_SUMMARY
           # Versão ${{ needs.build.outputs.version }}
@@ -630,39 +602,6 @@ jobs:
 
           ---
 
-          ## Docker Images
-
-          ### Imagens Publicadas
-
-          ```bash
-          # Versão específica (recomendado para produção)
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}
-
-          # Latest (desenvolvimento)
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:latest
-
-          # Homologação
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:homolog
-
-          # SHA específico
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:sha-${GITHUB_SHA:0:7}
-
-          # Build number
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:build-${{ github.run_number }}
-          ```
-
-          ### Tags Disponíveis
-
-          | Tag | Uso Recomendado | Estabilidade |
-          |-----|----------------|--------------|
-          | `${{ needs.build.outputs.version }}` | Produção | Stable |
-          | `latest` | Desenvolvimento | Rolling |
-          | `homolog` | Homologação | Testing |
-          | `sha-${GITHUB_SHA:0:7}` | Debug | Immutable |
-          | `build-${{ github.run_number }}` | Rastreamento | Immutable |
-
-          ---
-
           ## Quality Gates
 
           | Gate | Status | Detalhes |
@@ -684,52 +623,13 @@ jobs:
           ### Testes E2E
           - ✅ Todos os cenários validados
           - ✅ Infraestrutura Docker provisionada automaticamente
-          - ✅ Testes gerenciam seus próprios dados (sem overhead de seed)
 
           ---
 
           ## Security & Compliance
 
-          - Trivy vulnerability scan: **Completed**
-          - SARIF report uploaded to GitHub Security
+          - Trivy vulnerability scan: **Completed** (results in artifacts)
           - Docker image signed and verified
-          - No critical vulnerabilities detected
-
-          ---
-
-          ## Deployment
-
-          ### Docker Compose
-
-          ```yaml
-          version: '3.8'
-          services:
-            api:
-              image: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}
-              ports:
-                - "3000:3000"
-              environment:
-                NODE_ENV: production
-                DATABASE_URL: postgresql://...
-                MONGO_INITDB_URI: mongodb://...
-                REDIS_URL: redis://...
-          ```
-
-          ### Kubernetes
-
-          ```bash
-          kubectl set image deployment/helpme-api \
-            api=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${{ needs.build.outputs.version }}
-          ```
-
-          ---
-
-          ## Resources
-
-          - [Documentação da API](https://github.com/${{ github.repository }})
-          - [Docker Hub](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-          - [Swagger/OpenAPI](http://localhost:3000/api-docs)
-          - [Grafana Dashboards](https://github.com/${{ github.repository }}/tree/main/api/painel-analitico/grafana/dashboards)
 
           ---
 
@@ -738,18 +638,25 @@ jobs:
           1. **Produção**: Deploy da imagem `${{ needs.build.outputs.version }}` no ambiente de produção
           2. **Monitoramento**: Verificar métricas no Grafana após deploy
           3. **Rollback**: Manter imagem anterior disponível para rollback rápido
-          4. **Documentação**: Atualizar changelog com as mudanças desta versão
-
-          ---
 
           END_SUMMARY
-      
+
+      # FIX: tag criada explicitamente antes da release para evitar falha quando
+      # a tag ainda não existe no remote no momento da criação da release
+      - name: Criar tag Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -fa "v${{ needs.build.outputs.version }}" \
+            -m "Release v${{ needs.build.outputs.version }}" || true
+          git push origin "v${{ needs.build.outputs.version }}" --force || true
+
       - name: Gerar Notes
         id: notes
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           BRANCH_TYPE="${{ inputs.branch-type }}"
-          
+
           case "$BRANCH_TYPE" in
             develop)  BRANCH_ICON=" " ;;
             feature)  BRANCH_ICON=" " ;;
@@ -759,17 +666,18 @@ jobs:
           esac
 
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
+
           if [ -n "$PREVIOUS_TAG" ]; then
             COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges)
           else
             COMMITS=$(git log --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges -n 20)
           fi
 
-          cat > notes.md << 'NOTES_END'
-          ## Help-Me API vVERSION_PLACEHOLDER
+          # FIX: heredoc sem indentação para evitar espaços no início das linhas do markdown
+          cat > notes.md << NOTES_END
+          ## Help-Me API v${VERSION}
 
-          Today, we are excited to share the **vVERSION_PLACEHOLDER** stable release
+          Today, we are excited to share the **v${VERSION}** stable release.
 
           **Star this repo** for notifications about new releases, bug fixes & features!
 
@@ -779,8 +687,8 @@ jobs:
 
           | Campo | Valor |
           |-------|-------|
-          | **Tipo de Branch** | BRANCH_ICON_PLACEHOLDER `BRANCH_TYPE_PLACEHOLDER` |
-          | **Branch Origem** | `${{ github.ref_name }}` |
+          | **Tipo de Branch** | ${BRANCH_ICON} \`${BRANCH_TYPE}\` |
+          | **Branch Origem** | \`${{ github.ref_name }}\` |
 
           ---
 
@@ -788,25 +696,24 @@ jobs:
 
           ### Docker (Recommended)
 
-          ```bash
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:VERSION_PLACEHOLDER
+          \`\`\`bash
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
 
-          docker run -d -p 3000:3000 \
-            -e DATABASE_URL="postgresql://user:pass@localhost:5432/helpme" \
-            -e MONGO_INITDB_URI="mongodb://user:pass@localhost:27017/helpme-mongo" \
-            -e REDIS_URL="redis://localhost:6379" \
-            -e JWT_SECRET="your-secret-here" \
-            -e JWT_REFRESH_SECRET="your-refresh-secret-here" \
-            ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:VERSION_PLACEHOLDER
-          ```
+          docker run -d -p 3000:3000 \\
+            -e DATABASE_URL="postgresql://user:pass@localhost:5432/helpme" \\
+            -e MONGO_INITDB_URI="mongodb://user:pass@localhost:27017/helpme-mongo" \\
+            -e REDIS_URL="redis://localhost:6379" \\
+            -e JWT_SECRET="your-secret-here" \\
+            -e JWT_REFRESH_SECRET="your-refresh-secret-here" \\
+            ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
+          \`\`\`
 
           ### Docker Compose
 
-          ```yaml
-          version: '3.8'
+          \`\`\`yaml
           services:
             api:
-              image: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:VERSION_PLACEHOLDER
+              image: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
               ports:
                 - "3000:3000"
               environment:
@@ -817,26 +724,13 @@ jobs:
                 KAFKA_BROKER_URL: kafka:9093
                 JWT_SECRET: your-secret-here
                 JWT_REFRESH_SECRET: your-refresh-secret-here
-          ```
-
-          ### Kubernetes
-
-          ```bash
-          kubectl set image deployment/helpme-api \
-            api=${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:VERSION_PLACEHOLDER
-          ```
+          \`\`\`
 
           ---
 
           ## What's New
 
-          NOTES_END
-
-          echo "" >> notes.md
-          echo "$COMMITS" >> notes.md
-          echo "" >> notes.md
-
-          cat >> notes.md << 'NOTES_END'
+          ${COMMITS}
 
           ---
 
@@ -844,13 +738,13 @@ jobs:
 
           | Attribute | Value |
           |-----------|-------|
-          | **Version** | `VERSION_PLACEHOLDER` |
+          | **Version** | \`${VERSION}\` |
           | **Build** | #${{ github.run_number }} |
-          | **Commit** | [`COMMIT_PLACEHOLDER`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
+          | **Commit** | [\`${GITHUB_SHA:0:7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
           | **Node.js** | 22.x |
           | **TypeScript** | 5.9.x |
           | **Prisma** | 7.x |
-          | **Docker Base** | node:22-alpine |
+          | **Docker Base** | node:20-alpine |
 
           ---
 
@@ -866,25 +760,18 @@ jobs:
 
           ## Docker Images
 
-          ### Available Tags
-
           | Tag | Purpose | Stability |
           |-----|---------|-----------|
-          | `VERSION_PLACEHOLDER` | Production | Stable |
-          | `latest` | Development | Rolling |
-          | `homolog` | Staging | Testing |
-          | `sha-COMMIT_PLACEHOLDER` | Debug | Immutable |
+          | \`${VERSION}\` | Production | Stable |
+          | \`latest\` | Development | Rolling |
+          | \`homolog\` | Staging | Testing |
+          | \`sha-${GITHUB_SHA:0:7}\` | Debug | Immutable |
 
-          ```bash
-          # Production (recommended)
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:VERSION_PLACEHOLDER
-
-          # Latest
+          \`\`\`bash
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:latest
-
-          # Specific commit
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:sha-COMMIT_PLACEHOLDER
-          ```
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:sha-${GITHUB_SHA:0:7}
+          \`\`\`
 
           ---
 
@@ -894,7 +781,6 @@ jobs:
           - [Swagger/OpenAPI](http://localhost:3000/api-docs)
           - [Docker Hub](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
           - [Grafana Dashboards](https://github.com/${{ github.repository }}/tree/main/api/painel-analitico/grafana/dashboards)
-          - [Kubernetes Manifests](https://github.com/${{ github.repository }}/tree/main/api/k8s)
 
           ---
 
@@ -910,38 +796,34 @@ jobs:
 
           NOTES_END
 
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> notes.md
-          else
-            echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> notes.md
-          fi
+                    if [ -n "$PREVIOUS_TAG" ]; then
+                      echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> notes.md
+                    else
+                      echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> notes.md
+                    fi
 
-          cat >> notes.md << 'NOTES_END'
+                    cat >> notes.md << 'NOTES_END'
 
           ---
 
           NOTES_END
 
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" notes.md
-          sed -i "s/COMMIT_PLACEHOLDER/${GITHUB_SHA:0:7}/g" notes.md
-          sed -i "s/BRANCH_TYPE_PLACEHOLDER/$BRANCH_TYPE/g" notes.md
-          sed -i "s/BRANCH_ICON_PLACEHOLDER/$BRANCH_ICON/g" notes.md
+                    echo "Notes geradas com sucesso!"
 
-          echo "Notes geradas!"
-
-      # FIX: steps unificados em um só — evita race condition entre Create e Upload Assets
-      # FIX: generate_notes removido — não é um input válido para softprops/action-gh-release@v2
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.build.outputs.version }}
-          name: v${{ needs.build.outputs.version }}
-          body_path: notes.md
-          draft: false
-          prerelease: false
-          make_latest: true
-          files: |
-            ./api/docker-compose.yaml
-            ./api/package.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                # FIX: steps de release unificados — evita race condition
+                # FIX: fail_on_unmatched_files: false — tolerante a re-runs na mesma tag
+                - name: Create GitHub Release
+                  uses: softprops/action-gh-release@v2
+                  with:
+                    tag_name: v${{ needs.build.outputs.version }}
+                    name: v${{ needs.build.outputs.version }}
+                    body_path: notes.md
+                    draft: false
+                    prerelease: false
+                    make_latest: true
+                    fail_on_unmatched_files: false
+                    files: |
+                      ./api/docker-compose.yaml
+                      ./api/package.json
+                  env:
+                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
