@@ -653,177 +653,146 @@ jobs:
 
       - name: Gerar Notes
         id: notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          BRANCH_TYPE: ${{ inputs.branch-type }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REF_NAME: ${{ github.ref_name }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          BRANCH_TYPE="${{ inputs.branch-type }}"
-
-          case "$BRANCH_TYPE" in
-            develop)  BRANCH_ICON=" " ;;
-            feature)  BRANCH_ICON=" " ;;
-            release)  BRANCH_ICON=" " ;;
-            hotfix)   BRANCH_ICON=" " ;;
-            *)        BRANCH_ICON=" " ;;
-          esac
-
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -n "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges)
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD \
+              --pretty=format:"- %s ([%h](${SERVER_URL}/${REPO}/commit/%H))" \
+              --no-merges)
           else
-            COMMITS=$(git log --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges -n 20)
+            COMMITS=$(git log \
+              --pretty=format:"- %s ([%h](${SERVER_URL}/${REPO}/commit/%H))" \
+              --no-merges -n 20)
           fi
 
-          # FIX: heredoc sem indentação para evitar espaços no início das linhas do markdown
-          cat > notes.md << NOTES_END
-          ## Help-Me API v${VERSION}
+          SHORT_SHA="${SHA:0:7}"
 
-          Today, we are excited to share the **v${VERSION}** stable release.
+          {
+            echo "## Help-Me API v${VERSION}"
+            echo ""
+            echo "Today, we are excited to share the **v${VERSION}** stable release."
+            echo ""
+            echo "**Star this repo** for notifications about new releases, bug fixes & features!"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Branch Information"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|-------|-------|"
+            echo "| **Tipo de Branch** | \`${BRANCH_TYPE}\` |"
+            echo "| **Branch Origem** | \`${REF_NAME}\` |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo "### Docker (Recommended)"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${DOCKERHUB_USERNAME}/helpme-api:${VERSION}"
+            echo ""
+            echo "docker run -d -p 3000:3000 \\"
+            echo "  -e DATABASE_URL=\"postgresql://user:pass@localhost:5432/helpme\" \\"
+            echo "  -e MONGO_INITDB_URI=\"mongodb://user:pass@localhost:27017/helpme-mongo\" \\"
+            echo "  -e REDIS_URL=\"redis://localhost:6379\" \\"
+            echo "  -e JWT_SECRET=\"your-secret-here\" \\"
+            echo "  -e JWT_REFRESH_SECRET=\"your-refresh-secret-here\" \\"
+            echo "  ${DOCKERHUB_USERNAME}/helpme-api:${VERSION}"
+            echo '```'
+            echo ""
+            echo "### Docker Compose"
+            echo ""
+            echo '```yaml'
+            echo "services:"
+            echo "  api:"
+            echo "    image: ${DOCKERHUB_USERNAME}/helpme-api:${VERSION}"
+            echo "    ports:"
+            echo "      - \"3000:3000\""
+            echo "    environment:"
+            echo "      NODE_ENV: production"
+            echo "      DATABASE_URL: postgresql://user:pass@postgres:5432/helpme"
+            echo "      MONGO_INITDB_URI: mongodb://user:pass@mongodb:27017/helpme-mongo"
+            echo "      REDIS_URL: redis://redis:6379"
+            echo "      KAFKA_BROKER_URL: kafka:9093"
+            echo "      JWT_SECRET: your-secret-here"
+            echo "      JWT_REFRESH_SECRET: your-refresh-secret-here"
+            echo '```'
+            echo ""
+            echo "---"
+            echo ""
+            echo "## What's New"
+            echo ""
+            echo "$COMMITS"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Technical Details"
+            echo ""
+            echo "| Attribute | Value |"
+            echo "|-----------|-------|"
+            echo "| **Version** | \`${VERSION}\` |"
+            echo "| **Build** | #${RUN_NUMBER} |"
+            echo "| **Commit** | [\`${SHORT_SHA}\`](${SERVER_URL}/${REPO}/commit/${SHA}) |"
+            echo "| **Node.js** | 22.x |"
+            echo "| **TypeScript** | 5.9.x |"
+            echo "| **Prisma** | 7.x |"
+            echo "| **Docker Base** | node:20-alpine |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Quality Metrics"
+            echo ""
+            echo "- [x] Build: Passed"
+            echo "- [x] Unit Tests: All tests passed"
+            echo "- [x] E2E Tests: Integration validated"
+            echo "- [x] Security Scan: No critical vulnerabilities"
+            echo "- [x] Docker Build: Multi-stage optimized"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Docker Images"
+            echo ""
+            echo "| Tag | Purpose | Stability |"
+            echo "|-----|---------|-----------|"
+            echo "| \`${VERSION}\` | Production | Stable |"
+            echo "| \`latest\` | Development | Rolling |"
+            echo "| \`homolog\` | Staging | Testing |"
+            echo "| \`sha-${SHORT_SHA}\` | Debug | Immutable |"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${DOCKERHUB_USERNAME}/helpme-api:${VERSION}"
+            echo "docker pull ${DOCKERHUB_USERNAME}/helpme-api:latest"
+            echo "docker pull ${DOCKERHUB_USERNAME}/helpme-api:sha-${SHORT_SHA}"
+            echo '```'
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Support"
+            echo ""
+            echo "- [Report a Bug](${SERVER_URL}/${REPO}/issues/new?labels=bug)"
+            echo "- [Request a Feature](${SERVER_URL}/${REPO}/issues/new?labels=enhancement)"
+            echo "- [Discussions](${SERVER_URL}/${REPO}/discussions)"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Full Changelog"
+            echo ""
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "**[${PREVIOUS_TAG}...v${VERSION}](${SERVER_URL}/${REPO}/compare/${PREVIOUS_TAG}...v${VERSION})**"
+            else
+              echo "**[Initial Release](${SERVER_URL}/${REPO}/commits/v${VERSION})**"
+            fi
+          } > notes.md
 
-          **Star this repo** for notifications about new releases, bug fixes & features!
-
-          ---
-
-          ## Branch Information
-
-          | Campo | Valor |
-          |-------|-------|
-          | **Tipo de Branch** | ${BRANCH_ICON} \`${BRANCH_TYPE}\` |
-          | **Branch Origem** | \`${{ github.ref_name }}\` |
-
-          ---
-
-          ## Installation
-
-          ### Docker (Recommended)
-
-          \`\`\`bash
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
-
-          docker run -d -p 3000:3000 \\
-            -e DATABASE_URL="postgresql://user:pass@localhost:5432/helpme" \\
-            -e MONGO_INITDB_URI="mongodb://user:pass@localhost:27017/helpme-mongo" \\
-            -e REDIS_URL="redis://localhost:6379" \\
-            -e JWT_SECRET="your-secret-here" \\
-            -e JWT_REFRESH_SECRET="your-refresh-secret-here" \\
-            ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
-          \`\`\`
-
-          ### Docker Compose
-
-          \`\`\`yaml
-          services:
-            api:
-              image: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
-              ports:
-                - "3000:3000"
-              environment:
-                NODE_ENV: production
-                DATABASE_URL: postgresql://user:pass@postgres:5432/helpme
-                MONGO_INITDB_URI: mongodb://user:pass@mongodb:27017/helpme-mongo
-                REDIS_URL: redis://redis:6379
-                KAFKA_BROKER_URL: kafka:9093
-                JWT_SECRET: your-secret-here
-                JWT_REFRESH_SECRET: your-refresh-secret-here
-          \`\`\`
-
-          ---
-
-          ## What's New
-
-          ${COMMITS}
-
-          ---
-
-          ## Technical Details
-
-          | Attribute | Value |
-          |-----------|-------|
-          | **Version** | \`${VERSION}\` |
-          | **Build** | #${{ github.run_number }} |
-          | **Commit** | [\`${GITHUB_SHA:0:7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
-          | **Node.js** | 22.x |
-          | **TypeScript** | 5.9.x |
-          | **Prisma** | 7.x |
-          | **Docker Base** | node:20-alpine |
-
-          ---
-
-          ## Quality Metrics
-
-          - ✅ **Build**: Passed
-          - ✅ **Unit Tests**: All tests passed
-          - ✅ **E2E Tests**: Integration validated
-          - ✅ **Security Scan**: No critical vulnerabilities
-          - ✅ **Docker Build**: Multi-stage optimized
-
-          ---
-
-          ## Docker Images
-
-          | Tag | Purpose | Stability |
-          |-----|---------|-----------|
-          | \`${VERSION}\` | Production | Stable |
-          | \`latest\` | Development | Rolling |
-          | \`homolog\` | Staging | Testing |
-          | \`sha-${GITHUB_SHA:0:7}\` | Debug | Immutable |
-
-          \`\`\`bash
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:${VERSION}
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:latest
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/helpme-api:sha-${GITHUB_SHA:0:7}
-          \`\`\`
-
-          ---
-
-          ## Documentation
-
-          - [API Documentation](https://github.com/${{ github.repository }})
-          - [Swagger/OpenAPI](http://localhost:3000/api-docs)
-          - [Docker Hub](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/helpme-api)
-          - [Grafana Dashboards](https://github.com/${{ github.repository }}/tree/main/api/painel-analitico/grafana/dashboards)
-
-          ---
-
-          ## Support
-
-          - [Report a Bug](https://github.com/${{ github.repository }}/issues/new?labels=bug)
-          - [Request a Feature](https://github.com/${{ github.repository }}/issues/new?labels=enhancement)
-          - [Discussions](https://github.com/${{ github.repository }}/discussions)
-
-          ---
-
-          ## Full Changelog
-
-          NOTES_END
-
-                    if [ -n "$PREVIOUS_TAG" ]; then
-                      echo "**[$PREVIOUS_TAG...v$VERSION](${{ github.server_url }}/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)**" >> notes.md
-                    else
-                      echo "**[Initial Release](https://github.com/${{ github.repository }}/commits/v$VERSION)**" >> notes.md
-                    fi
-
-                    cat >> notes.md << 'NOTES_END'
-
-          ---
-
-          NOTES_END
-
-                    echo "Notes geradas com sucesso!"
-
-                # FIX: steps de release unificados — evita race condition
-                # FIX: fail_on_unmatched_files: false — tolerante a re-runs na mesma tag
-                - name: Create GitHub Release
-                  uses: softprops/action-gh-release@v2
-                  with:
-                    tag_name: v${{ needs.build.outputs.version }}
-                    name: v${{ needs.build.outputs.version }}
-                    body_path: notes.md
-                    draft: false
-                    prerelease: false
-                    make_latest: true
-                    fail_on_unmatched_files: false
-                    files: |
-                      ./api/docker-compose.yaml
-                      ./api/package.json
-                  env:
-                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Notes geradas com sucesso!"
