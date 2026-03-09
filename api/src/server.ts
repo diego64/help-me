@@ -1,3 +1,6 @@
+import 'dotenv/config';
+
+import './shared/config/tracing';
 import mongoose from 'mongoose';
 import { logger } from './shared/config/logger';
 import { prisma } from './infrastructure/database/prisma/client';

@@ -447,6 +447,49 @@ services:
       - "com.helpme.monitoring.type=log-collector"
 
   # ============================================
+  # MONITORAMENTO - Tempo (Tracing)
+  # ============================================
+  tempo_helpme:
+    image: grafana/tempo:2.4.0
+    container_name: tempo_helpme
+    hostname: tempo_helpme
+    environment:
+      TZ: America/Sao_Paulo
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"   # HTTP API
+      - "4317:4317"                  # OTLP gRPC
+      - "4318:4318"                  # OTLP HTTP
+    volumes:
+      - ./painel-analitico/monitoring/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/tmp/tempo
+    networks:
+      - helpme_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.helpme.service=monitoring"
+      - "com.helpme.monitoring.type=tracing"
+
+  # ============================================
   # MONITORAMENTO - Grafana
   # ============================================
   grafana_helpme:
@@ -476,6 +519,7 @@ services:
       - influxdb_helpme
       - postgresql_helpme
       - loki_helpme
+      - tempo_helpme
     deploy:
       resources:
         limits:
@@ -1027,8 +1071,8 @@ services:
       KAFKA_BROKER_ID: 2
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper_helpme_teste:2182'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka_helpme_teste:9092,PLAINTEXT_HOST://localhost:9094
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka_helpme_teste:9092,PLAINTEXT_HOST://localhost:9095
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
@@ -1166,6 +1210,10 @@ volumes:
   prometheus_data:
     driver: local
     name: prometheus_helpme_data
+
+  tempo_data:
+    driver: local
+    name: tempo_helpme_data
 
   postgresql_data_teste:
     driver: local

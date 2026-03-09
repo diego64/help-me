@@ -2,7 +2,9 @@ import { Kafka, Producer, logLevel, LogEntry } from 'kafkajs';
 import { logger } from '@shared/config/logger';
 
 const ignoreMessages = [
-  'The group is rebalancing, so a rejoin is needed'
+  'The group is rebalancing, so a rejoin is needed',
+  'Connection timeout',
+  'Failed to connect to seed broker',
 ];
 
 export const customLogCreator = () => (entry: LogEntry) => {
@@ -50,16 +52,16 @@ function getKafkaInstance(): Kafka {
   };
 
   kafkaInstance = new Kafka({
-    clientId: kafkaConfig.clientId,
+    clientId: 'helpdesk-api',
     brokers: kafkaConfig.brokers,
     logLevel: logLevel.ERROR,
     logCreator: customLogCreator,
     retry: {
       initialRetryTime: 300,
-      retries: 3
+      retries: 3,
     },
-    connectionTimeout: 3000,
-    requestTimeout: 25000
+    connectionTimeout: 10000,
+    requestTimeout: 90000, // precisa ser > rebalanceTimeoutMs (60000)
   });
 
   return kafkaInstance;
