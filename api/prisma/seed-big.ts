@@ -1,779 +1,874 @@
-import { PrismaClient, Regra, ChamadoStatus, Setor, Usuario, Servico } from '@prisma/client';
+import { PrismaClient, Regra, Setor, ChamadoStatus, NivelTecnico, PrioridadeChamado } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import mongoose from 'mongoose';
 import pkg from 'pg';
-import crypto from 'crypto';
-import { MongoClient } from 'mongodb';
-import { createClient } from 'redis';
-import { Kafka } from 'kafkajs';
+import { hashPassword } from '../src/shared/config/password';
 
 const { Pool } = pkg;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
-
-const MONGODB_URI = process.env.MONGO_INITDB_URI || 
-  `mongodb://${process.env.MONGO_INITDB_ROOT_USERNAME}:${process.env.MONGO_INITDB_ROOT_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_INITDB_DATABASE}?authSource=admin`;
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const KAFKA_ENABLED = process.env.KAFKA_ENABLED !== 'false';
-const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || process.env.KAFKA_BROKER_URL || 'localhost:9093').split(',');
-
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
-}
-
-function gerarOS(index: number): string {
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 1000);
-  return `OS-${timestamp}-${index}-${random}`;
-}
-
-function gerarDataAleatoria(diasAtras: number): Date {
-  const hoje = new Date();
-  const diasAleatorios = Math.floor(Math.random() * diasAtras);
-  const data = new Date(hoje.getTime() - diasAleatorios * 24 * 60 * 60 * 1000);
-  return data;
-}
-
-function adicionarTempoAleatorio(data: Date, horasMin: number, horasMax: number): Date {
-  const horas = Math.random() * (horasMax - horasMin) + horasMin;
-  return new Date(data.getTime() + horas * 60 * 60 * 1000);
-}
-
-function gerarRequestId(): string {
-  return `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function gerarIP(): string {
-  return `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
-}
-
-function gerarUserAgent(): string {
-  const browsers = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) Firefox/121.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/120.0.0.0',
-  ];
-  return browsers[Math.floor(Math.random() * browsers.length)];
-}
-
-let contadores = {
-  systemLogs: 0,
-  auditLogs: 0,
-  eventosKafka: 0,
-  chamadosRedis: 0,
-  usuariosRedis: 0,
+const col = {
+  reset:  '\x1b[0m', green:  '\x1b[32m', yellow: '\x1b[33m',
+  cyan:   '\x1b[36m', red:   '\x1b[31m', bright: '\x1b[1m', blue: '\x1b[34m',
+};
+const log = {
+  success: (m: string) => console.log(`${col.green}${m}${col.reset}`),
+  info:    (m: string) => console.log(`${col.cyan}${m}${col.reset}`),
+  warn:    (m: string) => console.log(`${col.yellow}${m}${col.reset}`),
+  error:   (m: string) => console.log(`${col.red}${m}${col.reset}`),
+  title:   (m: string) => console.log(`${col.bright}${col.blue}${m}${col.reset}`),
 };
 
+if (!process.env.DATABASE_URL)     { log.error('[ERROR] DATABASE_URL não encontrada');     process.exit(1); }
+if (!process.env.MONGO_INITDB_URI) { log.error('[ERROR] MONGO_INITDB_URI não encontrada'); process.exit(1); }
+
+const pool    = new Pool({ connectionString: process.env.DATABASE_URL, max: parseInt(process.env.DB_MAX_CONNECTIONS || '10', 10) });
+const adapter = new PrismaPg(pool);
+const prisma  = new PrismaClient({ adapter, log: ['error', 'warn'] });
+
+type TipoEvento =
+  | 'CHAMADO_ABERTO' | 'CHAMADO_ATRIBUIDO' | 'CHAMADO_TRANSFERIDO'
+  | 'CHAMADO_REABERTO' | 'PRIORIDADE_ALTERADA' | 'SLA_VENCENDO' | 'CHAMADO_ENCERRADO';
+
+const NotificacaoSchema = new mongoose.Schema({
+  destinatarioId:    { type: String, required: true, index: true },
+  destinatarioEmail: { type: String, required: true },
+  tipo: { type: String, required: true, enum: ['CHAMADO_ABERTO','CHAMADO_ATRIBUIDO','CHAMADO_TRANSFERIDO','CHAMADO_REABERTO','PRIORIDADE_ALTERADA','SLA_VENCENDO','CHAMADO_ENCERRADO'] },
+  titulo:      { type: String, required: true },
+  mensagem:    { type: String, required: true },
+  chamadoId:   { type: String, required: true, index: true },
+  chamadoOS:   { type: String, required: true },
+  dadosExtras: { type: mongoose.Schema.Types.Mixed },
+  lida:        { type: Boolean, default: false, index: true },
+  lidaEm:      { type: Date },
+  criadoEm:    { type: Date, default: Date.now, index: true },
+});
+NotificacaoSchema.index({ destinatarioId: 1, lida: 1, criadoEm: -1 });
+const Notificacao = mongoose.model('notificacoes', NotificacaoSchema);
+
+const AtualizacaoChamadoSchema = new mongoose.Schema({
+  chamadoId:  { type: String, required: true, index: true },
+  dataHora:   { type: Date, default: Date.now },
+  tipo:       { type: String, required: true },
+  de:         { type: String },
+  para:       { type: String },
+  descricao:  { type: String },
+  autorId:    { type: String },
+  autorNome:  { type: String },
+  autorEmail: { type: String },
+});
+AtualizacaoChamadoSchema.index({ chamadoId: 1, dataHora: -1 });
+const AtualizacaoChamado = mongoose.model('atualizacoes_chamado', AtualizacaoChamadoSchema);
+
+const min  = (m: number) => new Date(Date.now() - m * 60_000);
+const hrs  = (h: number) => new Date(Date.now() - h * 3_600_000);
+const dias = (d: number) => new Date(Date.now() - d * 86_400_000);
+
+// Prazo SLA por prioridade (horas)
+const SLA_HORAS: Record<PrioridadeChamado, number> = { P1: 1, P2: 4, P3: 8, P4: 24, P5: 72 };
+
+interface DadosUsuario {
+  nome: string; sobrenome: string; email: string; password: string;
+  regra: Regra; nivel?: NivelTecnico; setor?: Setor;
+  telefone?: string; ramal?: string; avatarUrl?: string;
+}
+async function criarUsuario(email: string, dados: DadosUsuario) {
+  const hashed = hashPassword(dados.password);
+  return prisma.usuario.upsert({
+    where:  { email },
+    update: { password: hashed, nivel: dados.nivel ?? null, ativo: true, deletadoEm: null },
+    create: { ...dados, password: hashed, ativo: true },
+  });
+}
+
+async function criarExpediente(usuarioId: string, entrada: string, saida: string) {
+  const entradaDate = new Date(`1970-01-01T${entrada}:00Z`);
+  const saidaDate   = new Date(`1970-01-01T${saida}:00Z`);
+  const existente   = await prisma.expediente.findFirst({ where: { usuarioId, deletadoEm: null } });
+  if (existente) return prisma.expediente.update({ where: { id: existente.id }, data: { entrada: entradaDate, saida: saidaDate, ativo: true, deletadoEm: null } });
+  return prisma.expediente.create({ data: { usuarioId, entrada: entradaDate, saida: saidaDate, ativo: true } });
+}
+
+function hAbertura(chamadoId: string, descricao: string, autorId: string, autorNome: string, autorEmail: string, dataHora: Date) {
+  return { chamadoId, dataHora, tipo: 'ABERTURA', para: 'ABERTO', descricao, autorId, autorNome, autorEmail };
+}
+function hStatus(chamadoId: string, de: string, para: string, descricao: string, autorId: string, autorNome: string, autorEmail: string, dataHora: Date) {
+  return { chamadoId, dataHora, tipo: 'STATUS', de, para, descricao, autorId, autorNome, autorEmail };
+}
+function hTransferencia(chamadoId: string, deId: string, paraId: string, motivo: string, autorId: string, autorNome: string, autorEmail: string, dataHora: Date) {
+  return { chamadoId, dataHora, tipo: 'TRANSFERENCIA', de: deId, para: paraId, descricao: motivo, autorId, autorNome, autorEmail };
+}
+function hPrioridade(chamadoId: string, de: string, para: string, autorId: string, autorNome: string, autorEmail: string, dataHora: Date) {
+  return { chamadoId, dataHora, tipo: 'PRIORIDADE', de, para, descricao: `Prioridade alterada de ${de} para ${para}`, autorId, autorNome, autorEmail };
+}
+function hReavertura(chamadoId: string, motivo: string, autorId: string, autorNome: string, autorEmail: string, dataHora: Date) {
+  return { chamadoId, dataHora, tipo: 'REABERTURA', de: 'ENCERRADO', para: 'REABERTO', descricao: motivo, autorId, autorNome, autorEmail };
+}
+
+const DESCRICOES_ABERTO = [
+  'Impressora do setor offline após atualização de driver.',
+  'Solicitação de instalação de software no notebook.',
+  'Monitor com flickering intermitente.',
+  'Mouse sem resposta após atualização do sistema.',
+  'Teclado com teclas travando aleatoriamente.',
+  'Computador não liga após queda de energia.',
+  'Webcam não detectada no gerenciador de dispositivos.',
+  'Fone USB sem áudio após atualização do Windows.',
+  'Cabo de rede com mau contato intermitente.',
+  'Solicitação de nova conta de e-mail corporativo.',
+  'Configuração de segundo monitor solicitada.',
+  'Acesso ao sistema bloqueado por política de grupo.',
+  'Solicitação de impressora de rede no departamento.',
+  'Notebook com bateria não carregando.',
+  'Software legado incompatível com novo SO.',
+  'Solicitação de aumento de cota de disco no servidor.',
+  'VPN não conecta no novo notebook corporativo.',
+  'Pendrive criptografado não reconhecido.',
+  'Certificado digital expirado na máquina do usuário.',
+  'Solicitação de instalação de leitor de código de barras.',
+  'Scanner Fujitsu com erro ao digitalizar.',
+  'Outlook não abre após atualização do pacote Office.',
+];
+
+const DESCRICOES_EM_ATENDIMENTO = [
+  'Sistema ERP inacessível para o setor financeiro.',
+  'VPN corporativa caindo após 10 minutos de uso.',
+  'Backup noturno falhando há dias consecutivos.',
+  'Servidor de arquivos lento com alta latência.',
+  'Acesso ao banco de dados bloqueado por firewall.',
+  'Impressora fiscal com erro ao emitir cupom.',
+  'Servidor de email com fila de entrega travada.',
+  'HD externo não reconhecido após queda.',
+  'Driver de rede desapareceu após formatação.',
+  'Certificado SSL do servidor web expirado.',
+  'Ponto eletrônico offline — funcionários sem registrar.',
+  'NF-e retornando erro 999 ao emitir nota fiscal.',
+  'Acesso RDP com latência de 3 segundos.',
+  'Teams não permite compartilhamento de tela.',
+  'Servidor DHCP não atribuindo IPs no segundo andar.',
+  'Antivírus consumindo 100% de CPU em loop.',
+  'Banco de dados com espaço em disco crítico.',
+  'Proxy bloqueando acesso ao sistema de CRM.',
+  'Switch com porta com defeito afetando vários usuários.',
+  'Servidor de impressão offline após atualização.',
+  'Fonte do servidor de arquivos com ruído anormal.',
+  'RAID em degradação — disco com falha detectado.',
+  'Sistema de ponto com integração quebrada.',
+  'Acesso SSH ao servidor de produção negado.',
+  'Roteador principal reiniciando sozinho a cada hora.',
+];
+
+const DESCRICOES_ENCERRADO = [
+  'Servidor de arquivos inacessível — switch com porta defeituosa substituído.',
+  'Email corporativo reconfigurado com novo perfil IMAP.',
+  'Impressora fiscal — driver ECF reinstalado.',
+  'Acesso ao AD desbloqueado — política de senha ajustada.',
+  'Teclado físico substituído por unidade reserva.',
+  'Monitor substituído por reserva disponível no almoxarifado.',
+  'Cabo carregador com fio partido substituído.',
+  'Pen drive com defeito descartado — novo fornecido.',
+  'Atalhos da área de trabalho restaurados — perfil recriado.',
+  'Queda de rede — cabo de backbone danificado substituído.',
+  'Usuário criado no AD, emails configurados.',
+  'Cache do Outlook limpo — estável.',
+  'Driver WIA corrompido reinstalado.',
+  'Memória RAM com defeito substituída.',
+  'Atualização do firmware do roteador resolveu instabilidade.',
+  'Permissão de pasta corrigida no servidor de arquivos.',
+  'IP fixo configurado para impressora de rede.',
+  'Certificado digital A1 renovado com sucesso.',
+  'Script legado com credenciais antigas desativado.',
+  'Upgrade de memória realizado — desempenho normalizado.',
+  'Configuração de VPN atualizada — conexão estável.',
+  'Driver de vídeo reinstalado — segundo monitor funcionando.',
+  'Política de GPO ajustada — acesso restaurado.',
+  'Solicitação de novo estagiário atendida — acessos liberados.',
+  'Disco cheio — logs arquivados, espaço liberado.',
+  'Switch substituído — rede normalizada no andar.',
+  'Backup configurado com nova política de retenção.',
+  'Perfil do Outlook recriado — emails sincronizando.',
+  'BIOS atualizado — problema de inicialização resolvido.',
+  'Compartilhamento de pasta recriado com permissões corretas.',
+];
+
+const DESCRICOES_CANCELADO = [
+  'Solicitação de upgrade de RAM cancelada — orçamento congelado.',
+  'Pedido de notebook novo cancelado — equipamento reaproveitado.',
+  'Solicitação de novo monitor cancelada — unidade reserva localizada.',
+  'Pedido de licença adicional cancelado — licença remanejada.',
+  'Solicitação de impressora cancelada — setor reorganizado.',
+  'Upgrade de HD cancelado — SSD sendo providenciado pelo financeiro.',
+  'Pedido de headset cancelado — estoque encontrado.',
+  'Solicitação de dock station cancelada — usuário em home office.',
+  'Pedido de KVM cancelado — departamento fechado.',
+  'Solicitação de cabo HDMI extra cancelada — item localizado.',
+  'Pedido de expansão de disco cancelado — dados migrados.',
+];
+
+const DESCRICOES_REABERTO = [
+  'VPN voltou a cair após 10 minutos da resolução.',
+  'Backup voltou a falhar com erro diferente.',
+  'Acesso ao ERP bloqueado novamente após 2 dias.',
+  'Lentidão de rede voltou no setor financeiro.',
+  'Outlook travando novamente ao abrir emails com anexos.',
+  'Impressora voltou a ficar offline após reinício.',
+  'Computador volta a ficar lento periodicamente.',
+  'Conta bloqueada novamente sem tentativas incorretas.',
+  'Segundo monitor desconecta sozinho após uso.',
+  'Servidor voltou a apresentar instabilidade intermitente.',
+  'Acesso ao sistema de RH bloqueado novamente.',
+  'Certificado SSL voltou a expirar — renovação automática não funcionou.',
+  'Driver de impressora removido após atualização do Windows.',
+  'VPN com timeout reduzido após atualização do servidor.',
+  'Permissão de pasta removida após refresh de GPO.',
+  'Ponto eletrônico offline novamente após reinício.',
+  'Antivírus voltou a travar em loop de scan.',
+  'Latência de RDP voltou após expansão do link.',
+  'HD externo voltou a falhar no reconhecimento.',
+  'Email com bounce intermitente voltou a ocorrer.',
+  'Scanner descalibrado após atualização de driver.',
+  'Backup incremental falhando novamente às 03h.',
+];
+
+const DESCRICOES_VENCIDO = [
+  'Servidor LDAP fora do ar — logins impossibilitados.',
+  'NF-e com erro 999 — certificado digital A1 expirado.',
+  'Acesso RDP com latência extrema — trabalho inviável.',
+  'Teams bloqueado por política DLP.',
+  'Webcam não funciona em videoconferências.',
+  'Fonte do desktop com ruído — desligamentos aleatórios.',
+  'Certificado A3 por token USB não reconhecido.',
+  'HD externo de 2TB não reconhecido após formatação.',
+  'Gabinete de desktop com tampa danificada.',
+  'Driver ODBC para SQL Server não instalado.',
+  'Servidor web com certificado SSL expirado há 2 dias.',
+  'RAID em degradação — IO com latência alta.',
+  'Servidor de email com fila de 300 mensagens travada.',
+  'Backup full não executado há 5 dias.',
+  'Switch de core com porta trunk com defeito.',
+  'Ponto eletrônico sem comunicação com servidor.',
+  'Sistema de CRM inacessível por erro de banco.',
+  'VPN com autenticação quebrada para filial.',
+  'Servidor de impressão offline — 80 usuários afetados.',
+  'Firewall com regra incorreta bloqueando ERP.',
+  'Roteador principal com logs de erro críticos.',
+  'Licença do servidor de banco de dados expirada.',
+];
+
+const SERVICOS_LISTA = [
+  'Suporte Técnico Geral', 'Instalação de Software', 'Manutenção de Hardware',
+  'Suporte de Rede', 'Backup e Recuperação', 'Configuração de Email',
+  'Acesso e Permissões', 'Impressoras e Periféricos', 'VPN e Acesso Remoto',
+];
+
+function pick<T>(arr: T[], idx: number): T {
+  return arr[idx % arr.length];
+}
+
 async function main() {
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log('🌱 SEED BIG HELP-ME');
-  console.log('═══════════════════════════════════════════════════════════════\n');
+  log.title('\n========================================');
+  log.title('  SEED DO BANCO DE DADOS — HELP ME API  ');
+  log.title('  ESCALA: 500 CHAMADOS                  ');
+  log.title('========================================\n');
 
-  console.log('[1/8] Conectando aos bancos de dados...\n');
+  log.info('[INFO] Conectando ao PostgreSQL...');
+  await prisma.$connect();
+  log.success('[SUCESSO] PostgreSQL conectado\n');
 
-  console.log('Conectando ao MongoDB...');
-  const mongoClient = new MongoClient(MONGODB_URI);
-  await mongoClient.connect();
-  const mongodb = mongoClient.db(process.env.MONGO_INITDB_DATABASE || 'helpme-mongo');
-  console.log('MongoDB conectado');
- 
-  console.log('Conectando ao Redis...');
-  const redis = createClient({ url: REDIS_URL });
-  await redis.connect();
-  console.log('Redis conectado');
+  log.info('[INFO] Conectando ao MongoDB...');
+  await mongoose.connect(process.env.MONGO_INITDB_URI!);
+  log.success('[SUCESSO] MongoDB conectado\n');
 
-  let kafkaProducer: any = null;
-  let kafkaConnected = false;
+  log.warn('[WARN] Limpando banco de dados...\n');
+  await Notificacao.deleteMany({});
+  await AtualizacaoChamado.deleteMany({});
+  log.info('[INFO] MongoDB limpo');
+  await prisma.anexoChamado.deleteMany({});
+  await prisma.comentarioChamado.deleteMany({});
+  await prisma.transferenciaChamado.deleteMany({});
+  await prisma.ordemDeServico.deleteMany({});
+  await prisma.chamado.deleteMany({});
+  await prisma.expediente.deleteMany({});
+  await prisma.servico.deleteMany({});
+  await prisma.usuario.deleteMany({});
+  log.success('[SUCESSO] PostgreSQL limpo\n');
 
-  if (KAFKA_ENABLED) {
-    try {
-      console.log(`Tentando conectar ao Kafka em: ${KAFKA_BROKERS.join(', ')}...`);
-      const kafka = new Kafka({
-        clientId: 'helpme-seed',
-        brokers: KAFKA_BROKERS,
-        retry: {
-          retries: 3,
-          initialRetryTime: 100,
-        },
-        connectionTimeout: 3000,
-        requestTimeout: 5000,
-      });
-      
-      kafkaProducer = kafka.producer();
-      await kafkaProducer.connect();
-      kafkaConnected = true;
-      console.log('Kafka conectado');
-    } catch (error) {
-      console.log('Kafka não disponível - continuando sem eventos');
-      kafkaConnected = false;
-    }
-  } else {
-    console.log('Kafka desabilitado via variável de ambiente');
-  }
+  log.title('[1/6] CRIANDO USUÁRIOS...\n');
 
-  console.log();
-
-  console.log('[2/8] Limpando dados existentes...\n');
-  
-  console.log('PostgreSQL:');
-  await prisma.ordemDeServico.deleteMany();
-  console.log('1 - Ordens de Serviço removidas');
-  await prisma.chamado.deleteMany();
-  console.log('2 - Chamados removidos');
-  await prisma.expediente.deleteMany();
-  console.log('3 - Expedientes removidos');
-  await prisma.servico.deleteMany();
-  console.log('4 - Serviços removidos');
-  await prisma.usuario.deleteMany();
-  console.log('5 - Usuários removidos');
-
-  console.log('MongoDB:');
-  const mongoCollections = await mongodb.listCollections().toArray();
-  for (const collection of mongoCollections) {
-    const count = await mongodb.collection(collection.name).countDocuments();
-    await mongodb.collection(collection.name).deleteMany({});
-    console.log(`${collection.name} limpo (${count} documentos removidos)`);
-  }
-
-  console.log('Redis:');
-  const redisKeys = await redis.keys('*');
-  await redis.flushAll();
-  console.log(`Redis limpo (${redisKeys.length} chaves removidas)`);
-
-  console.log();
-
-  console.log('[3/8] Criando usuários...\n');
-
-  const senhaHash = hashPassword('Senha@123');
-  const setoresDisponiveis = Object.values(Setor);
-
-  console.log('Criando Admin...');
-  const admin = await prisma.usuario.create({
-    data: {
-      nome: 'Admin',
-      sobrenome: 'Sistema',
-      email: 'admin@helpme.com',
-      password: senhaHash,
-      regra: Regra.ADMIN,
-      setor: Setor.TECNOLOGIA_INFORMACAO,
-      telefone: '(11) 98888-0000',
-      ramal: '1000',
-      ativo: true,
-    },
+  const admin = await criarUsuario('admin@helpme.com', {
+    nome: 'Admin', sobrenome: 'Sistema', email: 'admin@helpme.com',
+    password: 'Admin123!', regra: Regra.ADMIN, setor: Setor.TECNOLOGIA_INFORMACAO,
+    telefone: '(11) 99999-0001', ramal: '1000',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Admin+Sistema&background=0D8ABC&color=fff',
   });
-  console.log('Admin criado');
+  log.success(`[SUCESSO] ${admin.email} [ADMIN]`);
 
-  console.log('Criando 20 técnicos...');
-  const tecnicos: Usuario[] = [];
+  const superAdmin = await criarUsuario('superadmin@helpme.com', {
+    nome: 'Super', sobrenome: 'Admin', email: 'superadmin@helpme.com',
+    password: 'Super123!', regra: Regra.ADMIN, setor: Setor.TECNOLOGIA_INFORMACAO,
+    telefone: '(11) 99999-0002', ramal: '1001',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Super+Admin&background=7C3AED&color=fff',
+  });
+  log.success(`[SUCESSO] ${superAdmin.email} [ADMIN]`);
 
-  for (let i = 1; i <= 20; i++) {
-    const tecnico = await prisma.usuario.create({
-      data: {
-        nome: `Técnico`,
-        sobrenome: `${i}`,
-        email: `tecnico${i}@helpme.com`,
-        password: senhaHash,
-        regra: Regra.TECNICO,
-        setor: setoresDisponiveis[i % setoresDisponiveis.length],
-        telefone: `(11) 9${8000 + i}-${1000 + i}`,
-        ramal: `${2000 + i}`,
-        ativo: true,
-      },
-    });
-    tecnicos.push(tecnico);
+  const adminTI = await criarUsuario('diego.ferreira@helpme.com', {
+    nome: 'Diego', sobrenome: 'Ferreira', email: 'diego.ferreira@helpme.com',
+    password: 'Diego123!', regra: Regra.ADMIN, setor: Setor.TECNOLOGIA_INFORMACAO,
+    telefone: '(11) 99999-0003', ramal: '1002',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Diego+Ferreira&background=059669&color=fff',
+  });
+  log.success(`[SUCESSO] ${adminTI.email} [ADMIN]\n`);
 
-    await redis.hSet(`user:${tecnico.id}`, {
-      id: tecnico.id,
-      nome: `${tecnico.nome} ${tecnico.sobrenome}`,
-      email: tecnico.email,
-      regra: tecnico.regra,
-      setor: tecnico.setor || '',
-      online: Math.random() > 0.3 ? 'true' : 'false',
-    });
-    contadores.usuariosRedis++;
-  }
-  console.log('20 técnicos criados e cacheados no Redis');
+  const tecnico1 = await criarUsuario('tecnico@helpme.com', {
+    nome: 'Carlos', sobrenome: 'Silva', email: 'tecnico@helpme.com',
+    password: 'Tecnico123!', regra: Regra.TECNICO, nivel: NivelTecnico.N1,
+    setor: Setor.TECNOLOGIA_INFORMACAO, telefone: '(11) 98765-0001', ramal: '3001',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Carlos+Silva&background=EA580C&color=fff',
+  });
+  log.success(`[SUCESSO] ${tecnico1.email} [TECNICO N1]`);
 
-  console.log('Criando 100 usuários...');
-  const usuarios: Usuario[] = [];
-  
-  for (let i = 1; i <= 100; i++) {
-    const usuario = await prisma.usuario.create({
-      data: {
-        nome: `Usuário`,
-        sobrenome: `${i}`,
-        email: `usuario${i}@helpme.com`,
-        password: senhaHash,
-        regra: Regra.USUARIO,
-        setor: setoresDisponiveis[i % setoresDisponiveis.length],
-        telefone: `(11) 9${7000 + i}-${1000 + i}`,
-        ramal: `${3000 + i}`,
-        ativo: true,
-      },
-    });
-    usuarios.push(usuario);
-  }
-  console.log('100 usuários criados');
+  const tecnico2 = await criarUsuario('ana.santos@helpme.com', {
+    nome: 'Ana', sobrenome: 'Santos', email: 'ana.santos@helpme.com',
+    password: 'Tecnico123!', regra: Regra.TECNICO, nivel: NivelTecnico.N2,
+    setor: Setor.TECNOLOGIA_INFORMACAO, telefone: '(11) 98765-0002', ramal: '3002',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Ana+Santos&background=DB2777&color=fff',
+  });
+  log.success(`[SUCESSO] ${tecnico2.email} [TECNICO N2]`);
 
-  console.log(`Total: 121 usuários (1 admin + 20 técnicos + 100 usuários)\n`);
+  const tecnico3 = await criarUsuario('roberto.ferreira@helpme.com', {
+    nome: 'Roberto', sobrenome: 'Ferreira', email: 'roberto.ferreira@helpme.com',
+    password: 'Tecnico123!', regra: Regra.TECNICO, nivel: NivelTecnico.N3,
+    setor: Setor.TECNOLOGIA_INFORMACAO, telefone: '(11) 98765-0003', ramal: '3003',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Roberto+Ferreira&background=2563EB&color=fff',
+  });
+  log.success(`[SUCESSO] ${tecnico3.email} [TECNICO N3]\n`);
 
+  const usuario1 = await criarUsuario('user@helpme.com', {
+    nome: 'João', sobrenome: 'Oliveira', email: 'user@helpme.com',
+    password: 'User123!', regra: Regra.USUARIO, setor: Setor.COMERCIAL,
+    telefone: '(11) 97654-0001', ramal: '2001',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Joao+Oliveira&background=16A34A&color=fff',
+  });
+  log.success(`[SUCESSO] ${usuario1.email} [USUARIO — COMERCIAL]`);
 
-  console.log('[4/8] Criando expedientes para técnicos...\n');
+  const usuario2 = await criarUsuario('maria.costa@helpme.com', {
+    nome: 'Maria', sobrenome: 'Costa', email: 'maria.costa@helpme.com',
+    password: 'User123!', regra: Regra.USUARIO, setor: Setor.FINANCEIRO,
+    telefone: '(11) 97654-0002', ramal: '2002',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Maria+Costa&background=DC2626&color=fff',
+  });
+  log.success(`[SUCESSO] ${usuario2.email} [USUARIO — FINANCEIRO]`);
 
-  let totalExpedientes = 0;
-  for (const tecnico of tecnicos) {
-    for (let dia = 0; dia < 30; dia++) {
-      const dataExpediente = new Date();
-      dataExpediente.setDate(dataExpediente.getDate() - dia);
-      dataExpediente.setHours(8, 0, 0, 0);
+  const usuario3 = await criarUsuario('pedro.lima@helpme.com', {
+    nome: 'Pedro', sobrenome: 'Lima', email: 'pedro.lima@helpme.com',
+    password: 'User123!', regra: Regra.USUARIO, setor: Setor.MARKETING,
+    telefone: '(11) 97654-0003', ramal: '2003',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Pedro+Lima&background=9333EA&color=fff',
+  });
+  log.success(`[SUCESSO] ${usuario3.email} [USUARIO — MARKETING]\n`);
 
-      const entrada = new Date(dataExpediente);
-      const saida = new Date(dataExpediente);
-      saida.setHours(17, 0, 0, 0);
+  log.title('[2/6] CONFIGURANDO EXPEDIENTES...\n');
+  await criarExpediente(tecnico1.id, '08:00', '17:00');
+  log.success(`[SUCESSO] ${tecnico1.nome}: 08:00–17:00`);
+  await criarExpediente(tecnico2.id, '08:00', '18:00');
+  log.success(`[SUCESSO] ${tecnico2.nome}: 08:00–18:00`);
+  await criarExpediente(tecnico3.id, '09:00', '18:00');
+  log.success(`[SUCESSO] ${tecnico3.nome}: 09:00–18:00\n`);
 
-      await prisma.expediente.create({
-        data: {
-          usuarioId: tecnico.id,
-          entrada,
-          saida,
-          ativo: true,
-        },
-      });
-      totalExpedientes++;
-    }
-  }
-
-  console.log(`${totalExpedientes} expedientes criados (30 dias × 20 técnicos)\n`);
-
-  console.log('[5/8] Criando serviços...\n');
-
+  log.title('[3/6] CRIANDO SERVIÇOS...\n');
   const servicosData = [
-    { nome: 'Instalação de Software', descricao: 'Instalação e configuração de softwares' },
-    { nome: 'Manutenção de Hardware', descricao: 'Reparo e manutenção de equipamentos' },
-    { nome: 'Suporte de Rede', descricao: 'Configuração e troubleshooting de rede' },
-    { nome: 'Backup de Dados', descricao: 'Backup e restauração de informações' },
-    { nome: 'Configuração de Email', descricao: 'Configuração de contas de email' },
-    { nome: 'Treinamento de Usuário', descricao: 'Capacitação de usuários em sistemas' },
-    { nome: 'Desenvolvimento de Sistema', descricao: 'Desenvolvimento de funcionalidades' },
-    { nome: 'Suporte Remoto', descricao: 'Atendimento remoto via acesso remoto' },
-    { nome: 'Manutenção Preventiva', descricao: 'Manutenção preventiva de equipamentos' },
-    { nome: 'Instalação de Impressora', descricao: 'Instalação e configuração de impressoras' },
-    { nome: 'Configuração de VPN', descricao: 'Configuração de acesso VPN' },
-    { nome: 'Recuperação de Senha', descricao: 'Reset e recuperação de senhas' },
-    { nome: 'Atualização de Sistema', descricao: 'Atualização de sistemas operacionais' },
-    { nome: 'Criação de Usuário', descricao: 'Criação de contas de usuário' },
-    { nome: 'Configuração de Periféricos', descricao: 'Configuração de dispositivos periféricos' },
-  ];
+    { nome: 'Suporte Técnico Geral',     descricao: 'Suporte técnico para problemas gerais de TI',           ativo: true  },
+    { nome: 'Instalação de Software',    descricao: 'Instalação e configuração de softwares corporativos',    ativo: true  },
+    { nome: 'Manutenção de Hardware',    descricao: 'Reparo e manutenção de equipamentos de informática',     ativo: true  },
+    { nome: 'Suporte de Rede',           descricao: 'Configuração e troubleshooting de rede e conectividade', ativo: true  },
+    { nome: 'Backup e Recuperação',      descricao: 'Serviços de backup e recuperação de dados',              ativo: true  },
+    { nome: 'Configuração de Email',     descricao: 'Configuração de contas de email e clientes de email',    ativo: true  },
+    { nome: 'Acesso e Permissões',       descricao: 'Gerenciamento de acessos e permissões de usuários',      ativo: true  },
+    { nome: 'Impressoras e Periféricos', descricao: 'Suporte para impressoras, scanners e periféricos',       ativo: true  },
+    { nome: 'VPN e Acesso Remoto',       descricao: 'Configuração de VPN e ferramentas de acesso remoto',     ativo: true  },
+    { nome: 'Serviço Teste K6',          descricao: 'Serviço para testes automatizados e performance',        ativo: false },
+  ] as const;
 
-  const servicos: Servico[] = [];
-  for (const servicoData of servicosData) {
-    const servico = await prisma.servico.create({
-      data: {
-        nome: servicoData.nome,
-        descricao: servicoData.descricao,
-        ativo: true,
-      },
+  const S: Record<string, string> = {};
+  for (const dados of servicosData) {
+    const s = await prisma.servico.upsert({
+      where:  { nome: dados.nome },
+      update: { descricao: dados.descricao, ativo: dados.ativo, deletadoEm: null },
+      create: { ...dados },
     });
-    servicos.push(servico);
+    S[s.nome] = s.id;
+    log.success(`[SUCESSO] ${s.nome} (${s.ativo ? 'ativo' : 'inativo'})`);
+  }
+  log.info('');
+
+  //  Total: 500 chamados — INC0001 a INC0500
+  //
+  //  Distribuição por status (proporcional ao seed original de 45):
+  //    ABERTO           22   (4.4%)
+  //    EM_ATENDIMENTO  111  (22.2%)
+  //    ENCERRADO       133  (26.6%)
+  //    CANCELADO        11   (2.2%)
+  //    REABERTO        111  (22.2%)
+  //    VENCIDO         112  (22.4%)  ← EM_ATENDIMENTO com SLA ultrapassado
+  //
+  //  Distribuição por prioridade:
+  //    P1  22   (4.4%)
+  //    P2  56  (11.2%)
+  //    P3 122  (24.4%)
+  //    P4 233  (46.6%)
+  //    P5  67  (13.4%)
+  //
+  //  Âncoras fixas (mantidas do seed original):
+  //    INC0001 — ABERTO P3
+  //    INC0002 — ABERTO P4
+  //    INC0022 — ENCERRADO P4 (PAI)
+  //    INC0023 — ENCERRADO P4 (FILHO de INC0022, vinculado)
+  //    INC0026 — REABERTO P1 escalado
+  //    INC0036 — VENCIDO P1 crítico
+
+  log.title('[4/6] CRIANDO CHAMADOS...\n');
+
+  // Atalhos para nomes completos
+  const nA  = `${admin.nome} ${admin.sobrenome}`;
+  const nTI = `${adminTI.nome} ${adminTI.sobrenome}`;
+  const nT1 = `${tecnico1.nome} ${tecnico1.sobrenome}`;
+  const nT2 = `${tecnico2.nome} ${tecnico2.sobrenome}`;
+  const nT3 = `${tecnico3.nome} ${tecnico3.sobrenome}`;
+  const nU1 = `${usuario1.nome} ${usuario1.sobrenome}`;
+  const nU2 = `${usuario2.nome} ${usuario2.sobrenome}`;
+  const nU3 = `${usuario3.nome} ${usuario3.sobrenome}`;
+
+  const tecnicos  = [tecnico1, tecnico2, tecnico3];
+  const nomesT    = [nT1, nT2, nT3];
+  const usuarios  = [usuario1, usuario2, usuario3];
+  const nomesU    = [nU1, nU2, nU3];
+
+  const historico: any[] = [];
+  const notificacoes: any[] = [];
+
+  // Grupos gerados programaticamente com distribuição de prioridade interna:
+  //
+  //   ABERTO (22):
+  //     P1: 1  P2: 2  P3: 5  P4:10  P5: 4
+  //   EM_ATENDIMENTO (111):
+  //     P1: 5  P2:12  P3:27  P4:52  P5:15
+  //   ENCERRADO (133):
+  //     P1: 6  P2:15  P3:33  P4:62  P5:17
+  //   CANCELADO (11):
+  //     P1: 0  P2: 1  P3: 3  P4: 5  P5: 2
+  //   REABERTO (111):
+  //     P1: 5  P2:12  P3:27  P4:52  P5:15
+  //   VENCIDO (112):
+  //     P1: 5  P2:12  P3:27  P4:52  P5:16
+
+  // Gerador de sequência de prioridades para um grupo
+  function gerarSequenciaPrioridades(dist: Record<string, number>): PrioridadeChamado[] {
+    const seq: PrioridadeChamado[] = [];
+    for (const [p, n] of Object.entries(dist)) {
+      for (let i = 0; i < n; i++) seq.push(p as PrioridadeChamado);
+    }
+    // Embaralhar deterministicamente (intercalar ao invés de aleatório)
+    const resultado: PrioridadeChamado[] = [];
+    const total = seq.length;
+    for (let i = 0; i < total; i++) {
+      // Distribui os grupos intercalados: P1,P2,P3... round-robin proporcional
+      const idx = (i * 7 + 3) % total; // salto primo para boa distribuição
+      resultado.push(seq[idx]);
+    }
+    return resultado;
   }
 
-  console.log(`${servicos.length} serviços criados\n`);
+  // Gerador sequencial determinístico usando um cursor numérico
+  let cursor = 0; // INC0001
+  let chamadoPai: any = null; // para hierarquia INC0022/INC0023
 
-  async function criarLog(
-    level: 'info' | 'warn' | 'error' | 'debug',
-    message: string,
-    metadata: Record<string, any>
-  ) {
-    try {
-      const result = await mongodb.collection('system_logs').insertOne({
-        timestamp: new Date(),
-        level,
-        service: 'api',
-        message,
-        metadata,
+  function nextOS(): string {
+    cursor++;
+    return `INC${String(cursor).padStart(4, '0')}`;
+  }
+
+  log.info('[INFO] Criando ABERTOS (22)...');
+
+  const distAberto = { P1: 1, P2: 2, P3: 5, P4: 10, P5: 4 };
+  const seqAberto  = gerarSequenciaPrioridades(distAberto);
+
+  const chamadosAbertos: any[] = [];
+  for (let i = 0; i < 22; i++) {
+    const OS    = nextOS();
+    const prio  = seqAberto[i];
+    const u     = usuarios[i % 3];
+    const nU    = nomesU[i % 3];
+    const desc  = pick(DESCRICOES_ABERTO, i);
+    const serv  = pick(SERVICOS_LISTA, i);
+    const gerado = hrs(2 + i * 1.5); // Distribuído de 2h a ~35h atrás
+
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.ABERTO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id, geradoEm: gerado, atualizadoEm: gerado,
+      descricao: desc,
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    chamadosAbertos.push(c);
+  }
+  log.success(`[SUCESSO] ABERTOS: INC0001–INC${String(cursor).padStart(4, '0')}`);
+
+  log.info('[INFO] Criando EM ATENDIMENTO (111)...');
+
+  const distEM = { P1: 5, P2: 12, P3: 27, P4: 52, P5: 15 };
+  const seqEM  = gerarSequenciaPrioridades(distEM);
+
+  const inicioEM = cursor + 1;
+  for (let i = 0; i < 111; i++) {
+    const OS   = nextOS();
+    const prio = seqEM[i];
+    const u    = usuarios[i % 3];
+    const nU   = nomesU[i % 3];
+    const t    = tecnicos[i % 3];
+    const nT   = nomesT[i % 3];
+    const desc = pick(DESCRICOES_EM_ATENDIMENTO, i);
+    const serv = pick(SERVICOS_LISTA, i + 2);
+    // Distribuir criação ao longo de 30 dias, dentro do prazo SLA
+    const slaHoras = SLA_HORAS[prio as PrioridadeChamado];
+    const gerado   = hrs(Math.max(0.5, slaHoras * 0.5 + i * 0.2));
+    const assumido = new Date(gerado.getTime() + 30 * 60_000);
+
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.EM_ATENDIMENTO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id, tecnicoId: t.id,
+      geradoEm: gerado, atualizadoEm: assumido,
+      descricao: desc,
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+
+    // 1 em cada 5 tem transferência
+    if (i % 5 === 4) {
+      const tAnt = tecnicos[(i + 1) % 3];
+      await prisma.transferenciaChamado.create({ data: {
+        chamadoId: c.id, tecnicoAnteriorId: tAnt.id, tecnicoNovoId: t.id,
+        motivo: 'Requer nível superior para resolução.', transferidoPor: admin.id,
+        transferidoEm: new Date(gerado.getTime() + 60 * 60_000),
+      }});
+      historico.push(hTransferencia(c.id, tAnt.id, t.id, 'Requer nível superior.', admin.id, nA, admin.email, new Date(gerado.getTime() + 60 * 60_000)));
+    }
+
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    historico.push(hStatus(c.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', t.id, nT, t.email, assumido));
+  }
+  log.success(`[SUCESSO] EM ATENDIMENTO: INC${String(inicioEM).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')}`);
+
+  log.info('[INFO] Criando ENCERRADOS (133)...');
+
+  const distENC = { P1: 6, P2: 15, P3: 33, P4: 62, P5: 17 };
+  const seqENC  = gerarSequenciaPrioridades(distENC);
+
+  const inicioENC = cursor + 1;
+  // INC0022/INC0023 — âncoras de hierarquia — serão os últimos encerrados
+  for (let i = 0; i < 131; i++) { // 131 + 2 âncoras = 133
+    const OS   = nextOS();
+    const prio = seqENC[i];
+    const u    = usuarios[i % 3];
+    const nU   = nomesU[i % 3];
+    const t    = tecnicos[i % 3];
+    const nT   = nomesT[i % 3];
+    const desc = pick(DESCRICOES_ENCERRADO, i);
+    const serv = pick(SERVICOS_LISTA, i + 1);
+    const gerado = dias(1 + i * 0.22); // distribuído ao longo de ~29 dias
+    const slaHoras = SLA_HORAS[prio as PrioridadeChamado];
+    const tempResol = Math.min(slaHoras * 0.8, 20); // sempre dentro do SLA
+    const encerrado = new Date(gerado.getTime() + tempResol * 3_600_000);
+    const descEnc   = `Problema resolvido: ${desc.substring(0, 60)}`;
+
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.ENCERRADO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id, tecnicoId: t.id,
+      descricao: desc, descricaoEncerramento: descEnc,
+      geradoEm: gerado, encerradoEm: encerrado, atualizadoEm: encerrado,
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+
+    // 1 em cada 8 tem transferência
+    if (i % 8 === 7) {
+      const tAnt = tecnicos[(i + 2) % 3];
+      await prisma.transferenciaChamado.create({ data: {
+        chamadoId: c.id, tecnicoAnteriorId: tAnt.id, tecnicoNovoId: t.id,
+        motivo: 'Escalado para nível superior.', transferidoPor: admin.id,
+        transferidoEm: new Date(gerado.getTime() + 40 * 60_000),
+      }});
+      historico.push(hTransferencia(c.id, tAnt.id, t.id, 'Escalado.', admin.id, nA, admin.email, new Date(gerado.getTime() + 40 * 60_000)));
+    }
+
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    historico.push(hStatus(c.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', t.id, nT, t.email, new Date(gerado.getTime() + 20 * 60_000)));
+    historico.push(hStatus(c.id, 'EM_ATENDIMENTO', 'ENCERRADO', descEnc, t.id, nT, t.email, encerrado));
+  }
+
+  // Âncora PAI (INC0022-equivalente no novo range)
+  const osAnchorPai = nextOS();
+  const gPai        = dias(20);
+  const ePai        = new Date(gPai.getTime() + 20 * 3_600_000);
+  chamadoPai = await prisma.chamado.create({ data: {
+    OS: osAnchorPai, status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P4,
+    usuarioId: usuario1.id, tecnicoId: tecnico3.id,
+    descricao: 'Queda geral de rede no 2º andar afetando comercial e marketing.',
+    descricaoEncerramento: 'Cabo de backbone danificado substituído. Rede normalizada.',
+    geradoEm: gPai, encerradoEm: ePai, atualizadoEm: ePai,
+  }});
+  await prisma.ordemDeServico.create({ data: { chamadoId: chamadoPai.id, servicoId: S['Suporte de Rede'] } });
+  historico.push(hAbertura(chamadoPai.id, chamadoPai.descricao, usuario1.id, nU1, usuario1.email, gPai));
+  historico.push(hStatus(chamadoPai.id, 'ABERTO', 'EM_ATENDIMENTO', 'Assumido.', tecnico3.id, nT3, tecnico3.email, new Date(gPai.getTime() + 3_600_000)));
+  historico.push(hStatus(chamadoPai.id, 'EM_ATENDIMENTO', 'ENCERRADO', chamadoPai.descricaoEncerramento!, tecnico3.id, nT3, tecnico3.email, ePai));
+
+  // Âncora FILHO
+  const osAnchorFilho = nextOS();
+  const vFilho        = new Date(gPai.getTime() + 4 * 3_600_000);
+  const chamadoFilho  = await prisma.chamado.create({ data: {
+    OS: osAnchorFilho, status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P4,
+    usuarioId: usuario2.id, chamadoPaiId: chamadoPai.id,
+    descricao: 'Sem internet no setor de marketing — mesmo andar.',
+    descricaoEncerramento: `Chamado vinculado ao chamado ${osAnchorPai}`,
+    vinculadoEm: vFilho, vinculadoPor: admin.id,
+    encerradoEm: vFilho, geradoEm: new Date(gPai.getTime() + 30 * 60_000), atualizadoEm: vFilho,
+  }});
+  await prisma.ordemDeServico.create({ data: { chamadoId: chamadoFilho.id, servicoId: S['Suporte de Rede'] } });
+  historico.push(hAbertura(chamadoFilho.id, chamadoFilho.descricao, usuario2.id, nU2, usuario2.email, new Date(gPai.getTime() + 30 * 60_000)));
+  historico.push(hStatus(chamadoFilho.id, 'ABERTO', 'ENCERRADO', `Vinculado ao ${osAnchorPai}.`, admin.id, nA, admin.email, vFilho));
+
+  log.success(`[SUCESSO] ENCERRADOS: INC${String(inicioENC).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')} (hierarquia: ${osAnchorPai}←${osAnchorFilho})`);
+
+  log.info('[INFO] Criando CANCELADOS (11)...');
+
+  const distCAN = { P2: 1, P3: 3, P4: 5, P5: 2 };
+  const seqCAN  = gerarSequenciaPrioridades(distCAN);
+
+  const inicioCAN = cursor + 1;
+  for (let i = 0; i < 11; i++) {
+    const OS   = nextOS();
+    const prio = seqCAN[i];
+    const u    = usuarios[i % 3];
+    const nU   = nomesU[i % 3];
+    const desc = pick(DESCRICOES_CANCELADO, i);
+    const serv = pick(SERVICOS_LISTA, i + 3);
+    const gerado   = dias(5 + i * 3);
+    const encerrado = new Date(gerado.getTime() + 36 * 3_600_000);
+
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.CANCELADO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id,
+      descricao: desc, descricaoEncerramento: desc,
+      encerradoEm: encerrado, geradoEm: gerado, atualizadoEm: encerrado,
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    historico.push(hStatus(c.id, 'ABERTO', 'CANCELADO', desc, admin.id, nA, admin.email, encerrado));
+  }
+  log.success(`[SUCESSO] CANCELADOS: INC${String(inicioCAN).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')}`);
+
+  log.info('[INFO] Criando REABERTOS (111)...');
+
+  const distREA = { P1: 5, P2: 12, P3: 27, P4: 52, P5: 15 };
+  const seqREA  = gerarSequenciaPrioridades(distREA);
+
+  const inicioREA = cursor + 1;
+  for (let i = 0; i < 111; i++) {
+    const OS   = nextOS();
+    const prio = seqREA[i];
+    const u    = usuarios[i % 3];
+    const nU   = nomesU[i % 3];
+    const t    = tecnicos[i % 3];
+    const nT   = nomesT[i % 3];
+    const desc  = pick(DESCRICOES_REABERTO, i);
+    const serv  = pick(SERVICOS_LISTA, i + 4);
+    const gerado     = dias(3 + i * 0.25);
+    const encerrado1 = new Date(gerado.getTime() + 24 * 3_600_000);
+    const reaberto   = new Date(encerrado1.getTime() + 12 * 3_600_000); // dentro de 48h
+
+    // P1 (primeiros 5): com escalada de prioridade
+    const prioOrigem = i < 5 ? 'P3' : prio;
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.REABERTO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id, tecnicoId: t.id,
+      descricao: desc,
+      ...(i < 5 ? { prioridadeAlterada: dias(1), prioridadeAlteradaPor: adminTI.id } : {}),
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+
+    // 1 em cada 6: transferência antes da reabertura
+    if (i % 6 === 5) {
+      const tAnt = tecnicos[(i + 1) % 3];
+      await prisma.transferenciaChamado.create({ data: {
+        chamadoId: c.id, tecnicoAnteriorId: tAnt.id, tecnicoNovoId: t.id,
+        motivo: 'Reincidência requer técnico diferente.', transferidoPor: admin.id,
+        transferidoEm: new Date(gerado.getTime() + 2 * 3_600_000),
+      }});
+      historico.push(hTransferencia(c.id, tAnt.id, t.id, 'Reincidência.', admin.id, nA, admin.email, new Date(gerado.getTime() + 2 * 3_600_000)));
+    }
+
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    historico.push(hStatus(c.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', t.id, nT, t.email, new Date(gerado.getTime() + 30 * 60_000)));
+    historico.push(hStatus(c.id, 'EM_ATENDIMENTO', 'ENCERRADO', 'Resolvido — problema aparentemente resolvido.', t.id, nT, t.email, encerrado1));
+    if (i < 5) historico.push(hPrioridade(c.id, prioOrigem, prio, adminTI.id, nTI, adminTI.email, dias(1)));
+    historico.push(hReavertura(c.id, `${desc} Problema voltou.`, u.id, nU, u.email, reaberto));
+  }
+  // Âncora REABERTO P1 escalado (correspondente ao INC0026 original)
+  const osAnchorREA = `INC${String(inicioREA).padStart(4,'0')}`; // primeiro do grupo = P1
+  log.success(`[SUCESSO] REABERTOS: INC${String(inicioREA).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')}`);
+
+  log.info('[INFO] Criando VENCIDOS (112)...');
+
+  const distVEN = { P1: 5, P2: 12, P3: 27, P4: 52, P5: 16 };
+  const seqVEN  = gerarSequenciaPrioridades(distVEN);
+
+  const inicioVEN = cursor + 1;
+  for (let i = 0; i < 112; i++) {
+    const OS   = nextOS();
+    const prio = seqVEN[i];
+    const u    = usuarios[i % 3];
+    const nU   = nomesU[i % 3];
+    const t    = tecnicos[i % 3];
+    const nT   = nomesT[i % 3];
+    const desc = pick(DESCRICOES_VENCIDO, i);
+    const serv = pick(SERVICOS_LISTA, i + 5);
+    // geradoEm suficientemente antigo para vencer o SLA
+    const slaHoras = SLA_HORAS[prio as PrioridadeChamado];
+    const extraHoras = slaHoras + 1 + i * 0.5; // sempre vencido
+    const gerado   = hrs(extraHoras);
+    const assumido = new Date(gerado.getTime() + 20 * 60_000);
+
+    const c = await prisma.chamado.create({ data: {
+      OS, status: ChamadoStatus.EM_ATENDIMENTO, prioridade: prio as PrioridadeChamado,
+      usuarioId: u.id, tecnicoId: t.id,
+      geradoEm: gerado, atualizadoEm: assumido,
+      descricao: desc,
+    }});
+    await prisma.ordemDeServico.create({ data: { chamadoId: c.id, servicoId: S[serv] } });
+
+    historico.push(hAbertura(c.id, desc, u.id, nU, u.email, gerado));
+    historico.push(hStatus(c.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', t.id, nT, t.email, assumido));
+
+    // Notificação SLA_VENCENDO para P1 e P2
+    if (prio === 'P1' || prio === 'P2') {
+      notificacoes.push({
+        destinatarioId: adminTI.id, destinatarioEmail: adminTI.email,
+        tipo: 'SLA_VENCENDO' as TipoEvento,
+        titulo: `SLA VENCIDO — ${prio} crítico`,
+        mensagem: `Chamado ${OS} (${prio}) com SLA vencido.`,
+        chamadoId: c.id, chamadoOS: OS, lida: false,
+        criadoEm: new Date(gerado.getTime() + slaHoras * 3_600_000),
+        dadosExtras: { horasVencido: Math.round(extraHoras - slaHoras) },
       });
-      contadores.systemLogs++;
-      return result.insertedId;
-    } catch (error) {
-      console.error(`Erro ao criar log no MongoDB:`, error);
     }
   }
+  log.success(`[SUCESSO] VENCIDOS: INC${String(inicioVEN).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')}`);
 
-  async function criarAuditoria(
-    userId: string,
-    action: string,
-    resource: string,
-    resourceId: string,
-    changes?: Record<string, any>
-  ) {
-    try {
-      const result = await mongodb.collection('audit_logs').insertOne({
-        timestamp: new Date(),
-        userId,
-        action,
-        resource,
-        resourceId,
-        changes,
-        ipAddress: gerarIP(),
-        userAgent: gerarUserAgent(),
-      });
-      contadores.auditLogs++;
-      return result.insertedId;
-    } catch (error) {
-      console.error(`Erro ao criar auditoria no MongoDB:`, error);
-    }
+  log.title('[5/6] INSERINDO HISTÓRICO E NOTIFICAÇÕES (MongoDB)...\n');
+
+  // Notificações fixas de âncoras
+  notificacoes.push(
+    { destinatarioId: admin.id,    destinatarioEmail: admin.email,    tipo: 'CHAMADO_ABERTO'      as TipoEvento, titulo: 'Novo chamado aberto',         mensagem: 'O chamado INC0001 foi aberto e aguarda atribuição.',        chamadoId: chamadosAbertos[0].id, chamadoOS: 'INC0001', lida: false, criadoEm: hrs(2)  },
+    { destinatarioId: admin.id,    destinatarioEmail: admin.email,    tipo: 'CHAMADO_ABERTO'      as TipoEvento, titulo: 'Novo chamado aberto',         mensagem: 'O chamado INC0002 foi aberto e aguarda atribuição.',        chamadoId: chamadosAbertos[1].id, chamadoOS: 'INC0002', lida: false, criadoEm: hrs(4)  },
+    { destinatarioId: adminTI.id,  destinatarioEmail: adminTI.email,  tipo: 'SLA_VENCENDO'        as TipoEvento, titulo: 'Múltiplos SLAs vencidos',     mensagem: '112 chamados com SLA vencido aguardam resolução.',          chamadoId: chamadosAbertos[0].id, chamadoOS: 'INC0001', lida: false, criadoEm: hrs(1), dadosExtras: { totalVencidos: 112 } },
+    { destinatarioId: usuario2.id, destinatarioEmail: usuario2.email, tipo: 'CHAMADO_ENCERRADO'   as TipoEvento, titulo: 'Chamado vinculado e encerrado', mensagem: `Chamado vinculado ao ${osAnchorPai} e encerrado.`,         chamadoId: chamadoFilho.id,       chamadoOS: osAnchorFilho, lida: false, criadoEm: dias(20), dadosExtras: { chamadoPaiOS: osAnchorPai } },
+    { destinatarioId: tecnico1.id, destinatarioEmail: tecnico1.email, tipo: 'PRIORIDADE_ALTERADA' as TipoEvento, titulo: 'Chamado escalado para P1',     mensagem: `Chamado ${osAnchorREA} escalado para P1 por Diego Ferreira.`, chamadoId: chamadosAbertos[0].id, chamadoOS: osAnchorREA, lida: false, criadoEm: dias(1), dadosExtras: { prioridadeNova: 'P1', alteradoPor: adminTI.email } },
+  );
+
+  // Inserir em batches de 500 para performance
+  const BATCH = 500;
+  for (let i = 0; i < historico.length; i += BATCH) {
+    await AtualizacaoChamado.insertMany(historico.slice(i, i + BATCH));
   }
+  log.success(`[SUCESSO] ${historico.length} entradas de histórico inseridas`);
 
-  async function publicarEvento(topic: string, evento: any) {
-    if (kafkaConnected && kafkaProducer) {
-      try {
-        await kafkaProducer.send({
-          topic,
-          messages: [
-            {
-              key: evento.chamadoId || evento.id,
-              value: JSON.stringify(evento),
-              timestamp: Date.now().toString(),
-            },
-          ],
-        });
-        contadores.eventosKafka++;
-      } catch (error) {
-        // Silenciar erros do Kafka
-      }
-    }
-  }
+  await Notificacao.insertMany(notificacoes);
+  log.success(`[SUCESSO] ${notificacoes.length} notificações inseridas\n`);
 
-  console.log('[6/8] Criando 1000 chamados com fluxo completo...\n');
+  log.title('[6/6] ESTATÍSTICAS FINAIS...\n');
 
-  const totalChamados = 1000;
-  const distribuicao = {
-    ABERTO: Math.floor(totalChamados * 0.15),           // 150
-    EM_ATENDIMENTO: Math.floor(totalChamados * 0.05),   // 50
-    ENCERRADO: Math.floor(totalChamados * 0.20),        // 200
-    CANCELADO: Math.floor(totalChamados * 0.30),        // 300
-    REABERTO: Math.floor(totalChamados * 0.30),         // 300
-  };
+  const [
+    totalAdmins, totalTecnicos, totalUsuarios, totalServicos,
+    totalChamados, totalTransferencias, totalComentarios, totalAnexos,
+    totalNotificacoes, totalHistorico,
+  ] = await Promise.all([
+    prisma.usuario.count({ where: { regra: Regra.ADMIN,   deletadoEm: null } }),
+    prisma.usuario.count({ where: { regra: Regra.TECNICO, deletadoEm: null } }),
+    prisma.usuario.count({ where: { regra: Regra.USUARIO, deletadoEm: null } }),
+    prisma.servico.count({ where: { deletadoEm: null } }),
+    prisma.chamado.count({ where: { deletadoEm: null } }),
+    prisma.transferenciaChamado.count(),
+    prisma.comentarioChamado.count({ where: { deletadoEm: null } }),
+    prisma.anexoChamado.count({ where: { deletadoEm: null } }),
+    Notificacao.countDocuments(),
+    AtualizacaoChamado.countDocuments(),
+  ]);
 
-  console.log('   Distribuição planejada:');
-  console.log(`      • ABERTO: ${distribuicao.ABERTO} (15%)`);
-  console.log(`      • EM_ATENDIMENTO: ${distribuicao.EM_ATENDIMENTO} (5%)`);
-  console.log(`      • ENCERRADO: ${distribuicao.ENCERRADO} (20%)`);
-  console.log(`      • CANCELADO: ${distribuicao.CANCELADO} (30%)`);
-  console.log(`      • REABERTO: ${distribuicao.REABERTO} (30%)`);
-  console.log();
+  const porStatus = await Promise.all(
+    Object.values(ChamadoStatus).map(async (s) => ({
+      s, n: await prisma.chamado.count({ where: { status: s, deletadoEm: null } }),
+    }))
+  );
 
-  const descricoesChamados = [
-    'Computador não liga',
-    'Internet lenta',
-    'Impressora com problema',
-    'Email não sincroniza',
-    'Sistema travando',
-    'Tela azul da morte',
-    'Vírus detectado',
-    'Backup não funciona',
-    'VPN não conecta',
-    'Senha esquecida',
-    'Software não abre',
-    'Mouse não funciona',
-    'Teclado com teclas travadas',
-    'Monitor sem imagem',
-    'Sistema operacional lento',
-    'Aplicação com erro',
-    'Banco de dados inacessível',
-    'Servidor fora do ar',
-    'Disco rígido cheio',
-    'Atualização necessária',
-  ];
+  const agora    = Date.now();
+  const todosEm  = await prisma.chamado.findMany({ where: { status: ChamadoStatus.EM_ATENDIMENTO, deletadoEm: null }, select: { prioridade: true, geradoEm: true } });
+  const vencidos = todosEm.filter(c => {
+    const prazoMs = SLA_HORAS[c.prioridade] * 3_600_000;
+    return c.geradoEm.getTime() + prazoMs < agora;
+  }).length;
 
-  const descricoesEncerramento = [
-    'Problema resolvido com sucesso. Hardware substituído.',
-    'Configuração de rede ajustada. Sistema normalizado.',
-    'Software reinstalado. Funcionando corretamente.',
-    'Atualização aplicada. Bug corrigido.',
-    'Equipamento limpo e otimizado.',
-    'Senha redefinida com sucesso.',
-    'Backup restaurado. Dados recuperados.',
-    'Vírus removido. Antivírus atualizado.',
-    'Impressora configurada corretamente.',
-    'Acesso VPN restabelecido.',
-  ];
+  const porPrio = await Promise.all(
+    (['P1','P2','P3','P4','P5'] as PrioridadeChamado[]).map(async (p) => ({
+      p, n: await prisma.chamado.count({ where: { prioridade: p, deletadoEm: null } }),
+    }))
+  );
 
-  const descricoesCancelamento = [
-    'Usuário desistiu do chamado.',
-    'Problema resolvido pelo próprio usuário.',
-    'Chamado duplicado.',
-    'Equipamento será substituído.',
-    'Fora do escopo do suporte.',
-    'Usuário não disponível para atendimento.',
-  ];
+  log.title('\n╔══════════════════════════════════════╗');
+  log.title('║    SEED CONCLUÍDO COM SUCESSO!       ║');
+  log.title('║    500 CHAMADOS GERADOS              ║');
+  log.title('╚══════════════════════════════════════╝\n');
 
-  let chamadoIndex = 0;
+  console.log('CREDENCIAIS\n');
+  console.log('── ADMINISTRADORES ──────────────────────');
+  console.log('  admin@helpme.com              → Admin123!');
+  console.log('  superadmin@helpme.com         → Super123!');
+  console.log('  diego.ferreira@helpme.com     → Diego123!\n');
+  console.log('── TÉCNICOS ─────────────────────────────');
+  console.log('  tecnico@helpme.com            → Tecnico123! [N1 | 08:00–17:00]');
+  console.log('  ana.santos@helpme.com         → Tecnico123! [N2 | 08:00–18:00]');
+  console.log('  roberto.ferreira@helpme.com   → Tecnico123! [N3 | 09:00–18:00]\n');
+  console.log('── USUÁRIOS ─────────────────────────────');
+  console.log('  user@helpme.com               → User123! [COMERCIAL]');
+  console.log('  maria.costa@helpme.com        → User123! [FINANCEIRO]');
+  console.log('  pedro.lima@helpme.com         → User123! [MARKETING]\n');
 
-  async function criarChamadosComStatus(
-    status: ChamadoStatus,
-    quantidade: number
-  ) {
-    for (let i = 0; i < quantidade; i++) {
-      chamadoIndex++;
-      
-      const usuario = usuarios[Math.floor(Math.random() * usuarios.length)];
-      const descricao = descricoesChamados[Math.floor(Math.random() * descricoesChamados.length)];
-      const geradoEm = gerarDataAleatoria(90);
-      
-      let tecnicoId: string | null = null;
-      let encerradoEm: Date | null = null;
-      let descricaoEncerramento: string | null = null;
-      let tecnico: Usuario | null = null;
-
-      switch (status) {
-        case ChamadoStatus.ABERTO:
-          break;
-
-        case ChamadoStatus.EM_ATENDIMENTO:
-          tecnico = tecnicos[Math.floor(Math.random() * tecnicos.length)];
-          tecnicoId = tecnico.id;
-          break;
-
-        case ChamadoStatus.ENCERRADO:
-          tecnico = tecnicos[Math.floor(Math.random() * tecnicos.length)];
-          tecnicoId = tecnico.id;
-          encerradoEm = adicionarTempoAleatorio(geradoEm, 1, 48);
-          descricaoEncerramento = descricoesEncerramento[Math.floor(Math.random() * descricoesEncerramento.length)];
-          break;
-
-        case ChamadoStatus.CANCELADO:
-          if (Math.random() > 0.5) {
-            tecnico = tecnicos[Math.floor(Math.random() * tecnicos.length)];
-            tecnicoId = tecnico.id;
-          }
-          encerradoEm = adicionarTempoAleatorio(geradoEm, 0.5, 24);
-          descricaoEncerramento = descricoesCancelamento[Math.floor(Math.random() * descricoesCancelamento.length)];
-          break;
-
-        case ChamadoStatus.REABERTO:
-          tecnico = tecnicos[Math.floor(Math.random() * tecnicos.length)];
-          tecnicoId = tecnico.id;
-          break;
-      }
-
-      const chamado = await prisma.chamado.create({
-        data: {
-          OS: gerarOS(chamadoIndex),
-          descricao: `${descricao} - ${status} #${chamadoIndex}`,
-          status,
-          usuarioId: usuario.id,
-          tecnicoId,
-          encerradoEm,
-          descricaoEncerramento,
-          geradoEm,
-        },
-      });
-
-      const numServicos = Math.floor(Math.random() * 3) + 1;
-      const servicosSelecionados = new Set<string>();
-
-      while (servicosSelecionados.size < numServicos) {
-        const servico = servicos[Math.floor(Math.random() * servicos.length)];
-        servicosSelecionados.add(servico.id);
-      }
-
-      for (const servicoId of servicosSelecionados) {
-        await prisma.ordemDeServico.create({
-          data: {
-            chamadoId: chamado.id,
-            servicoId,
-            geradoEm: chamado.geradoEm,
-          },
-        });
-      }
-
-      const requestId = gerarRequestId();
-
-      await criarLog('info', `Chamado ${chamado.OS} criado`, {
-        chamadoId: chamado.id,
-        usuarioId: usuario.id,
-        status: chamado.status,
-        requestId,
-      });
-
-      await criarAuditoria(
-        usuario.id,
-        'CREATE',
-        'chamado',
-        chamado.id,
-        { status: chamado.status, descricao: chamado.descricao }
-      );
-
-      await publicarEvento('chamados.created', {
-        chamadoId: chamado.id,
-        OS: chamado.OS,
-        usuarioId: usuario.id,
-        status: chamado.status,
-        timestamp: geradoEm.toISOString(),
-      });
-
-      await redis.hSet(`chamado:${chamado.id}`, {
-        id: chamado.id,
-        OS: chamado.OS,
-        status: chamado.status,
-        usuarioId: usuario.id,
-        descricao: chamado.descricao,
-      });
-      contadores.chamadosRedis++;
-
-      if (status === ChamadoStatus.ABERTO) {
-        await redis.lPush('chamados:abertos', chamado.id);
-      }
-      
-      if (status === ChamadoStatus.EM_ATENDIMENTO && tecnico) {
-        const atribuidoEm = adicionarTempoAleatorio(geradoEm, 0.5, 4);
-
-        await criarLog('info', `Chamado ${chamado.OS} atribuído ao técnico`, {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-          requestId: gerarRequestId(),
-        });
-
-        await criarAuditoria(
-          tecnico.id,
-          'ASSIGN',
-          'chamado',
-          chamado.id,
-          { tecnicoId: tecnico.id, status: 'EM_ATENDIMENTO' }
-        );
-
-        await publicarEvento('chamados.assigned', {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-          timestamp: atribuidoEm.toISOString(),
-        });
-
-        await redis.lPush(`tecnico:${tecnico.id}:chamados`, chamado.id);
-      }
-
-      if (status === ChamadoStatus.ENCERRADO && tecnico && encerradoEm) {
-        await criarLog('info', `Chamado ${chamado.OS} atribuído`, {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-        });
-
-        await criarLog('info', `Atendimento iniciado para chamado ${chamado.OS}`, {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-        });
-
-        await criarLog('info', `Chamado ${chamado.OS} encerrado`, {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-          resolucao: descricaoEncerramento,
-        });
-
-        await criarAuditoria(
-          tecnico.id,
-          'CLOSE',
-          'chamado',
-          chamado.id,
-          { status: 'ENCERRADO', descricaoEncerramento }
-        );
-
-        await publicarEvento('chamados.closed', {
-          chamadoId: chamado.id,
-          tecnicoId: tecnico.id,
-          resolucao: descricaoEncerramento,
-          timestamp: encerradoEm.toISOString(),
-        });
-
-        await redis.hSet(`chamado:${chamado.id}`, 'status', 'ENCERRADO');
-        await redis.hIncrBy('stats:chamados', 'encerrados', 1);
-      }
-
-      if (status === ChamadoStatus.CANCELADO && encerradoEm) {
-        await criarLog('warn', `Chamado ${chamado.OS} cancelado`, {
-          chamadoId: chamado.id,
-          motivo: descricaoEncerramento,
-        });
-
-        const canceladoPor = tecnico?.id || usuario.id;
-        await criarAuditoria(
-          canceladoPor,
-          'CANCEL',
-          'chamado',
-          chamado.id,
-          { status: 'CANCELADO', motivo: descricaoEncerramento }
-        );
-
-        await publicarEvento('chamados.cancelled', {
-          chamadoId: chamado.id,
-          motivo: descricaoEncerramento,
-          timestamp: encerradoEm.toISOString(),
-        });
-
-        await redis.hSet(`chamado:${chamado.id}`, 'status', 'CANCELADO');
-      }
-
-      if (status === ChamadoStatus.REABERTO && tecnico) {
-        const encerramentoAnterior = adicionarTempoAleatorio(geradoEm, 1, 24);
-        const reabertoEm = adicionarTempoAleatorio(encerramentoAnterior, 0.5, 48);
-
-        await criarLog('info', `Chamado ${chamado.OS} foi encerrado anteriormente`, {
-          chamadoId: chamado.id,
-        });
-
-        await criarLog('warn', `Chamado ${chamado.OS} reaberto`, {
-          chamadoId: chamado.id,
-          usuarioId: usuario.id,
-        });
-
-        await criarAuditoria(
-          usuario.id,
-          'REOPEN',
-          'chamado',
-          chamado.id,
-          { status: 'REABERTO', motivoReabertura: 'Problema persistiu' }
-        );
-
-        await publicarEvento('chamados.reopened', {
-          chamadoId: chamado.id,
-          usuarioId: usuario.id,
-          timestamp: reabertoEm.toISOString(),
-        });
-
-        await redis.hSet(`chamado:${chamado.id}`, 'status', 'REABERTO');
-        await redis.lPush('chamados:reabertos', chamado.id);
-      }
-
-      if (chamadoIndex % 100 === 0) {
-        console.log(`   Progresso: ${chamadoIndex}/${totalChamados} chamados criados...`);
-      }
-    }
-  }
-
-  await criarChamadosComStatus(ChamadoStatus.ABERTO, distribuicao.ABERTO);
-  await criarChamadosComStatus(ChamadoStatus.EM_ATENDIMENTO, distribuicao.EM_ATENDIMENTO);
-  await criarChamadosComStatus(ChamadoStatus.ENCERRADO, distribuicao.ENCERRADO);
-  await criarChamadosComStatus(ChamadoStatus.CANCELADO, distribuicao.CANCELADO);
-  await criarChamadosComStatus(ChamadoStatus.REABERTO, distribuicao.REABERTO);
-
-  console.log(`Todos os ${totalChamados} chamados criados!\n`);
-
-  console.log('[7/8] Coletando estatísticas finais...\n');
-
-  const stats = await prisma.chamado.groupBy({
-    by: ['status'],
-    _count: true,
+  console.log('ESTATÍSTICAS\n');
+  console.log(`  Admins:          ${totalAdmins}`);
+  console.log(`  Técnicos:        ${totalTecnicos}  (N1: Carlos | N2: Ana | N3: Roberto)`);
+  console.log(`  Usuários:        ${totalUsuarios}`);
+  console.log(`  Serviços:        ${totalServicos}  (9 ativos, 1 inativo)`);
+  console.log(`  Chamados:        ${totalChamados}  (INC0001–INC${String(totalChamados).padStart(4,'0')})`);
+  porStatus.forEach(({ s, n }) => {
+    const extra = s === ChamadoStatus.EM_ATENDIMENTO ? `  (${vencidos} vencidos SLA)` : '';
+    console.log(`    ${s.padEnd(17)} ${n}${extra}`);
   });
-
-  const totalUsuarios = await prisma.usuario.count();
-  const totalServicos = await prisma.servico.count();
-  const totalChamadosDB = await prisma.chamado.count();
-  const totalExpedientesDB = await prisma.expediente.count();
-  const totalOrdens = await prisma.ordemDeServico.count();
-
-  console.log('PostgreSQL:');
-  console.log(`Usuários: ${totalUsuarios}`);
-  console.log(`Serviços: ${totalServicos}`);
-  console.log(`Chamados: ${totalChamadosDB}`);
-  for (const stat of stats) {
-    const porcentagem = ((stat._count / totalChamadosDB) * 100).toFixed(1);
-    console.log(`- ${stat.status}: ${stat._count} (${porcentagem}%)`);
-  }
-  console.log(`Ordens de Serviço: ${totalOrdens}`);
-  console.log(`Expedientes: ${totalExpedientesDB}`);
-
-  const totalLogs = await mongodb.collection('system_logs').countDocuments();
-  const totalAudits = await mongodb.collection('audit_logs').countDocuments();
-  
-  console.log(`MongoDB:`);
-  console.log(`system_logs: ${totalLogs}`);
-  console.log(`audit_logs: ${totalAudits}`);
-
-  const chamadosAbertos = await redis.lLen('chamados:abertos');
-  const chamadosReabertos = await redis.lLen('chamados:reabertos');
-  const keysRedis = await redis.keys('*');
-  
-  console.log(`Redis:`);
-  console.log(`Total de chaves: ${keysRedis.length}`);
-  console.log(`Chamados em cache: ${contadores.chamadosRedis}`);
-  console.log(`Usuários em cache: ${contadores.usuariosRedis}`);
-  console.log(`Fila de abertos: ${chamadosAbertos}`);
-  console.log(`Fila de reabertos: ${chamadosReabertos}`);
-
-  if (kafkaConnected) {
-    console.log(`Kafka:`);
-    console.log(`Eventos publicados: ${contadores.eventosKafka}`);
-  } else {
-    console.log(`Kafka:`);
-    console.log(`Não conectado (seed executado sem eventos)`);
-  }
-
-  console.log();
-
-  console.log('[8/8] Validando população dos bancos...\n');
-
-  let tudoOk = true;
-
-  if (totalChamadosDB !== totalChamados) {
-    console.log(`PostgreSQL: esperado ${totalChamados} chamados, encontrado ${totalChamadosDB}`);
-    tudoOk = false;
-  } else {
-    console.log('PostgreSQL: todos os dados foram criados corretamente');
-  }
-
-  if (totalLogs === 0 || totalAudits === 0) {
-    console.log(`MongoDB: system_logs=${totalLogs}, audit_logs=${totalAudits}`);
-    tudoOk = false;
-  } else {
-    console.log('MongoDB: logs e auditorias foram criados corretamente');
-  }
-
-  if (contadores.chamadosRedis !== totalChamados) {
-    console.log(`Redis: esperado ${totalChamados} chamados em cache, encontrado ${contadores.chamadosRedis}`);
-    tudoOk = false;
-  } else {
-    console.log('Redis: todos os chamados foram cacheados corretamente');
-  }
-
-  console.log();
-
-  if (tudoOk) {
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('🌱 SEED COMPLETO EXECUTADO COM SUCESSO!');
-    console.log('═══════════════════════════════════════════════════════════════');
-  } else {
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('🌱  SEED COMPLETO COM ALGUNS AVISOS');
-    console.log('═══════════════════════════════════════════════════════════════');
-  }
-
-  console.log('Credenciais de acesso:');
-  console.log('Admin:   admin@helpme.com | Senha@123');
-  console.log('Técnico: tecnico1@helpme.com | Senha@123');
-  console.log('Usuário: usuario1@helpme.com | Senha@123');
-
-  console.log('Desconectando bancos de dados...');
-  await mongoClient.close();
-  await redis.quit();
-  if (kafkaConnected && kafkaProducer) {
-    await kafkaProducer.disconnect();
-  }
-  console.log('Desconexões concluídas\n');
+  console.log(`  Prioridades:`);
+  porPrio.forEach(({ p, n }) => console.log(`    ${p}: ${n}  (${(n/totalChamados*100).toFixed(1)}%)`));
+  console.log(`  ├─ Hierarquia:   ${osAnchorPai} ← ${osAnchorFilho}`);
+  console.log(`  ├─ Reaberto P1:  ${osAnchorREA} (escalado)`);
+  console.log(`  └─ Vencidos SLA: ${vencidos} (INC${String(inicioVEN).padStart(4,'0')}–INC${String(cursor).padStart(4,'0')})`);
+  console.log(`  Transferências:  ${totalTransferencias}`);
+  console.log(`  Comentários:     ${totalComentarios}`);
+  console.log(`  Anexos:          ${totalAnexos}`);
+  console.log(`  Notificações:    ${totalNotificacoes}  (MongoDB)`);
+  console.log(`  Histórico:       ${totalHistorico}  (MongoDB)\n`);
 }
 
 main()
-  .catch((e) => {
-    console.error('\n ERRO FATAL ao executar seed:', e);
+  .catch((error) => {
+    log.error('[ERROR] Seed falhou:');
+    console.error(error);
     process.exit(1);
   })
   .finally(async () => {
+    log.info('[INFO] Encerrando conexões...');
     await prisma.$disconnect();
-    await pool.end();
+    await mongoose.disconnect();
+    log.success('[SUCESSO] Conexões encerradas\n');
   });

@@ -36,7 +36,7 @@ const mockUsuarioValido: Usuario = {
   email: 'u@teste.com',
   password: 'senhaForte123',
   regra: Regra.USUARIO,
-  nivel: null, // ← adicionar
+  nivel: null,
   setor: null,
   telefone: null,
   ramal: null,

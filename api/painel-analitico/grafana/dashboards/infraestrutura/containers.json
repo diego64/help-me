@@ -907,9 +907,7 @@
   "refresh": "5m",
   "schemaVersion": 39,
   "tags": [
-    "docker",
-    "containers",
-    "infrastructure"
+
   ],
   "templating": {
     "list": []

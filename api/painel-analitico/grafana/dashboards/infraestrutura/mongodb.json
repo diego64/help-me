@@ -1025,9 +1025,6 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": [
-    "database",
-    "mongodb",
-    "nosql"
 
   ],
   "templating": {

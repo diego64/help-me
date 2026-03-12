@@ -9,6 +9,7 @@ import { salvarHistoricoChamado, listarHistoricoChamado } from '@infrastructure/
 import ChamadoAtualizacaoModel from '@infrastructure/database/mongodb/atualizacao.chamado.model';
 import { minioClient, MINIO_BUCKET, garantirBucket } from '@infrastructure/storage/minio.client';
 import { publicarChamadoAberto, publicarChamadoAtribuido, publicarChamadoTransferido, publicarChamadoReaberto, publicarPrioridadeAlterada } from '@infrastructure/messaging/kafka/producers/notificacao.producer';
+import { calcularEPersistirSLA, recalcularSLA } from '../../../domain/sla/sla.service';
 
 export const router: Router = Router();
 
@@ -271,6 +272,45 @@ async function buscarUltimoTecnico(chamadoId: string): Promise<string | null> {
   }
 }
 
+/**
+ * Encerra recursivamente todos os filhos ativos de um chamado (BFS).
+ * Chamado quando o pai é encerrado ou cancelado.
+ */
+async function encerrarFilhosRecursivo(
+  chamadoPaiId: string,
+  osPai: string,
+  tx: any,
+): Promise<void> {
+  const filhos = await tx.chamado.findMany({
+    where: {
+      chamadoPaiId,
+      deletadoEm: null,
+      status: { notIn: [ChamadoStatus.ENCERRADO, ChamadoStatus.CANCELADO] },
+    },
+    select: { id: true, OS: true },
+  });
+
+  if (filhos.length === 0) return;
+
+  const agora = new Date();
+  const descricao = `Chamado encerrado automaticamente — chamado pai ${osPai} foi encerrado`;
+
+  await tx.chamado.updateMany({
+    where: { id: { in: filhos.map((f: any) => f.id) } },
+    data: {
+      status:                ChamadoStatus.ENCERRADO,
+      descricaoEncerramento: descricao,
+      encerradoEm:           agora,
+      atualizadoEm:          agora,
+    },
+  });
+
+  // Recursão para o próximo nível
+  await Promise.all(
+    filhos.map((f: any) => encerrarFilhosRecursivo(f.id, f.OS, tx)),
+  );
+}
+
 function formatarChamadoResposta(chamado: any) {
   return {
     id: chamado.id,
@@ -337,94 +377,52 @@ const CHAMADO_INCLUDE = {
  * /api/chamados:
  *   get:
  *     summary: Lista chamados com filtros, busca e paginação
- *     description: |
- *       Retorna chamados paginados com filtros opcionais.
- *       - **ADMIN**: vê todos os chamados
- *       - **TECNICO**: vê apenas chamados atribuídos a ele
- *       - **USUARIO**: vê apenas seus próprios chamados
  *     tags: [Chamados]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: pagina
- *         schema:
- *           type: integer
- *           default: 1
- *         description: Número da página (começa em 1)
+ *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limite
- *         schema:
- *           type: integer
- *           default: 20
- *           maximum: 100
- *         description: Itens por página (máx 100)
+ *         schema: { type: integer, default: 20, maximum: 100 }
  *       - in: query
  *         name: busca
- *         schema:
- *           type: string
- *         description: Busca por OS, descrição, nome ou email do usuário
+ *         schema: { type: string }
  *       - in: query
  *         name: status
- *         schema:
- *           type: string
- *           enum: [ABERTO, EM_ATENDIMENTO, ENCERRADO, CANCELADO, REABERTO]
- *         description: Filtrar por status (aceita múltiplos separados por vírgula)
+ *         schema: { type: string, enum: [ABERTO, EM_ATENDIMENTO, ENCERRADO, CANCELADO, REABERTO] }
  *       - in: query
  *         name: prioridade
- *         schema:
- *           type: string
- *           enum: [P1, P2, P3, P4, P5]
- *         description: Filtrar por prioridade (aceita múltiplos separados por vírgula)
+ *         schema: { type: string, enum: [P1, P2, P3, P4, P5] }
  *       - in: query
  *         name: tecnicoId
- *         schema:
- *           type: string
- *         description: Filtrar por técnico responsável (somente ADMIN)
+ *         schema: { type: string }
  *       - in: query
  *         name: usuarioId
- *         schema:
- *           type: string
- *         description: Filtrar por usuário que abriu (somente ADMIN)
+ *         schema: { type: string }
  *       - in: query
  *         name: setor
- *         schema:
- *           type: string
- *         description: Filtrar por setor do usuário (somente ADMIN e TECNICO)
+ *         schema: { type: string }
  *       - in: query
  *         name: servico
- *         schema:
- *           type: string
- *         description: Filtrar pelo nome do serviço (busca parcial)
+ *         schema: { type: string }
  *       - in: query
  *         name: semTecnico
- *         schema:
- *           type: boolean
- *         description: Listar apenas chamados sem técnico atribuído (somente ADMIN e TECNICO)
+ *         schema: { type: boolean }
  *       - in: query
  *         name: dataInicio
- *         schema:
- *           type: string
- *           format: date
- *         description: Filtrar chamados criados a partir desta data (YYYY-MM-DD)
+ *         schema: { type: string, format: date }
  *       - in: query
  *         name: dataFim
- *         schema:
- *           type: string
- *           format: date
- *         description: Filtrar chamados criados até esta data (YYYY-MM-DD)
+ *         schema: { type: string, format: date }
  *       - in: query
  *         name: ordenarPor
- *         schema:
- *           type: string
- *           enum: [geradoEm, atualizadoEm, prioridade, status, OS]
- *           default: geradoEm
+ *         schema: { type: string, enum: [geradoEm, atualizadoEm, prioridade, status, OS], default: geradoEm }
  *       - in: query
  *         name: ordem
- *         schema:
- *           type: string
- *           enum: [asc, desc]
- *           default: desc
+ *         schema: { type: string, enum: [asc, desc], default: desc }
  *     responses:
  *       200:
  *         description: Lista de chamados retornada com sucesso
@@ -439,15 +437,12 @@ router.get(
   authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'),
   async (req: AuthRequest, res) => {
     try {
-      // ── Paginação ──
       const pagina = Math.max(1, parseInt(req.query.pagina as string) || 1);
       const limite = Math.min(100, Math.max(1, parseInt(req.query.limite as string) || 20));
       const skip   = (pagina - 1) * limite;
 
-      // ── Busca textual ──
       const busca = (req.query.busca as string)?.trim() || '';
 
-      // ── Filtros ──
       const statusParam     = req.query.status     as string | undefined;
       const prioridadeParam = req.query.prioridade as string | undefined;
       const tecnicoIdParam  = req.query.tecnicoId  as string | undefined;
@@ -458,7 +453,6 @@ router.get(
       const dataInicio      = req.query.dataInicio  as string | undefined;
       const dataFim         = req.query.dataFim     as string | undefined;
 
-      // ── Ordenação ──
       const camposOrdenacao = ['geradoEm', 'atualizadoEm', 'prioridade', 'status', 'OS'] as const;
       type CampoOrdenacao = typeof camposOrdenacao[number];
 
@@ -469,18 +463,15 @@ router.get(
 
       const ordem = req.query.ordem === 'asc' ? 'asc' : 'desc';
 
-      // ── WHERE base ──
       const where: any = { deletadoEm: null };
       const regra = req.usuario!.regra;
 
-      // Escopo automático por role
       if (regra === 'USUARIO') {
         where.usuarioId = req.usuario!.id;
       } else if (regra === 'TECNICO') {
         where.tecnicoId = req.usuario!.id;
       }
 
-      // ── Filtro de status (aceita múltiplos separados por vírgula) ──
       if (statusParam) {
         const statusValidos = Object.values(ChamadoStatus);
         const statusFiltro = statusParam
@@ -495,7 +486,6 @@ router.get(
         }
       }
 
-      // ── Filtro de prioridade (aceita múltiplos separados por vírgula) ──
       if (prioridadeParam) {
         const prioridadesValidas = Object.values(PrioridadeChamado);
         const prioridadeFiltro = prioridadeParam
@@ -510,23 +500,19 @@ router.get(
         }
       }
 
-      // ── Filtros exclusivos do ADMIN ──
       if (regra === 'ADMIN') {
         if (tecnicoIdParam) where.tecnicoId = tecnicoIdParam;
         if (usuarioIdParam) where.usuarioId = usuarioIdParam;
       }
 
-      // ── Chamados sem técnico (ADMIN e TECNICO) ──
       if (semTecnico && regra !== 'USUARIO') {
         where.tecnicoId = null;
       }
 
-      // ── Filtro por setor do usuário (ADMIN e TECNICO) ──
       if (setorParam && regra !== 'USUARIO') {
         where.usuario = { setor: setorParam };
       }
 
-      // ── Filtro por serviço (busca parcial, case-insensitive) ──
       if (servicoParam) {
         where.servicos = {
           some: {
@@ -538,7 +524,6 @@ router.get(
         };
       }
 
-      // ── Filtro por período de criação ──
       if (dataInicio || dataFim) {
         where.geradoEm = {};
         if (dataInicio) {
@@ -557,14 +542,12 @@ router.get(
         }
       }
 
-      // ── Busca textual ──
       if (busca) {
         const buscaOR: any[] = [
           { OS:        { contains: busca, mode: 'insensitive' } },
           { descricao: { contains: busca, mode: 'insensitive' } },
         ];
 
-        // ADMIN e TECNICO podem buscar por nome/email do usuário
         if (regra !== 'USUARIO') {
           buscaOR.push({ usuario: { email: { contains: busca, mode: 'insensitive' } } });
           buscaOR.push({ usuario: { nome:  { contains: busca, mode: 'insensitive' } } });
@@ -575,11 +558,8 @@ router.get(
           : [{ OR: buscaOR }];
       }
 
-      // ── Ordenação ──
-      // prioridade: P1 < P2 < P3... é alfabeticamente correto, então string sort funciona
       const orderBy: any[] = [{ [ordenarPor]: ordem }, { geradoEm: 'desc' }];
 
-      // ── Query em paralelo ──
       const [total, chamados] = await Promise.all([
         prisma.chamado.count({ where }),
         prisma.chamado.findMany({
@@ -593,7 +573,6 @@ router.get(
 
       const totalPaginas = Math.ceil(total / limite);
 
-      // ── Filtros ativos (feedback para o cliente) ──
       const filtrosAtivos: Record<string, any> = {};
       if (statusParam)     filtrosAtivos.status      = statusParam;
       if (prioridadeParam) filtrosAtivos.prioridade   = prioridadeParam;
@@ -631,10 +610,6 @@ router.get(
  * /api/chamados/abertura-chamado:
  *   post:
  *     summary: Abre um novo chamado de suporte
- *     description: |
- *       Cria um novo chamado via multipart/form-data. Prioridade padrão é P4.
- *       Aceita até 5 arquivos opcionais (máx 5MB cada): jpg, png, gif, webp, pdf, docx, xlsx, txt, csv.
- *       Requer autenticação e perfil USUARIO.
  *     tags: [Chamados]
  *     security:
  *       - bearerAuth: []
@@ -644,9 +619,7 @@ router.get(
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required:
- *               - descricao
- *               - servico
+ *             required: [descricao, servico]
  *             properties:
  *               descricao:
  *                 type: string
@@ -656,19 +629,16 @@ router.get(
  *                 oneOf:
  *                   - type: string
  *                   - type: array
- *                     items:
- *                       type: string
+ *                     items: { type: string }
  *               arquivos:
  *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
+ *                 items: { type: string, format: binary }
  *                 maxItems: 5
  *     responses:
  *       201:
  *         description: Chamado criado com sucesso
  *       400:
- *         description: Dados inválidos, serviço não encontrado ou arquivo inválido
+ *         description: Dados inválidos
  *       401:
  *         description: Não autenticado
  *       403:
@@ -763,6 +733,10 @@ router.post(
         autorEmail: req.usuario!.email,
       }).catch(err => console.error('[SAVE HISTORICO ERROR]', err));
 
+      // O chamado abre sempre em P4; geradoEm é o início da contagem.
+      calcularEPersistirSLA(chamado.id, PrioridadeChamado.P4, chamado.geradoEm)
+        .catch(err => console.error('[SLA CALC ERROR]', err));
+
       prisma.usuario.findMany({
         where: {
           regra: 'TECNICO',
@@ -808,10 +782,6 @@ router.post(
  * /api/chamados/{id}:
  *   patch:
  *     summary: Edita a descrição de um chamado
- *     description: |
- *       Permite editar a descrição e/ou adicionar até 5 novos anexos opcionais.
- *       Apenas o USUARIO dono do chamado ou ADMIN podem editar.
- *       Chamado deve estar em status ABERTO ou REABERTO.
  *     tags: [Chamados]
  *     security:
  *       - bearerAuth: []
@@ -819,30 +789,12 @@ router.post(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               descricao:
- *                 type: string
- *                 minLength: 10
- *                 maxLength: 5000
- *               arquivos:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
- *                 maxItems: 5
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Chamado atualizado com sucesso
  *       400:
- *         description: Dados inválidos ou chamado não pode ser editado
+ *         description: Dados inválidos
  *       401:
  *         description: Não autenticado
  *       403:
@@ -964,23 +916,7 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - arquivos
- *             properties:
- *               arquivos:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
- *                 maxItems: 5
+ *         schema: { type: string }
  *     responses:
  *       201:
  *         description: Anexos enviados com sucesso
@@ -1064,8 +1000,7 @@ router.post(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Lista de anexos retornada com sucesso
@@ -1133,8 +1068,7 @@ router.get(
  * @swagger
  * /api/chamados/{id}/anexos/{anexoId}/download:
  *   get:
- *     summary: Gera URL de download de um anexo
- *     description: Retorna uma URL assinada com validade de 10 minutos para download seguro direto do MinIO.
+ *     summary: Gera URL de download de um anexo (válida por 10 minutos)
  *     tags: [Chamados]
  *     security:
  *       - bearerAuth: []
@@ -1142,13 +1076,11 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *       - in: path
  *         name: anexoId
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: URL de download gerada com sucesso
@@ -1216,13 +1148,11 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *       - in: path
  *         name: anexoId
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Anexo removido com sucesso
@@ -1282,23 +1212,7 @@ router.delete(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - comentario
- *             properties:
- *               comentario:
- *                 type: string
- *                 maxLength: 5000
- *               visibilidadeInterna:
- *                 type: boolean
- *                 default: false
+ *         schema: { type: string }
  *     responses:
  *       201:
  *         description: Comentário criado com sucesso
@@ -1410,8 +1324,7 @@ router.post(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Lista de comentários retornada com sucesso
@@ -1496,25 +1409,11 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *       - in: path
  *         name: comentarioId
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - comentario
- *             properties:
- *               comentario:
- *                 type: string
- *                 maxLength: 5000
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Comentário atualizado com sucesso
@@ -1614,13 +1513,11 @@ router.put(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *       - in: path
  *         name: comentarioId
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Comentário removido com sucesso
@@ -1680,23 +1577,7 @@ router.delete(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - tecnicoNovoId
- *               - motivo
- *             properties:
- *               tecnicoNovoId:
- *                 type: string
- *               motivo:
- *                 type: string
- *                 minLength: 10
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Chamado transferido com sucesso
@@ -1867,11 +1748,10 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Histórico de transferências retornado com sucesso
+ *         description: Histórico retornado com sucesso
  *       401:
  *         description: Não autenticado
  *       404:
@@ -1963,22 +1843,7 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - prioridade
- *             properties:
- *               prioridade:
- *                 type: string
- *                 enum: [P1, P2, P3, P4, P5]
- *               motivo:
- *                 type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Prioridade atualizada com sucesso
@@ -2066,6 +1931,10 @@ router.patch(
         autorEmail: req.usuario!.email,
       }).catch(err => console.error('[SAVE HISTORICO ERROR]', err));
 
+      // ── Recalcular SLA com a nova prioridade (fire-and-forget) ────────────
+      recalcularSLA(id, prioridade as PrioridadeChamado)
+        .catch(err => console.error('[SLA RECALC ERROR]', err));
+
       console.log('[CHAMADO PRIORIDADE UPDATED]', {
         id, OS: chamado.OS,
         prioridadeAnterior: chamado.prioridade,
@@ -2112,34 +1981,16 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [EM_ATENDIMENTO, ENCERRADO, CANCELADO]
- *               descricaoEncerramento:
- *                 type: string
- *                 minLength: 10
- *               atualizacaoDescricao:
- *                 type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Status atualizado com sucesso
  *       400:
- *         description: Status inválido ou falta descrição de encerramento
+ *         description: Status inválido
  *       401:
  *         description: Não autenticado
  *       403:
- *         description: Sem permissão, fora do expediente ou nível incompatível
+ *         description: Sem permissão
  *       404:
  *         description: Chamado não encontrado
  *       500:
@@ -2252,6 +2103,13 @@ router.patch(
         autorEmail: req.usuario!.email,
       }).catch(err => console.error('[SAVE HISTORICO ERROR]', err));
 
+      // ── Encerrar filhos recursivamente (fire-and-forget) ──────────────────
+      if (status === ChamadoStatus.ENCERRADO || status === ChamadoStatus.CANCELADO) {
+        prisma.$transaction(async (tx) => {
+          await encerrarFilhosRecursivo(id, chamado.OS, tx);
+        }).catch(err => console.error('[ENCERRAR FILHOS ERROR]', err));
+      }
+
       if (status === ChamadoStatus.EM_ATENDIMENTO) {
         prisma.usuario.findUnique({
           where: { id: req.usuario!.id },
@@ -2296,8 +2154,7 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Histórico retornado com sucesso
@@ -2333,17 +2190,7 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               atualizacaoDescricao:
- *                 type: string
- *                 minLength: 10
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Chamado reaberto com sucesso
@@ -2365,9 +2212,8 @@ router.patch(
   async (req: AuthRequest, res) => {
     try {
       const id = getStringParamRequired(req.params.id);
-      //const { atualizacaoDescricao } = req.body as { atualizacaoDescricao?: string };
       const { atualizacaoDescricao } = (req.body ?? {}) as { atualizacaoDescricao?: string };
-      
+
       const chamado = await prisma.chamado.findUnique({
         where: { id },
         select: {
@@ -2481,20 +2327,7 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - descricaoEncerramento
- *             properties:
- *               descricaoEncerramento:
- *                 type: string
- *                 minLength: 10
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Chamado cancelado com sucesso
@@ -2585,7 +2418,7 @@ router.patch(
  * @swagger
  * /api/chamados/{id}:
  *   delete:
- *     summary: Desativa um chamado (soft delete)
+ *     summary: Desativa um chamado (soft delete) — ADMIN only
  *     tags: [Chamados]
  *     security:
  *       - bearerAuth: []
@@ -2593,12 +2426,10 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *       - in: query
  *         name: permanente
- *         schema:
- *           type: boolean
+ *         schema: { type: boolean }
  *     responses:
  *       200:
  *         description: Chamado desativado com sucesso
@@ -2649,6 +2480,356 @@ router.delete(
       return res.status(500).json({ error: 'Erro ao deletar o chamado' });
     }
   }
+);
+
+/**
+ * @swagger
+ * /api/chamados/{id}/vincular:
+ *   post:
+ *     summary: Vincula um chamado filho ao chamado pai
+ *     description: |
+ *       Somente ADMIN ou TECNICO N2/N3 podem realizar o vínculo.
+ *       O chamado filho é encerrado automaticamente com a descrição
+ *       "Chamado vinculado ao chamado {OS_PAI}".
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID do chamado PAI
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [filhoId]
+ *             properties:
+ *               filhoId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Chamado vinculado com sucesso
+ *       400:
+ *         description: Vínculo inválido (ciclo, mesmo chamado, já vinculado)
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Chamado pai ou filho não encontrado
+ *       500:
+ *         description: Erro ao vincular chamado
+ */
+router.post(
+  '/:id/vincular',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'TECNICO'),
+  async (req: AuthRequest, res) => {
+    try {
+      const paiId       = getStringParamRequired(req.params.id);
+      const { filhoId } = req.body;
+
+      if (!filhoId || typeof filhoId !== 'string') {
+        return res.status(400).json({ error: 'filhoId é obrigatório' });
+      }
+
+      // Técnico deve ser N2 ou N3
+      if (req.usuario!.regra === 'TECNICO') {
+        const tecnico = await prisma.usuario.findUnique({
+          where:  { id: req.usuario!.id },
+          select: { nivel: true },
+        });
+        if (!tecnico || tecnico.nivel === NivelTecnico.N1) {
+          return res.status(403).json({
+            error: 'Somente técnicos N2 ou N3 podem vincular chamados',
+          });
+        }
+      }
+
+      if (paiId === filhoId) {
+        return res.status(400).json({ error: 'Um chamado não pode ser vinculado a si mesmo' });
+      }
+
+      const [pai, filho] = await Promise.all([
+        prisma.chamado.findUnique({
+          where:  { id: paiId },
+          select: { id: true, OS: true, chamadoPaiId: true, deletadoEm: true, status: true },
+        }),
+        prisma.chamado.findUnique({
+          where:  { id: filhoId },
+          select: { id: true, OS: true, chamadoPaiId: true, deletadoEm: true, status: true },
+        }),
+      ]);
+
+      if (!pai || pai.deletadoEm) {
+        return res.status(404).json({ error: 'Chamado pai não encontrado' });
+      }
+      if (!filho || filho.deletadoEm) {
+        return res.status(404).json({ error: 'Chamado filho não encontrado' });
+      }
+
+      // Detecta ciclo: percorre ancestrais do pai e verifica se filhoId aparece
+      let cursor: string | null | undefined = pai.chamadoPaiId;
+      while (cursor) {
+        if (cursor === filhoId) {
+          return res.status(400).json({
+            error: 'Vínculo inválido: criaria um ciclo na hierarquia',
+          });
+        }
+        const ancestral: { chamadoPaiId: string | null } | null = await prisma.chamado.findUnique({
+          where:  { id: cursor },
+          select: { chamadoPaiId: true },
+        });
+        cursor = ancestral?.chamadoPaiId;
+      }
+
+      if (filho.chamadoPaiId === paiId) {
+        return res.status(400).json({
+          error: `Chamado ${filho.OS} já é filho de ${pai.OS}`,
+        });
+      }
+
+      const agora = new Date();
+      const descricaoEncerramento = `Chamado vinculado ao chamado ${pai.OS}`;
+
+      const filhoAtualizado = await prisma.$transaction(async (tx) => {
+        return await tx.chamado.update({
+          where:  { id: filhoId },
+          data:   {
+            chamadoPaiId:          paiId,
+            vinculadoEm:           agora,
+            vinculadoPor:          req.usuario!.id,
+            status:                ChamadoStatus.ENCERRADO,
+            descricaoEncerramento,
+            encerradoEm:           agora,
+            atualizadoEm:          agora,
+          },
+          include: CHAMADO_INCLUDE,
+        });
+      });
+
+      salvarHistoricoChamado({
+        chamadoId:  filhoId,
+        tipo:       'STATUS',
+        de:         filho.status,
+        para:       ChamadoStatus.ENCERRADO,
+        descricao:  descricaoEncerramento,
+        autorId:    req.usuario!.id,
+        autorNome:  req.usuario!.nome,
+        autorEmail: req.usuario!.email,
+      }).catch(err => console.error('[SAVE HISTORICO ERROR]', err));
+
+      console.log('[CHAMADO VINCULADO]', {
+        paiId, paiOS: pai.OS,
+        filhoId, filhoOS: filho.OS,
+        vinculadoPor: req.usuario!.id,
+      });
+
+      return res.status(200).json({
+        message: `Chamado ${filho.OS} vinculado ao chamado ${pai.OS} e encerrado automaticamente`,
+        pai:   { id: pai.id, OS: pai.OS },
+        filho: formatarChamadoResposta(filhoAtualizado),
+      });
+    } catch (err: any) {
+      console.error('[CHAMADO VINCULAR ERROR]', err);
+      return res.status(500).json({ error: 'Erro ao vincular chamado' });
+    }
+  },
+);
+
+/**
+ * @swagger
+ * /api/chamados/{id}/vincular/{filhoId}:
+ *   delete:
+ *     summary: Desvincula um chamado filho do pai
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID do chamado PAI
+ *         schema: { type: string }
+ *       - in: path
+ *         name: filhoId
+ *         required: true
+ *         description: ID do chamado filho a ser desvinculado
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Chamado desvinculado com sucesso
+ *       400:
+ *         description: Chamado não é filho do pai informado
+ *       401:
+ *         description: Não autenticado
+ *       403:
+ *         description: Sem permissão
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao desvincular chamado
+ */
+router.delete(
+  '/:id/vincular/:filhoId',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'TECNICO'),
+  async (req: AuthRequest, res) => {
+    try {
+      const paiId   = getStringParamRequired(req.params.id);
+      const filhoId = getStringParamRequired(req.params.filhoId);
+
+      // Técnico deve ser N2 ou N3
+      if (req.usuario!.regra === 'TECNICO') {
+        const tecnico = await prisma.usuario.findUnique({
+          where:  { id: req.usuario!.id },
+          select: { nivel: true },
+        });
+        if (!tecnico || tecnico.nivel === NivelTecnico.N1) {
+          return res.status(403).json({
+            error: 'Somente técnicos N2 ou N3 podem desvincular chamados',
+          });
+        }
+      }
+
+      const filho = await prisma.chamado.findUnique({
+        where:  { id: filhoId },
+        select: { id: true, OS: true, chamadoPaiId: true, deletadoEm: true },
+      });
+
+      if (!filho || filho.deletadoEm) {
+        return res.status(404).json({ error: 'Chamado filho não encontrado' });
+      }
+
+      if (filho.chamadoPaiId !== paiId) {
+        return res.status(400).json({
+          error: `Chamado ${filho.OS} não é filho do chamado informado`,
+        });
+      }
+
+      await prisma.chamado.update({
+        where: { id: filhoId },
+        data:  {
+          chamadoPaiId: null,
+          vinculadoEm:  null,
+          vinculadoPor: null,
+          atualizadoEm: new Date(),
+        },
+      });
+
+      console.log('[CHAMADO DESVINCULADO]', {
+        paiId, filhoId, filhoOS: filho.OS,
+        desvinculadoPor: req.usuario!.id,
+      });
+
+      return res.status(200).json({
+        message: `Chamado ${filho.OS} desvinculado com sucesso`,
+        filhoId,
+      });
+    } catch (err: any) {
+      console.error('[CHAMADO DESVINCULAR ERROR]', err);
+      return res.status(500).json({ error: 'Erro ao desvincular chamado' });
+    }
+  },
+);
+
+/**
+ * @swagger
+ * /api/chamados/{id}/hierarquia:
+ *   get:
+ *     summary: Retorna a árvore hierárquica completa do chamado
+ *     description: |
+ *       Sobe até a raiz da hierarquia e retorna a árvore completa com
+ *       todos os filhos aninhados recursivamente.
+ *     tags: [Chamados]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Hierarquia retornada com sucesso
+ *       401:
+ *         description: Não autenticado
+ *       404:
+ *         description: Chamado não encontrado
+ *       500:
+ *         description: Erro ao buscar hierarquia
+ */
+router.get(
+  '/:id/hierarquia',
+  authMiddleware,
+  authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'),
+  async (req: AuthRequest, res) => {
+    try {
+      const id = getStringParamRequired(req.params.id);
+
+      // Verifica se o chamado existe
+      const chamadoInicial = await prisma.chamado.findUnique({
+        where:  { id },
+        select: { chamadoPaiId: true, deletadoEm: true },
+      });
+
+      if (!chamadoInicial || chamadoInicial.deletadoEm) {
+        return res.status(404).json({ error: 'Chamado não encontrado' });
+      }
+
+      // Sobe até a raiz da hierarquia
+      let raizId = id;
+      let cursor: { chamadoPaiId: string | null; deletadoEm: Date | null } | null = chamadoInicial;
+
+      while (cursor?.chamadoPaiId) {
+        raizId = cursor.chamadoPaiId;
+        cursor = await prisma.chamado.findUnique({
+          where:  { id: raizId },
+          select: { chamadoPaiId: true, deletadoEm: true },
+        });
+      }
+
+      // Busca recursiva da árvore completa a partir da raiz
+      async function buscarArvore(nodeId: string): Promise<any> {
+        const node = await prisma.chamado.findUnique({
+          where:   { id: nodeId },
+          include: CHAMADO_INCLUDE,
+        });
+
+        if (!node) return null;
+
+        const filhos = await prisma.chamado.findMany({
+          where:   { chamadoPaiId: nodeId, deletadoEm: null },
+          select:  { id: true },
+          orderBy: { vinculadoEm: 'asc' },
+        });
+
+        const filhosArvore = await Promise.all(
+          filhos.map((f) => buscarArvore(f.id)),
+        );
+
+        return {
+          ...formatarChamadoResposta(node),
+          chamadoPaiId: node.chamadoPaiId ?? null,
+          filhos:       filhosArvore.filter(Boolean),
+        };
+      }
+
+      const arvore = await buscarArvore(raizId);
+
+      return res.status(200).json({
+        ehRaiz: raizId === id,
+        arvore,
+      });
+    } catch (err: any) {
+      console.error('[CHAMADO HIERARQUIA ERROR]', err);
+      return res.status(500).json({ error: 'Erro ao buscar hierarquia do chamado' });
+    }
+  },
 );
 
 export default router;

@@ -1173,9 +1173,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "tags": [
-    "database",
-    "postgresql",
-    "sql"
+
   ],
   "templating": {
     "list": [

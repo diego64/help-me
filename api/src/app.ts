@@ -12,7 +12,7 @@ import { tracingMiddleware } from '@infrastructure/http/middlewares/tracing.midd
 import routes from './presentation/http/routes';
 import { initSocketIO } from './infrastructure/websocket/socket';
 import { startNotificacaoConsumer } from '@infrastructure/messaging/kafka/consumers/notificacao.consumer';
-import { startSLAJob } from '@infrastructure/jobs/sla.job';
+import { iniciarSLAJob } from './domain/jobs/sla.job';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -48,7 +48,7 @@ app.use(session({
 }));
 
 app.get('/', (_req: Request, res: Response) => {
-  res.json({ message: 'Help-Me API', version: '1.2.5', docs: '/api-docs', health: '/health' });
+  res.json({ message: 'Help-Me API', version: '1.3.0', docs: '/api-docs', health: '/health' });
 });
 
 app.get('/health', (_req: Request, res: Response) => {
@@ -99,7 +99,7 @@ initSocketIO(httpServer);
 
 export async function startServices(): Promise<void> {
   await startNotificacaoConsumer();
-  startSLAJob();
+  iniciarSLAJob();
 }
 
 export default app;

@@ -830,9 +830,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "tags": [
-    "database",
-    "kafka",
-    "messaging"
+
   ],
   "templating": {
     "list": []

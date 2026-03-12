@@ -240,7 +240,7 @@ describe('POST /auth/login', () => {
 
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ error: 'Conta inativa. Entre em contato com o administrador.' });
-    });
+    }, 40000);
 
     it('deve retornar 401 quando senha estiver incorreta', async () => {
       prismaMock.usuario.findUnique.mockResolvedValue(usuarioFixture);

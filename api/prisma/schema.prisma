@@ -90,6 +90,9 @@ model Usuario {
   // Sistema de Anexos
   anexos                   AnexoChamado[]
 
+  // Sistema de Vínculos
+  vinculosChamado          Chamado[]              @relation("VinculosChamado")
+
   // ==================== INDEX ====================
 
   @@index([email])
@@ -166,6 +169,22 @@ model Chamado {
   comentarios           ComentarioChamado[]
   anexos                AnexoChamado[]
 
+  // ==================== SLA ====================
+
+  slaDeadline   DateTime?  @map("sla_deadline")   @db.Timestamptz(3)
+  slaViolado    Boolean    @default(false)         @map("sla_violado")
+  slaVioladoEm  DateTime?  @map("sla_violado_em")  @db.Timestamptz(3)
+
+  // ==================== HIERARQUIA ====================
+
+  chamadoPaiId   String?   @map("chamado_pai_id")
+  chamadoPai     Chamado?  @relation("ChamadoHierarquia", fields: [chamadoPaiId], references: [id], onDelete: SetNull)
+  chamadosFilhos Chamado[] @relation("ChamadoHierarquia")
+
+  vinculadoEm    DateTime? @map("vinculado_em") @db.Timestamptz(3)
+  vinculadoPor   String?   @map("vinculado_por")
+  vinculador     Usuario?  @relation("VinculosChamado", fields: [vinculadoPor], references: [id], onDelete: SetNull)
+
   // ==================== INDEX ====================
 
   @@index([usuarioId])
@@ -181,6 +200,11 @@ model Chamado {
   @@index([prioridade, status])
   @@index([status, prioridade, geradoEm])
   @@index([prioridadeAlteradaPor])
+  @@index([slaDeadline])
+  @@index([slaViolado])
+  @@index([slaViolado, status])
+  @@index([chamadoPaiId])
+  @@index([vinculadoPor])
   @@map("chamados")
 }
 

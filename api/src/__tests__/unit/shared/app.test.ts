@@ -65,10 +65,11 @@ vi.mock('@infrastructure/messaging/kafka/consumers/notificacao.consumer', () => 
 }));
 
 const slaJobTimer = setInterval(() => {}, 99999);
-const startSLAJobMock = vi.fn().mockReturnValue(slaJobTimer);
+const iniciarSLAJobMock = vi.fn().mockReturnValue(slaJobTimer);
 
-vi.mock('@infrastructure/jobs/sla.job', () => ({
-  startSLAJob: startSLAJobMock,
+// path resolvido a partir do arquivo de teste até src/domain/jobs/sla.job.ts
+vi.mock('../../../domain/jobs/sla.job', () => ({
+  iniciarSLAJob: iniciarSLAJobMock,
 }));
 
 vi.mock('compression', async (importOriginal) => {
@@ -290,7 +291,7 @@ describe('Compressão (compression middleware)', () => {
 describe('startServices()', () => {
   beforeEach(() => {
     startNotificacaoConsumerMock.mockClear();
-    startSLAJobMock.mockClear();
+    iniciarSLAJobMock.mockClear();
   });
 
   it('deve chamar startNotificacaoConsumer', async () => {
@@ -299,10 +300,10 @@ describe('startServices()', () => {
     expect(startNotificacaoConsumerMock).toHaveBeenCalledTimes(1);
   });
 
-  it('deve chamar startSLAJob', async () => {
+  it('deve chamar iniciarSLAJob', async () => {
     await startServices();
 
-    expect(startSLAJobMock).toHaveBeenCalledTimes(1);
+    expect(iniciarSLAJobMock).toHaveBeenCalledTimes(1);
   });
 
   it('deve aguardar startNotificacaoConsumer antes de retornar', async () => {
@@ -311,7 +312,7 @@ describe('startServices()', () => {
       await new Promise(r => setTimeout(r, 10));
       ordem.push('consumer');
     });
-    startSLAJobMock.mockImplementationOnce(() => {
+    iniciarSLAJobMock.mockImplementationOnce(() => {
       ordem.push('sla');
       return slaJobTimer;
     });
