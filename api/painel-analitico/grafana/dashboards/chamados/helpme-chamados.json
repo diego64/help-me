@@ -15,6 +15,7 @@
       }
     ]
   },
+  "description": "Visão geral da distribuição dos chamados registados e atendidos ",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -22,19 +23,6 @@
   "links": [],
   "liveNow": false,
   "panels": [
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 100,
-      "panels": [],
-      "title": "Status dos Chamados",
-      "type": "row"
-    },
     {
       "datasource": {
         "type": "postgres",
@@ -66,7 +54,7 @@
         "h": 7,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 0
       },
       "id": 1,
       "options": {
@@ -136,7 +124,7 @@
         "h": 7,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 0
       },
       "id": 2,
       "options": {
@@ -206,7 +194,7 @@
         "h": 7,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 0
       },
       "id": 3,
       "options": {
@@ -276,7 +264,7 @@
         "h": 7,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 0
       },
       "id": 4,
       "options": {
@@ -346,7 +334,7 @@
         "h": 7,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 0
       },
       "id": 5,
       "options": {
@@ -416,7 +404,7 @@
         "h": 7,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 0
       },
       "id": 6,
       "options": {
@@ -454,512 +442,6 @@
       ],
       "title": "REABERTO",
       "type": "gauge"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 8
-      },
-      "id": 101,
-      "panels": [],
-      "title": "SLA e Tempos de Atendimento",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Percentual resolvidos dentro de 24h",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 70
-              },
-              {
-                "color": "yellow",
-                "value": 85
-              },
-              {
-                "color": "green",
-                "value": 95
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 0,
-        "y": 9
-      },
-      "id": 7,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(\n  (COUNT(DISTINCT c.id) FILTER (WHERE EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600 <= 24)::numeric /\n  NULLIF(COUNT(DISTINCT c.id), 0) * 100), 2), 0) as \"SLA 24h\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "SLA 24H",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Mais de 24h sem resolução",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 50,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 5
-              },
-              {
-                "color": "orange",
-                "value": 15
-              },
-              {
-                "color": "red",
-                "value": 25
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 4,
-        "y": 9
-      },
-      "id": 8,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COUNT(DISTINCT c.id) as \"Vencidos\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.status IN ('ABERTO', 'EM_ATENDIMENTO')\n  AND EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - c.gerado_em)) / 3600 > 24\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "VENCIDOS",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Tempo médio de resolução em horas",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 24
-              },
-              {
-                "color": "orange",
-                "value": 48
-              },
-              {
-                "color": "red",
-                "value": 72
-              }
-            ]
-          },
-          "unit": "h"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 8,
-        "y": 9
-      },
-      "id": 9,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600)::numeric, 1), 0) as \"Tempo Medio\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "TEMPO MÉDIO",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Taxa de resolução no período",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 50
-              },
-              {
-                "color": "yellow",
-                "value": 70
-              },
-              {
-                "color": "green",
-                "value": 85
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 12,
-        "y": 9
-      },
-      "id": 10,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(\n  (COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ENCERRADO')::numeric /\n  NULLIF(COUNT(DISTINCT c.id), 0) * 100), 2), 0) as \"Taxa Resolucao\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "TAXA RESOLUÇÃO",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Menor tempo de resolução registrado",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 20,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "h"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 16,
-        "y": 9
-      },
-      "id": 11,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(MIN(EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600)::numeric, 1), 0) as \"Menor Tempo\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "MENOR TEMPO",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Maior tempo de resolução registrado",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "max": 200,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 48
-              },
-              {
-                "color": "orange",
-                "value": 96
-              },
-              {
-                "color": "red",
-                "value": 144
-              }
-            ]
-          },
-          "unit": "h"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 4,
-        "x": 20,
-        "y": 9
-      },
-      "id": 12,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "text": {
-          "titleSize": 14,
-          "valueSize": 50
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(MAX(EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600)::numeric, 1), 0) as \"Maior Tempo\"\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))",
-          "refId": "A"
-        }
-      ],
-      "title": "MAIOR TEMPO",
-      "type": "gauge"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
-      "id": 102,
-      "panels": [],
-      "title": "Chamados por Prioridade",
-      "type": "row"
     },
     {
       "datasource": {
@@ -1004,7 +486,7 @@
         "h": 7,
         "w": 4,
         "x": 0,
-        "y": 17
+        "y": 7
       },
       "id": 31,
       "options": {
@@ -1086,7 +568,7 @@
         "h": 7,
         "w": 4,
         "x": 4,
-        "y": 17
+        "y": 7
       },
       "id": 32,
       "options": {
@@ -1156,7 +638,7 @@
         "h": 7,
         "w": 4,
         "x": 8,
-        "y": 17
+        "y": 7
       },
       "id": 33,
       "options": {
@@ -1226,7 +708,7 @@
         "h": 7,
         "w": 4,
         "x": 12,
-        "y": 17
+        "y": 7
       },
       "id": 34,
       "options": {
@@ -1296,7 +778,7 @@
         "h": 7,
         "w": 4,
         "x": 16,
-        "y": 17
+        "y": 7
       },
       "id": 35,
       "options": {
@@ -1473,7 +955,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 14
       },
       "id": 36,
       "options": {
@@ -1645,7 +1127,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 14
       },
       "id": 13,
       "options": {
@@ -1680,19 +1162,6 @@
       "type": "timeseries"
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 34
-      },
-      "id": 103,
-      "panels": [],
-      "title": "Análise de SLA",
-      "type": "row"
-    },
-    {
       "datasource": {
         "type": "postgres",
         "uid": "PCCC55553A094F547"
@@ -1711,7 +1180,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -1719,20 +1188,20 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": {
               "group": "A",
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "line"
+              "mode": "off"
             }
           },
           "decimals": 1,
@@ -1741,8 +1210,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -1762,7 +1230,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "red",
+                  "fixedColor": "#F2495C",
                   "mode": "fixed"
                 }
               },
@@ -1778,7 +1246,22 @@
               },
               {
                 "id": "custom.lineWidth",
-                "value": 2
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tempo Médio"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
               }
             ]
           }
@@ -1788,7 +1271,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 35
+        "y": 24
       },
       "id": 18,
       "options": {
@@ -1796,7 +1279,8 @@
           "calcs": [
             "mean",
             "last",
-            "max"
+            "max",
+            "min"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -1843,28 +1327,28 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 30,
-            "gradientMode": "opacity",
+            "fillOpacity": 0,
+            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": {
               "group": "A",
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "area"
+              "mode": "off"
             }
           },
           "decimals": 1,
@@ -1875,8 +1359,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "transparent",
-                "value": null
+                "color": "transparent"
               },
               {
                 "color": "red",
@@ -1894,13 +1377,29 @@
           },
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Conformidade SLA"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 35
+        "y": 24
       },
       "id": 20,
       "options": {
@@ -1908,7 +1407,8 @@
           "calcs": [
             "mean",
             "last",
-            "min"
+            "min",
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -1929,125 +1429,12 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT\n  DATE_TRUNC('day', c.encerrado_em) as time,\n  ROUND(\n    (COUNT(DISTINCT c.id) FILTER (WHERE EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600 <= 24)::numeric /\n    NULLIF(COUNT(DISTINCT c.id), 0) * 100), 1) as value\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.encerrado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))\nGROUP BY DATE_TRUNC('day', c.encerrado_em)\nORDER BY time ASC",
+          "rawSql": "SELECT\n  DATE_TRUNC('day', c.encerrado_em) as time,\n  'Conformidade SLA' as metric,\n  ROUND(\n    (COUNT(DISTINCT c.id) FILTER (WHERE EXTRACT(EPOCH FROM (c.encerrado_em - c.gerado_em)) / 3600 <= 24)::numeric /\n    NULLIF(COUNT(DISTINCT c.id), 0) * 100), 1) as value\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE c.encerrado_em IS NOT NULL\n  AND $__timeFilter(c.encerrado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))\nGROUP BY DATE_TRUNC('day', c.encerrado_em)\nORDER BY time ASC",
           "refId": "A"
         }
       ],
       "title": "Taxa de Conformidade SLA",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PCCC55553A094F547"
-      },
-      "description": "Evolução percentual da taxa de resolução",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "green",
-            "mode": "fixed"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 100,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 0,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "decimals": 1,
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 45
-      },
-      "id": 14,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "last"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PCCC55553A094F547"
-          },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  DATE_TRUNC('day', c.gerado_em) as time,\n  ROUND(\n    (COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ENCERRADO')::numeric /\n    NULLIF(COUNT(DISTINCT c.id), 0) * 100), 1) as value\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))\nGROUP BY DATE_TRUNC('day', c.gerado_em)\nORDER BY time ASC",
-          "refId": "A"
-        }
-      ],
-      "title": "Taxa de Resolução Diária",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 53
-      },
-      "id": 104,
-      "panels": [],
-      "title": "Desempenho por Técnico",
-      "type": "row"
     },
     {
       "datasource": {
@@ -2072,8 +1459,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -2098,8 +1484,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "red",
-                      "value": null
+                      "color": "red"
                     },
                     {
                       "color": "orange",
@@ -2137,8 +1522,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "green",
-                      "value": null
+                      "color": "green"
                     },
                     {
                       "color": "yellow",
@@ -2210,7 +1594,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 34
       },
       "id": 41,
       "options": {
@@ -2253,6 +1637,105 @@
         "type": "postgres",
         "uid": "PCCC55553A094F547"
       },
+      "description": "Evolução percentual da taxa de resolução",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "green",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 0,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 1,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.2.3",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PCCC55553A094F547"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  DATE_TRUNC('day', c.gerado_em) as time,\n  ROUND(\n    (COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ENCERRADO')::numeric /\n    NULLIF(COUNT(DISTINCT c.id), 0) * 100), 1) as value\nFROM chamados c\nLEFT JOIN usuarios u ON c.usuario_id = u.id\nLEFT JOIN ordens_de_servico os ON c.id = os.chamado_id\nWHERE $__timeFilter(c.gerado_em)\n  AND c.deletado_em IS NULL\n  AND ('${tecnico:csv}' = '' OR c.tecnico_id = ANY(string_to_array('${tecnico:csv}', ',')))\n  AND ('${servico:csv}' = '' OR os.servico_id = ANY(string_to_array('${servico:csv}', ',')))\n  AND ('${setor:csv}' = '' OR u.setor::text = ANY(string_to_array('${setor:csv}', ',')))\nGROUP BY DATE_TRUNC('day', c.gerado_em)\nORDER BY time ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Taxa de Resolução Diária",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PCCC55553A094F547"
+      },
       "description": "Comparativo de chamados encerrados por técnico no período",
       "fieldConfig": {
         "defaults": {
@@ -2285,8 +1768,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -2298,7 +1780,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 66
+        "y": 54
       },
       "id": 42,
       "options": {
@@ -2412,7 +1894,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 66
+        "y": 54
       },
       "id": 43,
       "options": {
@@ -2460,19 +1942,6 @@
       "type": "piechart"
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 76
-      },
-      "id": 105,
-      "panels": [],
-      "title": "Chamados Ativos — Detalhamento",
-      "type": "row"
-    },
-    {
       "datasource": {
         "type": "postgres",
         "uid": "PCCC55553A094F547"
@@ -2495,8 +1964,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -2633,8 +2101,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "green",
-                      "value": null
+                      "color": "green"
                     },
                     {
                       "color": "yellow",
@@ -2655,7 +2122,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 64
       },
       "id": 21,
       "options": {
@@ -2691,10 +2158,7 @@
   ],
   "refresh": "1m",
   "schemaVersion": 39,
-  "tags": [
-    "helpdesk",
-    "service-desk"
-  ],
+  "tags": [],
   "templating": {
     "list": [
       {
@@ -2835,8 +2299,8 @@
     ]
   },
   "timezone": "America/Sao_Paulo",
-  "title": "painel de chamados",
+  "title": "visao geral",
   "uid": "helpme-dashboard",
-  "version": 2,
+  "version": 4,
   "weekStart": ""
 }

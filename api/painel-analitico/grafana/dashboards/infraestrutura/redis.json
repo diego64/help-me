@@ -1093,9 +1093,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "tags": [
-    "cache",
-    "redis",
-    "database"
+
   ],
   "templating": {
     "list": [

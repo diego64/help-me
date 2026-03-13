@@ -2,19 +2,20 @@ import 'dotenv/config';
 
 import './shared/config/tracing';
 import mongoose from 'mongoose';
+import { ScheduledTask } from 'node-cron';
 import { logger } from './shared/config/logger';
 import { prisma } from './infrastructure/database/prisma/client';
 import { redisClient } from './infrastructure/database/redis/client'
 import { conectarKafkaProducer, desconectarKafkaProducer } from './infrastructure/messaging/kafka/client';
 import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamado.consumer';
 import { startNotificacaoConsumer, stopNotificacaoConsumer } from './infrastructure/messaging/kafka/consumers/notificacao.consumer';
-import { startSLAJob } from './infrastructure/jobs/sla.job';
+import { iniciarSLAJob } from './domain/jobs/sla.job';
 import app from './app';
 
 const PORT = process.env.PORT || 3000;
 
 let servidor: any;
-let slaJob: NodeJS.Timeout | null = null;
+let slaJob: ScheduledTask | null = null;
 
 (async () => {
   try {
@@ -37,7 +38,7 @@ let slaJob: NodeJS.Timeout | null = null;
     await startNotificacaoConsumer();
     logger.info('Kafka Consumer de notificações inicializado com sucesso!');
 
-    slaJob = startSLAJob();
+    slaJob = iniciarSLAJob();
     logger.info('SLA Job iniciado com sucesso!');
 
     servidor = app.listen(PORT, () => {
@@ -67,7 +68,7 @@ const progressiveShutdown = async (sinal: string) => {
 
       try {
         if (slaJob) {
-          clearInterval(slaJob);
+          slaJob.stop();
           logger.info('SLA Job parado');
         }
 
