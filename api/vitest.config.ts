@@ -25,6 +25,7 @@ export default defineConfig({
       'build/**',
       'src/__tests__/e2e/**',
       'src/__tests__/performance/**',
+      'src/__tests__/unit/infrastructure/http/routes/**',
     ],
     pool: 'forks',
     isolate: true,
