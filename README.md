@@ -30,6 +30,16 @@ A solução oferece três perfis de usuários com permissões específicas:
 - [X] Atribuição automática de técnicos
 - [X] Histórico completo de alterações
 - [X] Anexo de arquivos e comentários
+- [X] Vinculação hierárquica entre chamados (pai / filho, níveis ilimitados)
+- [X] Encerramento em cascata ao encerrar ou cancelar o chamado pai
+
+### Gestão de SLA
+- [X] Cálculo automático de `slaDeadline` na criação do chamado
+- [X] Chamados críticos (P1 / P2) — prazo contínuo 24/7 (1h e 4h respectivamente)
+- [X] Chamados comuns (P3 / P4 / P5) — prazo em horas úteis conforme expediente do técnico
+- [X] Job cron a cada 5 min para marcar violações (`slaViolado`, `slaVioladoEm`)
+- [X] Status de SLA em tempo real: `NO_PRAZO` | `VENCENDO` | `VENCIDO`
+- [X] Eventos Kafka publicados em `sla.calculado` e `sla.violado`
 
 ### Gestão de Técnicos
 - [X] Cadastro e gerenciamento de técnicos
@@ -71,12 +81,12 @@ A solução oferece três perfis de usuários com permissões específicas:
 │   │   │   └── provisioning         # datasources (Loki, Prometheus, MongoDB, Redis, PostgreSQL)
 │   │   └── monitoring               # loki-config, prometheus, promtail
 │   ├── prisma                       # ORM e banco relacional
-│   │   ├── migrations               # 16 migrações versionadas
+│   │   ├── migrations               # Migrações versionadas (inclui sla_e_hierarquia_chamados)
 │   │   ├── optimizations            # Índices de performance
 │   │   ├── schema.prisma
 │   │   ├── seed.ts                  # Seed padrão
 │   │   ├── seed-medium.ts           # Seed médio
-│   │   └── seed-big.ts              # Seed com volume maior de dados
+│   │   └── seed-big.ts              # Seed com volume maior de dados (500 chamados)
 │   ├── scripts                      # Scripts utilitários e diagnóstico
 │   ├── src
 │   │   ├── __tests__
@@ -86,11 +96,23 @@ A solução oferece três perfis de usuários com permissões específicas:
 │   │   ├── application
 │   │   │   └── use-cases
 │   │   │       └── chamado          # chamado.service.ts
+│   │   ├── domain
+│   │   │   ├── sla
+│   │   │   │   ├── sla.config.ts    # Prazos por prioridade
+│   │   │   │   ├── sla.calculator.ts# Cálculo de deadline (24/7 e horas úteis)
+│   │   │   │   ├── sla.validator.ts # Status em tempo real (NO_PRAZO / VENCENDO / VENCIDO)
+│   │   │   │   └── sla.service.ts   # calcularEPersistirSLA()
+│   │   │   └── chamado
+│   │   │       ├── chamado.service.ts # vincularChamado(), encerrarCascata()
+│   │   │       └── chamado.routes.ts  # POST /:id/vincular, DELETE, GET hierarquia
 │   │   ├── infrastructure
 │   │   │   ├── database             # Clientes PostgreSQL (Prisma), MongoDB e Redis
 │   │   │   ├── email                # Serviço de e-mail
 │   │   │   ├── http
 │   │   │   │   └── middlewares      # Auth, rate-limit, loggers de request e erro
+│   │   │   ├── jobs
+│   │   │   │   ├── sla-checker.job.ts # Cron */5min — detecta e persiste violações de SLA
+│   │   │   │   └── sla.job.ts         # Cron diário — resumo e relatórios de SLA
 │   │   │   ├── messaging
 │   │   │   │   └── kafka            # Consumers e producers
 │   │   │   └── repositories         # Repositório de atualizações de chamados
@@ -162,6 +184,118 @@ http://localhost:3000/api-docs
 
 ---
 
+## SLA
+
+### Prazos por Prioridade
+
+| Prioridade | Prazo | Modo de contagem |
+|------------|-------|-----------------|
+| P1 | 1 hora | Contínuo 24/7 |
+| P2 | 4 horas | Contínuo 24/7 |
+| P3 | 8 horas úteis | Expediente do técnico |
+| P4 | 24 horas úteis | Expediente do técnico |
+| P5 | 72 horas úteis | Expediente do técnico |
+
+Chamados **P1 e P2** não pausam fora do expediente — o relógio corre ininterruptamente.  
+Chamados **P3, P4 e P5** descontam o tempo fora do expediente do técnico atribuído (padrão `08:00–18:00` quando nenhum técnico está designado).
+
+### Status em Tempo Real
+
+O campo `statusSLA` é calculado dinamicamente via `sla.validator` em cada resposta de `GET /chamados/:id`:
+
+| Status | Significado |
+|--------|-------------|
+| `NO_PRAZO` | Dentro do prazo |
+| `VENCENDO` | Menos de 30 minutos para vencer |
+| `VENCIDO` | Prazo ultrapassado |
+
+### Fluxo de Ponta a Ponta
+
+```
+POST /chamados
+  └→ criarChamado()
+       └→ sla.service.calcularEPersistir(chamadoId, prioridade, tecnicoId?)
+            ├→ sla.calculator.calcularDeadline(now(), prioridade, expediente?)
+            ├→ prisma.chamado.update({ slaDeadline })
+            └→ kafka.publish("sla.calculado")
+
+CRON */5 min
+  └→ sla-checker.job
+       └→ SELECT WHERE slaDeadline < now() AND slaViolado = false
+            └→ UPDATE slaViolado=true, slaVioladoEm=now()
+                 └→ kafka.publish("sla.violado")
+
+GET /chamados/:id
+  └→ response inclui { slaDeadline, slaViolado, statusSLA }
+       └→ statusSLA calculado em tempo real via sla.validator
+```
+
+---
+
+## Vinculação de Chamados
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/chamados/:id/vincular` | Vincula um chamado filho ao pai |
+| `DELETE` | `/chamados/:id/vincular/:filhoId` | Remove vínculo |
+| `GET` | `/chamados/:id/hierarquia` | Retorna a hierarquia completa |
+
+### Regras de Negócio
+
+- Hierarquia **ilimitada** — um filho pode ter filhos próprios
+- Ao vincular, o chamado filho é **encerrado automaticamente** com `descricaoEncerramento = "Chamado vinculado ao chamado {OS_PAI}"`
+- Quando o pai é encerrado ou cancelado, **todos os filhos diretos são encerrados em cascata**
+- Chamados com **qualquer status** podem ser vinculados como filho (incluindo já encerrados/cancelados)
+- Um chamado **não pode ser vinculado a si mesmo**
+- Um chamado **não pode ser vinculado a um descendente seu** (previne ciclos)
+
+---
+
+## Schema — Campos Adicionados ao Model `Chamado`
+
+```prisma
+model Chamado {
+  // ... campos existentes ...
+
+  chamadoPaiId  String?   @map("chamado_pai_id")
+  chamadoPai    Chamado?  @relation("hierarquia", fields: [chamadoPaiId], references: [id])
+  chamadoFilhos Chamado[] @relation("hierarquia")
+
+  vinculadoEm  DateTime? @map("vinculado_em")  @db.Timestamptz(3)
+  vinculadoPor String?   @map("vinculado_por")
+
+  slaDeadline   DateTime? @map("sla_deadline")   @db.Timestamptz(3)
+  slaViolado    Boolean   @default(false)         @map("sla_violado")
+  slaVioladoEm  DateTime? @map("sla_violado_em")  @db.Timestamptz(3)
+
+  @@index([chamadoPaiId])
+  @@index([slaDeadline])
+  @@index([slaViolado])
+  @@index([slaViolado, status])
+}
+```
+
+### Migration
+
+```bash
+pnpm prisma migrate dev --name sla_e_hierarquia_chamados
+```
+
+| Campo | Tipo | Default | Nullable |
+|-------|------|---------|----------|
+| `chamado_pai_id` | uuid | — | sim |
+| `vinculado_em` | timestamptz(3) | — | sim |
+| `vinculado_por` | uuid | — | sim |
+| `sla_deadline` | timestamptz(3) | — | sim |
+| `sla_violado` | boolean | `false` | não |
+| `sla_violado_em` | timestamptz(3) | — | sim |
+
+> ⚠️ Migration não destrutiva — todos os novos campos são nullable ou possuem valor default. Nenhuma coluna existente foi removida.
+
+---
+
 ## Testes
 
 ```bash
@@ -179,6 +313,12 @@ pnpm run test:integration
 
 # Cobertura de testes
 pnpm run test:coverage
+
+# Testes unitários de SLA
+pnpm test src/__tests__/unit/domain/sla/
+
+# Testes E2E de vinculação e hierarquia
+pnpm test src/__tests__/e2e/chamado.e2e.test.ts
 ```
 
 ### Testes de Performance (k6)
@@ -187,12 +327,33 @@ Os testes de carga estão em `src/__tests__/performance/` e cobrem os seguintes 
 
 | Cenário | Arquivo | Descrição |
 |---------|---------|-----------|
-| Carga   | `carga/carga.js` | Simula uso normal da API |
-| Stress  | `stress/stress.js` | Eleva a carga progressivamente até o limite |
-| Spike   | `spike/spike.js` | Pico repentino de requisições |
-| Soak    | `soak/soak.js` | Carga sustentada por longo período |
+| Carga | `carga/carga.js` | Simula uso normal da API |
+| Stress | `stress/stress.js` | Eleva a carga progressivamente até o limite |
+| Spike | `spike/spike.js` | Pico repentino de requisições |
+| Soak | `soak/soak.js` | Carga sustentada por longo período |
 
 Os resultados são exportados em CSV, JSON e HTML em `results/`.
+
+---
+
+## Seeds
+
+| Comando | Arquivo | Descrição |
+|---------|---------|-----------|
+| `pnpm run seed` | `seed.ts` | Dados padrão |
+| `pnpm run seed-medium` | `seed-medium.ts` | Volume médio com SLA e vínculos |
+| `pnpm run seed-big` | `seed-big.ts` | 500 chamados com SLA completo |
+
+Os seeds `seed-medium.ts` e `seed-big.ts` populam os campos `slaDeadline`, `slaViolado`, `slaVioladoEm`, `chamadoPaiId`, `vinculadoEm` e `vinculadoPor`.
+
+```bash
+# Popular com seed big e verificar violações (deve retornar 112)
+pnpm run seed-big
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM chamados WHERE sla_violado = true;"
+
+# Verificar hierarquia
+psql $DATABASE_URL -c "SELECT os, chamado_pai_id FROM chamados WHERE chamado_pai_id IS NOT NULL LIMIT 10;"
+```
 
 ---
 
@@ -241,7 +402,7 @@ Os manifests para deploy em cluster Kubernetes estão em `api/k8s/` e cobrem:
 
 ## Autor
 
-**Diego Ferreira L.G. Oliveira** - Desenvolvimento e Arquitetura
+**Diego Ferreira L.G. Oliveira** — Desenvolvimento e Arquitetura
 
 - GitHub: [@diego64](https://github.com/diego64)
 - LinkedIn: [Diego Ferreira](https://www.linkedin.com/in/diego-ferreira-a60a8a161/)
