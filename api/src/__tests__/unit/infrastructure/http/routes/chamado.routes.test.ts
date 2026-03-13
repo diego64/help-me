@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '@/app';
+import { Regra, NivelTecnico, Setor } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { createTestUser } from '../../../setup/test.database';
 import {
@@ -16,18 +17,47 @@ describe('E2E: Chamados', () => {
   let servicoNome: string;
 
   beforeEach(async () => {
-    adminClient = await createAuthenticatedClient(
-      process.env.ADMIN_EMAIL    || 'admin@helpme.com',
-      process.env.ADMIN_PASSWORD || 'Admin123!'
-    );
-    tecnicoClient = await createAuthenticatedClient(
-      process.env.TECNICO_EMAIL    || 'tecnico@helpme.com',
-      process.env.TECNICO_PASSWORD || 'Tecnico123!'
-    );
-    usuarioClient = await createAuthenticatedClient(
-      process.env.USER_EMAIL    || 'user@helpme.com',
-      process.env.USER_PASSWORD || 'User123!'
-    );
+    // Garante que os usuários existem no banco antes de tentar o login.
+    // createTestUser usa upsert, portanto é idempotente e seguro em qualquer ordem.
+    await Promise.all([
+      createTestUser({
+        email:    process.env.ADMIN_EMAIL    || 'admin@helpme.com',
+        password: process.env.ADMIN_PASSWORD || 'Admin123!',
+        regra:    Regra.ADMIN,
+        nome:     'Admin',
+        sobrenome: 'Sistema',
+      }),
+      createTestUser({
+        email:    process.env.TECNICO_EMAIL    || 'tecnico@helpme.com',
+        password: process.env.TECNICO_PASSWORD || 'Tecnico123!',
+        regra:    Regra.TECNICO,
+        nome:     'Tecnico',
+        sobrenome: 'Padrao',
+        nivel:    NivelTecnico.N1,
+      }),
+      createTestUser({
+        email:    process.env.USER_EMAIL    || 'user@helpme.com',
+        password: process.env.USER_PASSWORD || 'User123!',
+        regra:    Regra.USUARIO,
+        nome:     'Usuario',
+        sobrenome: 'Padrao',
+      }),
+    ]);
+
+    [adminClient, tecnicoClient, usuarioClient] = await Promise.all([
+      createAuthenticatedClient(
+        process.env.ADMIN_EMAIL    || 'admin@helpme.com',
+        process.env.ADMIN_PASSWORD || 'Admin123!'
+      ),
+      createAuthenticatedClient(
+        process.env.TECNICO_EMAIL    || 'tecnico@helpme.com',
+        process.env.TECNICO_PASSWORD || 'Tecnico123!'
+      ),
+      createAuthenticatedClient(
+        process.env.USER_EMAIL    || 'user@helpme.com',
+        process.env.USER_PASSWORD || 'User123!'
+      ),
+    ]);
 
     const servico = await prisma.servico.findFirst();
     servicoNome = servico!.nome;
@@ -255,7 +285,7 @@ describe('E2E: Chamados', () => {
       const chamado = await criarChamado();
 
       const outroEmail = generateUniqueEmail();
-      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: 'USUARIO' });
+      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: Regra.USUARIO });
       const outroClient = await createAuthenticatedClient(outroEmail, 'Senha123!');
 
       const response = await outroClient
@@ -856,7 +886,7 @@ describe('E2E: Chamados', () => {
       await encerrarChamado(chamado.body.id);
 
       const outroEmail = generateUniqueEmail();
-      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: 'USUARIO' });
+      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: Regra.USUARIO });
       const outroClient = await createAuthenticatedClient(outroEmail, 'Senha123!');
 
       const response = await outroClient
@@ -932,7 +962,7 @@ describe('E2E: Chamados', () => {
       const chamado = await criarChamado();
 
       const outroEmail = generateUniqueEmail();
-      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: 'USUARIO' });
+      await createTestUser({ email: outroEmail, password: 'Senha123!', regra: Regra.USUARIO });
       const outroClient = await createAuthenticatedClient(outroEmail, 'Senha123!');
 
       const response = await outroClient
