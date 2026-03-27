@@ -48,7 +48,7 @@ app.use(session({
 }));
 
 app.get('/', (_req: Request, res: Response) => {
-  res.json({ message: 'Help-Me API', version: '1.3.1', docs: '/api-docs', health: '/health' });
+  res.json({ message: 'Help-Me API', version: '1.3.3', docs: '/api-docs', health: '/health' });
 });
 
 app.get('/health', (_req: Request, res: Response) => {

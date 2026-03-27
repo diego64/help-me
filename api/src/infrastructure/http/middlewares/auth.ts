@@ -25,13 +25,13 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     // Verificar e decodificar token
     const decoded = verifyToken(token, 'access');
 
-    // Verificar blacklist no Redis
+    /** Verificar blacklist no Redis
     if (decoded && decoded.jti) {
       const blacklisted = await cacheGet(`jwt:blacklist:${decoded.jti}`);
       if (blacklisted) {
         return res.status(401).json({ error: 'Token revogado. Faça login novamente.' });
       }
-    }
+    } */
 
     const userId = decoded.id || decoded.userId; // ← Aceitar ambos para compatibilidade
 

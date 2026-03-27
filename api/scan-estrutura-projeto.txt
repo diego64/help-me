@@ -1,0 +1,332 @@
+.
+├── Dockerfile
+├── api
+│   └── database
+│       ├── init-db.sql
+│       └── init-mongo.js
+├── docker-compose.yaml
+├── k8s
+│   ├── application
+│   │   ├── api-configmap.yaml
+│   │   ├── api-cronjob-backup.yaml
+│   │   ├── api-deployment.yaml
+│   │   ├── api-hpa.yaml
+│   │   ├── api-job-seed.yaml
+│   │   ├── api-network-policy.yaml
+│   │   ├── api-pdb.yaml
+│   │   ├── api-priority-class.yaml
+│   │   ├── api-resource-quota.yaml
+│   │   ├── api-secret.yaml
+│   │   ├── api-service-monitor.yaml
+│   │   └── api-service.yaml
+│   ├── databases
+│   │   ├── mongodb
+│   │   │   ├── mongodb-deployment.yaml
+│   │   │   ├── mongodb-pvc.yaml
+│   │   │   ├── mongodb-secret.yaml
+│   │   │   └── mongodb-service.yaml
+│   │   ├── postgres
+│   │   │   ├── postgres-deployment.yaml
+│   │   │   ├── postgres-pvc.yaml
+│   │   │   ├── postgres-secret.yaml
+│   │   │   └── postgres-service.yaml
+│   │   └── redis
+│   │       ├── redis-configmap.yaml
+│   │       ├── redis-deployment.yaml
+│   │       ├── redis-pvc.yaml
+│   │       ├── redis-secret.yaml
+│   │       └── redis-service.yaml
+│   ├── ingress
+│   │   ├── basic-auth-secret.yaml
+│   │   ├── cert-manager-issuer.yaml
+│   │   ├── certificate-secret.yaml
+│   │   ├── ingress-admin.yaml
+│   │   ├── ingress-auth.yaml
+│   │   ├── ingress-configmap.yaml
+│   │   ├── ingress-monitoring.yaml
+│   │   ├── ingress-nginx-controller.yaml
+│   │   ├── ingress.yaml
+│   │   ├── network-policy.yaml
+│   │   └── rate-limit-configmap.yaml
+│   ├── messaging
+│   │   ├── kafka
+│   │   │   ├── kafka-configmap.yaml
+│   │   │   ├── kafka-deployment.yaml
+│   │   │   ├── kafka-init-job.yaml
+│   │   │   ├── kafka-pvc.yaml
+│   │   │   ├── kafka-secret.yaml
+│   │   │   └── kafka-service.yaml
+│   │   └── zookeeper
+│   │       ├── zookeeper-deployment.yaml
+│   │       ├── zookeeper-pvc.yaml
+│   │       ├── zookeeper-secret.yaml
+│   │       └── zookeeper-service.yaml
+│   ├── monitoring
+│   │   ├── exporters
+│   │   │   ├── kafka-exporter.yaml
+│   │   │   ├── mongodb-exporter.yaml
+│   │   │   ├── postgres-exporter.yaml
+│   │   │   └── redis-exporter.yaml
+│   │   ├── grafana
+│   │   │   ├── grafana-configmap.yaml
+│   │   │   ├── grafana-dashboards-configmap.yaml
+│   │   │   ├── grafana-deployment.yaml
+│   │   │   ├── grafana-pvc.yaml
+│   │   │   ├── grafana-secret.yaml
+│   │   │   └── grafana-service.yaml
+│   │   ├── influxdb
+│   │   │   ├── influxdb-configmap.yaml
+│   │   │   ├── influxdb-deployment.yaml
+│   │   │   ├── influxdb-pvc.yaml
+│   │   │   ├── influxdb-secret.yaml
+│   │   │   └── influxdb-service.yaml
+│   │   └── prometheus
+│   │       ├── prometheus-configmap.yaml
+│   │       ├── prometheus-deployment.yaml
+│   │       ├── prometheus-pvc.yaml
+│   │       ├── prometheus-rbac.yaml
+│   │       └── prometheus-service.yaml
+│   └── namespaces
+│       └── helpme-namespace.yaml
+├── package.json
+├── painel-analitico
+│   ├── grafana
+│   │   ├── dashboards
+│   │   │   ├── chamados
+│   │   │   │   └── helpme-chamados.json
+│   │   │   ├── infraestrutura
+│   │   │   │   ├── containers.json
+│   │   │   │   ├── kafka.json
+│   │   │   │   ├── mongodb.json
+│   │   │   │   ├── postgresql.json
+│   │   │   │   └── redis.json
+│   │   │   └── logs
+│   │   │       ├── logs-dashboard.json
+│   │   │       └── requisicoes.json
+│   │   └── provisioning
+│   │       ├── dashboards
+│   │       │   └── dashboards.yml
+│   │       └── datasources
+│   │           ├── loki.yml
+│   │           ├── mongodb.yml
+│   │           ├── postgresql.yml
+│   │           ├── prometheus.yml
+│   │           ├── redis.yml
+│   │           └── tempo.yaml
+│   └── monitoring
+│       ├── loki-config.yml
+│       ├── prometheus.yml
+│       ├── promtail-config.yml
+│       └── tempo.yaml
+├── pnpm-lock.yaml
+├── prisma
+│   ├── optimizations
+│   │   └── performance-indexes.sql
+│   ├── schema.prisma
+│   └── seed.ts
+├── prisma.config.ts
+├── scan-estrutura-projeto.txt
+├── scripts
+│   ├── extracao-de-rotas.cjs
+│   ├── k6-routes.json
+│   └── reset-db.sh
+├── src
+│   ├── __tests__
+│   │   ├── performance
+│   │   │   ├── carga
+│   │   │   │   └── carga.js
+│   │   │   ├── helpers
+│   │   │   │   └── test-helpers.js
+│   │   │   ├── results
+│   │   │   │   ├── csv
+│   │   │   │   ├── html
+│   │   │   │   └── json
+│   │   │   ├── scripts
+│   │   │   │   ├── check-env.sh
+│   │   │   │   ├── fix-scripts-paths.sh
+│   │   │   │   ├── performance-analyzer.js
+│   │   │   │   ├── run-performance-tests-docker.sh
+│   │   │   │   ├── run-with-grafana.sh
+│   │   │   │   ├── summary-2025-12-07T17-25-51.html
+│   │   │   │   ├── summary-2025-12-07T17-25-51.json
+│   │   │   │   └── summary.html
+│   │   │   ├── soak
+│   │   │   │   └── soak.js
+│   │   │   ├── spike
+│   │   │   │   ├── analise-spike.js
+│   │   │   │   ├── popular-banco-teste.sh
+│   │   │   │   └── spike.js
+│   │   │   └── stress
+│   │   │       └── stress.js
+│   │   └── unit
+│   │       └── application
+│   │           ├── admin
+│   │           ├── chamado
+│   │           ├── fila
+│   │           ├── notificacao
+│   │           ├── servico
+│   │           ├── tecnico
+│   │           └── usuario
+│   ├── app.ts
+│   ├── application
+│   │   └── use-cases
+│   │       ├── admin
+│   │       │   ├── atualizar-admin.use-case.ts
+│   │       │   ├── buscar-admin.use-case.ts
+│   │       │   ├── deletar-admin.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── listar-admins.use-case.ts
+│   │       │   ├── reativar-admin.use-case.ts
+│   │       │   └── selects.ts
+│   │       ├── chamado
+│   │       │   ├── abrir-chamado.use-case.ts
+│   │       │   ├── alterar-prioridade.use-case.ts
+│   │       │   ├── anexos
+│   │       │   ├── atualizar-status.use-case.ts
+│   │       │   ├── cancelar-chamado.use-case.ts
+│   │       │   ├── comentarios
+│   │       │   ├── deletar-chamado.use-case.ts
+│   │       │   ├── desvincular-chamado.use-case.ts
+│   │       │   ├── editar-chamado.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── formatters.ts
+│   │       │   ├── helpers
+│   │       │   ├── hierarquia-chamado.use-case.ts
+│   │       │   ├── historico-chamado.use-case.ts
+│   │       │   ├── listar-chamados.use-case.ts
+│   │       │   ├── reabrir-chamado.use-case.ts
+│   │       │   ├── selects.ts
+│   │       │   ├── transferencias
+│   │       │   ├── transferir-chamado.use-case.ts
+│   │       │   ├── upload-anexos.use-case.ts
+│   │       │   └── vincular-chamado.use-case.ts
+│   │       ├── fila
+│   │       │   ├── chamados-atribuidos.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── estatisticas.use-case.ts
+│   │       │   ├── fila-alta.use-case.ts
+│   │       │   ├── fila-baixa.use-case.ts
+│   │       │   ├── formatters.ts
+│   │       │   ├── meus-chamados.use-case.ts
+│   │       │   ├── resumo-fila.use-case.ts
+│   │       │   ├── selects.ts
+│   │       │   └── todos-chamados.use-case.ts
+│   │       ├── notificacao
+│   │       │   ├── deletar-notificacao.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── listar-notificacoes.use-case.ts
+│   │       │   ├── marcar-lida.use-case.ts
+│   │       │   └── marcar-todas-lidas.use-case.ts
+│   │       ├── servico
+│   │       │   ├── atualizar-servico.use-case.ts
+│   │       │   ├── buscar-servico.use-case.ts
+│   │       │   ├── criar-servico.use-case.ts
+│   │       │   ├── deletar-servico.use-case.ts
+│   │       │   ├── desativar-servico.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── listar-servicos.use-case.ts
+│   │       │   ├── reativar-servico.use-case.ts
+│   │       │   ├── restaurar-servico.use-case.ts
+│   │       │   └── selects.ts
+│   │       ├── tecnico
+│   │       │   ├── alterar-nivel.use-case.ts
+│   │       │   ├── atualizar-horarios.use-case.ts
+│   │       │   ├── atualizar-tecnico.use-case.ts
+│   │       │   ├── buscar-tecnico.use-case.ts
+│   │       │   ├── deletar-tecnico.use-case.ts
+│   │       │   ├── errors.ts
+│   │       │   ├── listar-tecnicos.use-case.ts
+│   │       │   ├── restaurar-tecnico.use-case.ts
+│   │       │   ├── selects.ts
+│   │       │   └── upload-avatar.use-case.ts
+│   │       └── usuario
+│   │           ├── atualizar-usuario.use-case.ts
+│   │           ├── buscar-usuario-por-email.use-case.ts
+│   │           ├── buscar-usuario.use-case.ts
+│   │           ├── deletar-usuario.use-case.ts
+│   │           ├── errors.ts
+│   │           ├── listar-usuarios.use-case.ts
+│   │           ├── restaurar-usuario.use-case.ts
+│   │           ├── selects.ts
+│   │           └── upload-avatar.use-case.ts
+│   ├── domain
+│   │   ├── jobs
+│   │   │   ├── sla-checker.job.ts
+│   │   │   └── sla.job.ts
+│   │   └── sla
+│   │       ├── sla.calculator.ts
+│   │       ├── sla.config.ts
+│   │       ├── sla.service.ts
+│   │       └── sla.validator.ts
+│   ├── infrastructure
+│   │   ├── database
+│   │   │   ├── mongodb
+│   │   │   │   ├── atualizacao.chamado.model.ts
+│   │   │   │   ├── client.ts
+│   │   │   │   └── notificacao.model.ts
+│   │   │   ├── prisma
+│   │   │   │   └── client.ts
+│   │   │   └── redis
+│   │   │       └── client.ts
+│   │   ├── email
+│   │   │   └── email.service.ts
+│   │   ├── http
+│   │   │   └── middlewares
+│   │   │       ├── auth.ts
+│   │   │       ├── error-logger.middleware.ts
+│   │   │       ├── rate-limit.middleware.ts
+│   │   │       ├── request-logger.middleware.ts
+│   │   │       └── tracing.middleware.ts
+│   │   ├── messaging
+│   │   │   └── kafka
+│   │   │       ├── client.ts
+│   │   │       ├── consumers
+│   │   │       ├── handlers
+│   │   │       └── producers
+│   │   ├── repositories
+│   │   │   └── atualizacao.chamado.repository.ts
+│   │   ├── storage
+│   │   │   └── minio.client.ts
+│   │   └── websocket
+│   │       └── socket.ts
+│   ├── presentation
+│   │   └── http
+│   │       └── routes
+│   │           ├── admin.routes.ts
+│   │           ├── chamado.routes.ts
+│   │           ├── fila.routes.ts
+│   │           ├── index.ts
+│   │           ├── kafka-notificacao.routes.ts
+│   │           ├── kafka.routes.ts
+│   │           ├── notificacao.routes.ts
+│   │           ├── servico.routes.ts
+│   │           ├── tecnico.routes.ts
+│   │           └── usuario.routes.ts
+│   ├── server.ts
+│   ├── shared
+│   │   ├── @types
+│   │   │   ├── express.d.ts
+│   │   │   └── historicoChamado.d.ts
+│   │   ├── config
+│   │   │   ├── jwt.ts
+│   │   │   ├── logger.ts
+│   │   │   ├── loki-sender.ts
+│   │   │   ├── loki-transport.mjs
+│   │   │   ├── swagger.ts
+│   │   │   └── tracing.ts
+│   │   └── utils
+│   │       └── request-params.ts
+│   └── templates
+│       ├── chamado-aberto.hbs
+│       ├── chamado-encerrado.hbs
+│       ├── chamado-reaberto.hbs
+│       ├── chamado-transferido.hbs
+│       ├── prioridade-alterada.hbs
+│       └── sla-vencendo.hbs
+├── tsconfig.json
+├── tsup.config.ts
+├── vitest.config.e2e.ts
+├── vitest.config.ts
+└── vitest.setup.ts
+
+95 directories, 234 files

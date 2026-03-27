@@ -1,11 +1,17 @@
 import { Router, type IRouter, Response } from 'express';
 import { authMiddleware, AuthRequest } from '@infrastructure/http/middlewares/auth';
-import NotificacaoModel from '@infrastructure/database/mongodb/notificacao.model';
+import { NotificacaoError } from '@application/use-cases/notificacao/errors';
+import { listarNotificacoesUseCase }  from '@application/use-cases/notificacao/listar-notificacoes.use-case';
+import { marcarLidaUseCase }          from '@application/use-cases/notificacao/marcar-lida.use-case';
+import { marcarTodasLidasUseCase }    from '@application/use-cases/notificacao/marcar-todas-lidas.use-case';
+import { deletarNotificacaoUseCase }  from '@application/use-cases/notificacao/deletar-notificacao.use-case';
 
 export const router: IRouter = Router();
 
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+function handleError(res: any, err: unknown) {
+  if (err instanceof NotificacaoError) return res.status(err.statusCode).json({ error: err.message });
+  return res.status(500).json({ error: 'Erro interno do servidor' });
+}
 
 /**
  * @swagger
@@ -56,113 +62,32 @@ const MAX_LIMIT = 100;
  *     parameters:
  *       - in: query
  *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Número da página (começa em 1)
+ *         schema: { type: integer, minimum: 1, default: 1 }
  *       - in: query
  *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 20
- *         description: Quantidade de itens por página (máximo 100)
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
  *       - in: query
  *         name: naoLidas
- *         schema:
- *           type: string
- *           enum: [true, false]
- *         description: Se `true`, retorna apenas as notificações não lidas
+ *         schema: { type: string, enum: [true, false] }
  *     responses:
  *       200:
  *         description: Lista de notificações retornada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Notificacao'
- *                 naoLidas:
- *                   type: integer
- *                   description: Total de notificações não lidas (sem filtro de página)
- *                   example: 5
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     page:
- *                       type: integer
- *                       example: 1
- *                     limit:
- *                       type: integer
- *                       example: 20
- *                     total:
- *                       type: integer
- *                       example: 58
- *                     totalPages:
- *                       type: integer
- *                       example: 3
- *                     hasNext:
- *                       type: boolean
- *                       example: true
- *                     hasPrev:
- *                       type: boolean
- *                       example: false
  *       401:
  *         description: Não autenticado
  *       500:
  *         description: Erro interno ao listar notificações
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Erro ao listar notificações"
  */
-router.get(
-  '/',
-  authMiddleware,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const limit = Math.min(parseInt(req.query.limit as string) || DEFAULT_LIMIT, MAX_LIMIT);
-      const page  = Math.max(1, parseInt(req.query.page as string) || 1);
-      const skip  = (page - 1) * limit;
-      const apenasNaoLidas = req.query.naoLidas === 'true';
-
-      const where: any = { destinatarioId: req.usuario!.id };
-      if (apenasNaoLidas) where.lida = false;
-
-      const [total, notificacoes, naoLidas] = await Promise.all([
-        NotificacaoModel.countDocuments(where),
-        NotificacaoModel.find(where)
-          .sort({ criadoEm: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        NotificacaoModel.countDocuments({ destinatarioId: req.usuario!.id, lida: false }),
-      ]);
-
-      return res.json({
-        data: notificacoes,
-        naoLidas,
-        pagination: {
-          page, limit, total,
-          totalPages: Math.ceil(total / limit),
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1,
-        },
-      });
-    } catch (err) {
-      return res.status(500).json({ error: 'Erro ao listar notificações' });
-    }
-  }
-);
+router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await listarNotificacoesUseCase({
+      usuarioId:      req.usuario!.id,
+      page:           Math.max(1, parseInt(req.query.page as string) || 1),
+      limit:          Math.min(100, parseInt(req.query.limit as string) || 20),
+      apenasNaoLidas: req.query.naoLidas === 'true',
+    });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
@@ -179,50 +104,17 @@ router.get(
  *     responses:
  *       200:
  *         description: Todas as notificações marcadas como lidas com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Todas as notificações marcadas como lidas"
- *                 atualizadas:
- *                   type: integer
- *                   description: Quantidade de documentos efetivamente modificados
- *                   example: 12
  *       401:
  *         description: Não autenticado
  *       500:
  *         description: Erro interno ao marcar notificações
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Erro ao marcar notificações como lidas"
  */
-router.patch(
-  '/marcar-todas-lidas',
-  authMiddleware,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const result = await NotificacaoModel.updateMany(
-        { destinatarioId: req.usuario!.id, lida: false },
-        { lida: true, lidaEm: new Date() }
-      );
-
-      return res.json({
-        message: 'Todas as notificações marcadas como lidas',
-        atualizadas: result.modifiedCount,
-      });
-    } catch (err) {
-      return res.status(500).json({ error: 'Erro ao marcar notificações como lidas' });
-    }
-  }
-);
+router.patch('/marcar-todas-lidas', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await marcarTodasLidasUseCase(req.usuario!.id);
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
@@ -239,67 +131,27 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID (ObjectId) da notificação
+ *         schema: { type: string }
  *         example: "664f1a2b3c4d5e6f7a8b9c0d"
  *     responses:
  *       200:
  *         description: Notificação marcada como lida com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Notificação marcada como lida"
- *                 notificacao:
- *                   $ref: '#/components/schemas/Notificacao'
  *       401:
  *         description: Não autenticado
  *       404:
- *         description: Notificação não encontrada ou não pertence ao usuário
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Notificação não encontrada"
+ *         description: Notificação não encontrada
  *       500:
- *         description: Erro interno ao marcar a notificação como lida
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Erro ao marcar notificação como lida"
+ *         description: Erro interno ao marcar a notificação
  */
-router.patch(
-  '/:id/lida',
-  authMiddleware,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const notificacao = await NotificacaoModel.findOneAndUpdate(
-        { _id: req.params.id, destinatarioId: req.usuario!.id },
-        { lida: true, lidaEm: new Date() },
-        { new: true }
-      );
-
-      if (!notificacao) {
-        return res.status(404).json({ error: 'Notificação não encontrada' });
-      }
-
-      return res.json({ message: 'Notificação marcada como lida', notificacao });
-    } catch (err) {
-      return res.status(500).json({ error: 'Erro ao marcar notificação como lida' });
-    }
-  }
-);
+router.patch('/:id/lida', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await marcarLidaUseCase({
+      notificacaoId: String(req.params.id),
+      usuarioId:     req.usuario!.id,
+    });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
@@ -316,67 +168,26 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID (ObjectId) da notificação
+ *         schema: { type: string }
  *         example: "664f1a2b3c4d5e6f7a8b9c0d"
  *     responses:
  *       200:
  *         description: Notificação removida com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Notificação removida"
- *                 id:
- *                   type: string
- *                   description: ID da notificação removida
- *                   example: "664f1a2b3c4d5e6f7a8b9c0d"
  *       401:
  *         description: Não autenticado
  *       404:
- *         description: Notificação não encontrada ou não pertence ao usuário
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Notificação não encontrada"
+ *         description: Notificação não encontrada
  *       500:
  *         description: Erro interno ao remover a notificação
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Erro ao remover notificação"
  */
-router.delete(
-  '/:id',
-  authMiddleware,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const notificacao = await NotificacaoModel.findOneAndDelete({
-        _id: req.params.id,
-        destinatarioId: req.usuario!.id,
-      });
-
-      if (!notificacao) {
-        return res.status(404).json({ error: 'Notificação não encontrada' });
-      }
-
-      return res.json({ message: 'Notificação removida', id: req.params.id });
-    } catch (err) {
-      return res.status(500).json({ error: 'Erro ao remover notificação' });
-    }
-  }
-);
+router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await deletarNotificacaoUseCase({
+      notificacaoId: String(req.params.id),
+      usuarioId:     req.usuario!.id,
+    });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 export default router;

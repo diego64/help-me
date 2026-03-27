@@ -9,6 +9,7 @@ import { redisClient } from './infrastructure/database/redis/client'
 import { conectarKafkaProducer, desconectarKafkaProducer } from './infrastructure/messaging/kafka/client';
 import { startChamadoConsumer, stopChamadoConsumer } from './infrastructure/messaging/kafka/consumers/chamado.consumer';
 import { startNotificacaoConsumer, stopNotificacaoConsumer } from './infrastructure/messaging/kafka/consumers/notificacao.consumer';
+import { conectarUsuarioConsumer, desconectarUsuarioConsumer } from './infrastructure/messaging/kafka/consumers/usuario.consumer';
 import { iniciarSLAJob } from './domain/jobs/sla.job';
 import app from './app';
 
@@ -25,7 +26,7 @@ let slaJob: ScheduledTask | null = null;
     const mongoUri = process.env.NODE_ENV === 'test'
       ? process.env.MONGO_INITDB_URI_TESTE!
       : process.env.MONGO_INITDB_URI!;
-    
+
     await mongoose.connect(mongoUri);
     logger.info({ ambiente: process.env.NODE_ENV }, 'MongoDB conectado com sucesso');
 
@@ -33,10 +34,14 @@ let slaJob: ScheduledTask | null = null;
     logger.info('Kafka Producer conectado com sucesso!');
 
     await startChamadoConsumer();
-    logger.info('Kafka Consumer inicializado com sucesso!');
+    logger.info('Kafka Consumer de chamados inicializado com sucesso!');
 
     await startNotificacaoConsumer();
     logger.info('Kafka Consumer de notificações inicializado com sucesso!');
+
+    // Consumer de usuários — sincroniza com auth-service via Kafka
+    // Não crítico: API sobe mesmo se Kafka estiver indisponível
+    await conectarUsuarioConsumer();
 
     slaJob = iniciarSLAJob();
     logger.info('SLA Job iniciado com sucesso!');
@@ -76,11 +81,15 @@ const progressiveShutdown = async (sinal: string) => {
         await stopNotificacaoConsumer();
         logger.info('Kafka Consumer de notificações parado');
 
-        logger.info('Parando Kafka Consumer...');
+        logger.info('Parando Kafka Consumer de chamados...');
         if (typeof stopChamadoConsumer === 'function') {
           await stopChamadoConsumer();
         }
-        logger.info('Kafka Consumer parado');
+        logger.info('Kafka Consumer de chamados parado');
+
+        logger.info('Parando Kafka Consumer de usuários...');
+        await desconectarUsuarioConsumer();
+        logger.info('Kafka Consumer de usuários parado');
 
         logger.info('Desconectando Kafka Producer...');
         if (typeof desconectarKafkaProducer === 'function') {
@@ -119,7 +128,7 @@ const progressiveShutdown = async (sinal: string) => {
 };
 
 process.on('SIGTERM', () => progressiveShutdown('SIGTERM'));
-process.on('SIGINT', () => progressiveShutdown('SIGINT'));
+process.on('SIGINT',  () => progressiveShutdown('SIGINT'));
 
 process.on('uncaughtException', (erro: Error) => {
   logger.fatal({ err: erro }, 'Exceção não capturada');

@@ -1,99 +1,35 @@
 import { Router, Response } from 'express';
-import { getStringParam, getStringParamRequired, getNumberParamClamped, getBooleanParam } from '@shared/utils/request-params';
-import { prisma } from '@infrastructure/database/prisma/client';
+import { getStringParamRequired, getNumberParamClamped, getBooleanParam, getStringParam } from '@shared/utils/request-params';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { ServicoError } from '@application/use-cases/servico/errors';
+import { criarServicoUseCase } from '@application/use-cases/servico/criar-servico.use-case';
+import { listarServicosUseCase } from '@application/use-cases/servico/listar-servicos.use-case';
+import { buscarServicoUseCase } from '@application/use-cases/servico/buscar-servico.use-case';
+import { atualizarServicoUseCase } from '@application/use-cases/servico/atualizar-servico.use-case';
+import { desativarServicoUseCase } from '@application/use-cases/servico/desativar-servico.use-case';
+import { reativarServicoUseCase } from '@application/use-cases/servico/reativar-servico.use-case';
+import { deletarServicoUseCase } from '@application/use-cases/servico/deletar-servico.use-case';
+import { restaurarServicoUseCase } from '@application/use-cases/servico/restaurar-servico.use-case';
 
 export const router: Router = Router();
 
-const MIN_NOME_LENGTH = 3;
-const MAX_NOME_LENGTH = 100;
-const MAX_DESCRICAO_LENGTH = 500;
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
-
-interface PaginationParams {
-  page: number;
-  limit: number;
-  skip: number;
-}
-
-interface ListagemResponse<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
+function handleError(res: any, err: unknown) {
+  if (err instanceof ServicoError) return res.status(err.statusCode).json({ error: err.message });
+  return res.status(500).json({ error: 'Erro interno do servidor' });
 }
 
 function validarNome(nome: string): { valido: boolean; erro?: string } {
-  if (!nome || typeof nome !== 'string') {
-    return { valido: false, erro: 'Nome é obrigatório' };
-  }
-
-  const nomeLimpo = nome.trim();
-
-  if (nomeLimpo.length < MIN_NOME_LENGTH) {
-    return {
-      valido: false,
-      erro: `Nome deve ter no mínimo ${MIN_NOME_LENGTH} caracteres`,
-    };
-  }
-
-  if (nomeLimpo.length > MAX_NOME_LENGTH) {
-    return {
-      valido: false,
-      erro: `Nome deve ter no máximo ${MAX_NOME_LENGTH} caracteres`,
-    };
-  }
-
+  if (!nome || typeof nome !== 'string') return { valido: false, erro: 'Nome é obrigatório' };
+  const n = nome.trim();
+  if (n.length < 3)   return { valido: false, erro: 'Nome deve ter no mínimo 3 caracteres' };
+  if (n.length > 100) return { valido: false, erro: 'Nome deve ter no máximo 100 caracteres' };
   return { valido: true };
 }
 
 function validarDescricao(descricao: string | undefined): { valido: boolean; erro?: string } {
   if (!descricao) return { valido: true };
-
-  if (descricao.length > MAX_DESCRICAO_LENGTH) {
-    return {
-      valido: false,
-      erro: `Descrição deve ter no máximo ${MAX_DESCRICAO_LENGTH} caracteres`,
-    };
-  }
-
+  if (descricao.length > 500) return { valido: false, erro: 'Descrição deve ter no máximo 500 caracteres' };
   return { valido: true };
-}
-
-function getPaginationParams(query: any): PaginationParams {
-  const page = getNumberParamClamped(query.page, DEFAULT_PAGE, 1);
-  const limit = getNumberParamClamped(query.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
-  const skip = (page - 1) * limit;
-
-  return { page, limit, skip };
-}
-
-function createPaginatedResponse<T>(
-  data: T[],
-  total: number,
-  page: number,
-  limit: number
-): ListagemResponse<T> {
-  const totalPages = Math.ceil(total / limit);
-
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNext: page < totalPages,
-      hasPrev: page > 1,
-    },
-  };
 }
 
 /**
@@ -118,20 +54,15 @@ function createPaginatedResponse<T>(
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - nome
+ *             required: [nome]
  *             properties:
  *               nome:
  *                 type: string
  *                 minLength: 3
  *                 maxLength: 100
- *                 description: Nome do serviço (único)
- *                 example: Suporte Técnico Geral
  *               descricao:
  *                 type: string
  *                 maxLength: 500
- *                 description: Descrição do serviço
- *                 example: Suporte para problemas gerais de TI
  *     responses:
  *       201:
  *         description: Serviço criado com sucesso
@@ -146,114 +77,44 @@ function createPaginatedResponse<T>(
  *       500:
  *         description: Erro ao criar serviço
  */
-router.post(
-  '/',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { nome, descricao } = req.body;
+router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { nome, descricao } = req.body;
+    const vNome = validarNome(nome);
+    if (!vNome.valido) return res.status(400).json({ error: vNome.erro });
+    const vDesc = validarDescricao(descricao);
+    if (!vDesc.valido) return res.status(400).json({ error: vDesc.erro });
 
-      const validacaoNome = validarNome(nome);
-      if (!validacaoNome.valido) {
-        return res.status(400).json({ error: validacaoNome.erro });
-      }
-
-      const validacaoDescricao = validarDescricao(descricao);
-      if (!validacaoDescricao.valido) {
-        return res.status(400).json({ error: validacaoDescricao.erro });
-      }
-
-      const nomeLimpo = nome.trim();
-
-      // Verificar se já existe (considerando soft delete)
-      const servicoExistente = await prisma.servico.findUnique({
-        where: { nome: nomeLimpo },
-        select: {
-          id: true,
-          nome: true,
-          ativo: true,
-          deletadoEm: true,
-        },
-      });
-
-      if (servicoExistente) {
-        if (servicoExistente.deletadoEm) {
-          return res.status(409).json({
-            error: 'Já existe um serviço deletado com esse nome. Use a rota de reativação.',
-            servicoId: servicoExistente.id,
-          });
-        }
-        return res.status(409).json({
-          error: 'Já existe um serviço com esse nome',
-        });
-      }
-
-      const servico = await prisma.servico.create({
-        data: {
-          nome: nomeLimpo,
-          descricao: descricao?.trim() || null,
-        },
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          geradoEm: true,
-          atualizadoEm: true,
-        },
-      });
-
-      console.log('[SERVICO CREATED]', { id: servico.id, nome: servico.nome });
-
-      res.status(201).json(servico);
-    } catch (err: any) {
-      console.error('[SERVICO CREATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao criar serviço',
-      });
-    }
-  }
-);
+    const result = await criarServicoUseCase({ nome, descricao });
+    res.status(201).json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos:
  *   get:
  *     summary: Lista os serviços cadastrados
- *     description: Retorna todos os serviços com paginação e filtros. Por padrão, retorna apenas serviços ativos. Requer autenticação.
+ *     description: Retorna todos os serviços com paginação e filtros. Por padrão, retorna apenas serviços ativos.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
+ *         schema: { type: integer, minimum: 1, default: 1 }
  *       - in: query
  *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 20
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
  *       - in: query
  *         name: incluirInativos
- *         schema:
- *           type: boolean
- *         description: Incluir serviços inativos
+ *         schema: { type: boolean }
  *       - in: query
  *         name: incluirDeletados
- *         schema:
- *           type: boolean
- *         description: Incluir serviços deletados (soft delete)
+ *         schema: { type: boolean }
  *       - in: query
  *         name: busca
- *         schema:
- *           type: string
- *         description: Buscar em nome ou descrição
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Lista de serviços retornada com sucesso
@@ -262,76 +123,24 @@ router.post(
  *       500:
  *         description: Erro ao listar serviços
  */
-router.get(
-  '/',
-  authMiddleware,
-  authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { page, limit, skip } = getPaginationParams(req.query);
-      const incluirInativos = getBooleanParam(req.query.incluirInativos);
-      const incluirDeletados = getBooleanParam(req.query.incluirDeletados);
-      const busca = getStringParam(req.query.busca);
-
-      const where: any = {};
-
-      if (!incluirInativos) {
-        where.ativo = true;
-      }
-
-      if (!incluirDeletados) {
-        where.deletadoEm = null;
-      }
-
-      if (busca) {
-        where.OR = [
-          { nome: { contains: busca, mode: 'insensitive' } },
-          { descricao: { contains: busca, mode: 'insensitive' } },
-        ];
-      }
-
-      const [total, servicos] = await Promise.all([
-        prisma.servico.count({ where }),
-        prisma.servico.findMany({
-          where,
-          select: {
-            id: true,
-            nome: true,
-            descricao: true,
-            ativo: true,
-            geradoEm: true,
-            atualizadoEm: true,
-            deletadoEm: true,
-            _count: {
-              select: {
-                chamados: true,
-              },
-            },
-          },
-          orderBy: { nome: 'asc' },
-          skip,
-          take: limit,
-        }),
-      ]);
-
-      const response = createPaginatedResponse(servicos, total, page, limit);
-
-      res.json(response);
-    } catch (err: any) {
-      console.error('[SERVICO LIST ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao listar serviços',
-      });
-    }
-  }
-);
+router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await listarServicosUseCase({
+      page:             getNumberParamClamped(req.query.page,  1,  1),
+      limit:            getNumberParamClamped(req.query.limit, 20, 1, 100),
+      incluirInativos:  getBooleanParam(req.query.incluirInativos),
+      incluirDeletados: getBooleanParam(req.query.incluirDeletados),
+      busca:            getStringParam(req.query.busca),
+    });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}:
  *   get:
  *     summary: Busca um serviço por ID
- *     description: Retorna os detalhes de um serviço específico. Requer autenticação.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -339,9 +148,7 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Serviço encontrado
@@ -352,56 +159,18 @@ router.get(
  *       500:
  *         description: Erro ao buscar serviço
  */
-router.get(
-  '/:id',
-  authMiddleware,
-  authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          geradoEm: true,
-          atualizadoEm: true,
-          deletadoEm: true,
-          _count: {
-            select: {
-              chamados: {
-                where: { deletadoEm: null },
-              },
-            },
-          },
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      res.json(servico);
-    } catch (err: any) {
-      console.error('[SERVICO GET ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao buscar serviço',
-      });
-    }
-  }
-);
+router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await buscarServicoUseCase(getStringParamRequired(req.params.id));
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}:
  *   put:
  *     summary: Atualiza os dados de um serviço
- *     description: Permite editar o nome e/ou descrição de um serviço existente. Requer autenticação e perfil ADMIN.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -409,9 +178,7 @@ router.get(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *     requestBody:
  *       content:
  *         application/json:
@@ -441,108 +208,22 @@ router.get(
  *       500:
  *         description: Erro ao atualizar serviço
  */
-router.put(
-  '/:id',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-      const { nome, descricao } = req.body;
+router.put('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { nome, descricao } = req.body;
+    if (nome !== undefined) { const v = validarNome(nome); if (!v.valido) return res.status(400).json({ error: v.erro }); }
+    if (descricao !== undefined) { const v = validarDescricao(descricao); if (!v.valido) return res.status(400).json({ error: v.erro }); }
 
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          deletadoEm: true,
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      if (servico.deletadoEm) {
-        return res.status(400).json({
-          error: 'Não é possível editar um serviço deletado',
-        });
-      }
-
-      const dataToUpdate: any = {};
-
-      if (nome !== undefined) {
-        const validacaoNome = validarNome(nome);
-        if (!validacaoNome.valido) {
-          return res.status(400).json({ error: validacaoNome.erro });
-        }
-
-        const nomeLimpo = nome.trim();
-
-        // Verificar se o novo nome já existe (em outro serviço)
-        if (nomeLimpo !== servico.nome) {
-          const nomeExistente = await prisma.servico.findUnique({
-            where: { nome: nomeLimpo },
-          });
-
-          if (nomeExistente && nomeExistente.id !== id) {
-            return res.status(409).json({
-              error: 'Já existe outro serviço com esse nome',
-            });
-          }
-
-          dataToUpdate.nome = nomeLimpo;
-        }
-      }
-
-      if (descricao !== undefined) {
-        const validacaoDescricao = validarDescricao(descricao);
-        if (!validacaoDescricao.valido) {
-          return res.status(400).json({ error: validacaoDescricao.erro });
-        }
-
-        dataToUpdate.descricao = descricao?.trim() || null;
-      }
-
-      if (Object.keys(dataToUpdate).length === 0) {
-        return res.json(servico);
-      }
-
-      const updated = await prisma.servico.update({
-        where: { id },
-        data: dataToUpdate,
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          geradoEm: true,
-          atualizadoEm: true,
-        },
-      });
-
-      console.log('[SERVICO UPDATED]', { id: updated.id, nome: updated.nome });
-
-      res.json(updated);
-    } catch (err: any) {
-      console.error('[SERVICO UPDATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao atualizar serviço',
-      });
-    }
-  }
-);
+    const result = await atualizarServicoUseCase({ id: getStringParamRequired(req.params.id), nome, descricao });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}/desativar:
  *   patch:
  *     summary: Desativa um serviço
- *     description: Marca o serviço como inativo. Serviços inativos não aparecem na listagem padrão. Requer autenticação e perfil ADMIN.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -550,9 +231,7 @@ router.put(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Serviço desativado com sucesso
@@ -567,62 +246,18 @@ router.put(
  *       500:
  *         description: Erro ao desativar serviço
  */
-router.patch(
-  '/:id/desativar',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          ativo: true,
-          deletadoEm: true,
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      if (!servico.ativo) {
-        return res.status(400).json({
-          error: 'Serviço já está desativado',
-        });
-      }
-
-      await prisma.servico.update({
-        where: { id },
-        data: { ativo: false },
-      });
-
-      console.log('[SERVICO DEACTIVATED]', { id, nome: servico.nome });
-
-      res.json({
-        message: 'Serviço desativado com sucesso',
-        id,
-      });
-    } catch (err: any) {
-      console.error('[SERVICO DEACTIVATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao desativar serviço',
-      });
-    }
-  }
-);
+router.patch('/:id/desativar', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await desativarServicoUseCase(getStringParamRequired(req.params.id));
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}/reativar:
  *   patch:
  *     summary: Reativa um serviço desativado
- *     description: Marca o serviço como ativo novamente. Requer autenticação e perfil ADMIN.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -630,9 +265,7 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Serviço reativado com sucesso
@@ -647,76 +280,18 @@ router.patch(
  *       500:
  *         description: Erro ao reativar serviço
  */
-router.patch(
-  '/:id/reativar',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          ativo: true,
-          deletadoEm: true,
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      if (servico.deletadoEm) {
-        return res.status(400).json({
-          error: 'Não é possível reativar um serviço deletado. Use a rota de restauração.',
-        });
-      }
-
-      if (servico.ativo) {
-        return res.status(400).json({
-          error: 'Serviço já está ativo',
-        });
-      }
-
-      const reativado = await prisma.servico.update({
-        where: { id },
-        data: { ativo: true },
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          geradoEm: true,
-          atualizadoEm: true,
-        },
-      });
-
-      console.log('[SERVICO REACTIVATED]', { id, nome: servico.nome });
-
-      res.json({
-        message: 'Serviço reativado com sucesso',
-        servico: reativado,
-      });
-    } catch (err: any) {
-      console.error('[SERVICO REACTIVATE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao reativar serviço',
-      });
-    }
-  }
-);
+router.patch('/:id/reativar', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await reativarServicoUseCase(getStringParamRequired(req.params.id));
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}:
  *   delete:
  *     summary: Deleta um serviço (soft delete)
- *     description: Marca o serviço como deletado sem removê-lo permanentemente. Requer autenticação e perfil ADMIN.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -724,14 +299,10 @@ router.patch(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *       - in: query
  *         name: permanente
- *         schema:
- *           type: boolean
- *         description: Se true, deleta permanentemente (USE COM CUIDADO!)
+ *         schema: { type: boolean }
  *     responses:
  *       200:
  *         description: Serviço deletado com sucesso
@@ -746,87 +317,21 @@ router.patch(
  *       500:
  *         description: Erro ao deletar serviço
  */
-router.delete(
-  '/:id',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-      const permanente = getBooleanParam(req.query.permanente);
-
-      // Buscar serviço com contagem de chamados
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          ativo: true,
-          deletadoEm: true,
-          _count: {
-            select: {
-              chamados: {
-                where: { deletadoEm: null },
-              },
-            },
-          },
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      if (permanente) {
-        if (servico._count.chamados > 0) {
-          return res.status(400).json({
-            error: `Não é possível deletar permanentemente. Existem ${servico._count.chamados} chamados vinculados.`,
-          });
-        }
-
-        await prisma.servico.delete({
-          where: { id },
-        });
-
-        console.log('[SERVICO DELETED PERMANENTLY]', { id, nome: servico.nome });
-
-        return res.json({
-          message: 'Serviço removido permanentemente',
-          id,
-        });
-      }
-
-      await prisma.servico.update({
-        where: { id },
-        data: {
-          deletadoEm: new Date(),
-          ativo: false,
-        },
-      });
-
-      console.log('[SERVICO SOFT DELETED]', { id, nome: servico.nome });
-
-      res.json({
-        message: 'Serviço deletado com sucesso',
-        id,
-      });
-    } catch (err: any) {
-      console.error('[SERVICO DELETE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao deletar serviço',
-      });
-    }
-  }
-);
+router.delete('/:id', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await deletarServicoUseCase({
+      id:         getStringParamRequired(req.params.id),
+      permanente: getBooleanParam(req.query.permanente),
+    });
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 /**
  * @swagger
  * /api/servicos/{id}/restaurar:
  *   patch:
  *     summary: Restaura um serviço deletado (soft delete)
- *     description: Remove a marcação de deleção de um serviço. Requer autenticação e perfil ADMIN.
  *     tags: [Serviços]
  *     security:
  *       - bearerAuth: []
@@ -834,9 +339,7 @@ router.delete(
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
- *         description: ID do serviço
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Serviço restaurado com sucesso
@@ -851,64 +354,11 @@ router.delete(
  *       500:
  *         description: Erro ao restaurar serviço
  */
-router.patch(
-  '/:id/restaurar',
-  authMiddleware,
-  authorizeRoles('ADMIN'),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const id = getStringParamRequired(req.params.id);
-
-      const servico = await prisma.servico.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          nome: true,
-          deletadoEm: true,
-        },
-      });
-
-      if (!servico) {
-        return res.status(404).json({
-          error: 'Serviço não encontrado',
-        });
-      }
-
-      if (!servico.deletadoEm) {
-        return res.status(400).json({
-          error: 'Serviço não está deletado',
-        });
-      }
-
-      const restaurado = await prisma.servico.update({
-        where: { id },
-        data: {
-          deletadoEm: null,
-          ativo: true,
-        },
-        select: {
-          id: true,
-          nome: true,
-          descricao: true,
-          ativo: true,
-          geradoEm: true,
-          atualizadoEm: true,
-        },
-      });
-
-      console.log('[SERVICO RESTORED]', { id, nome: servico.nome });
-
-      res.json({
-        message: 'Serviço restaurado com sucesso',
-        servico: restaurado,
-      });
-    } catch (err: any) {
-      console.error('[SERVICO RESTORE ERROR]', err);
-      res.status(500).json({
-        error: 'Erro ao restaurar serviço',
-      });
-    }
-  }
-);
+router.patch('/:id/restaurar', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await restaurarServicoUseCase(getStringParamRequired(req.params.id));
+    res.json(result);
+  } catch (err) { handleError(res, err); }
+});
 
 export default router;

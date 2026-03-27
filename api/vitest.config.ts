@@ -5,12 +5,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@application':   resolve(__dirname, 'src/application'),
-      '@domain':   resolve(__dirname, 'src/domain'),
+      '@application': resolve(__dirname, 'src/application'),
+      '@domain': resolve(__dirname, 'src/domain'),
       '@infrastructure': resolve(__dirname, 'src/infrastructure'),
-      '@presentation':  resolve(__dirname, 'src/presentation'),
-      '@shared':        resolve(__dirname, 'src/shared'),
-      '@templates':     resolve(__dirname, 'src/templates'),
+      '@presentation': resolve(__dirname, 'src/presentation'),
+      '@shared': resolve(__dirname, 'src/shared'),
+      '@templates': resolve(__dirname, 'src/templates'),
     },
   },
   test: {
@@ -18,7 +18,7 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
 
-    include: ['src/__tests__/unit/**/*.test.ts'],
+    include: ['src/__tests__/unit/**/*.{test,spec}.ts'],
     exclude: [
       'node_modules/**',
       'dist/**',

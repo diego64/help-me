@@ -4,6 +4,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@application/*": ["src/application/*"],
+      "@domain/*": ["src/domain/*"],
       "@infrastructure/*": ["src/infrastructure/*"],
       "@presentation/*": ["src/presentation/*"],
       "@shared/*": ["src/shared/*"],
@@ -11,6 +12,7 @@
       "@tests/*": ["src/__tests__/*"],
     },
     "target": "ES2023",
+    "lib": ["ES2023"],
     "module": "ESNext",
     //"module": "CommonJS",
     "moduleResolution": "Node",
