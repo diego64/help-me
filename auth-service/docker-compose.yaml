@@ -1,0 +1,156 @@
+services:
+  # ============================================
+  # BANCO DE DADOS - PostgreSQL
+  # ============================================
+  auth-postgres:
+    image: postgres:17.9
+    container_name: auth-postgres
+    restart: unless-stopped
+    user: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS}
+    ports:
+      - "127.0.0.1:${DB_PORT}:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  # ============================================
+  # BANCO DE DADOS - Redis
+  # ============================================
+  auth-redis:
+    image: redis:8.6
+    container_name: auth-redis
+    restart: unless-stopped
+    user: redis
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --protected-mode
+      - "yes"
+      - --loglevel
+      - warning
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    volumes:
+      - auth-redis-data:/data
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  # ============================================
+  # AUTH SERVICE
+  # Descomente após criar o Dockerfile
+  # ============================================
+  # auth-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: auth-service
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "127.0.0.1:${PORT}:${PORT}"
+  #   networks:
+  #     - auth-network      # acessa postgres e redis
+  #     - helpme-network    # comunica com o api/ e futuros serviços
+  #   depends_on:
+  #     auth-postgres:
+  #       condition: service_healthy
+  #     auth-redis:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:${PORT}/health || exit 1"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 20s
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "1.0"
+  #         memory: 256M
+  #       reservations:
+  #         cpus: "0.1"
+  #         memory: 64M
+
+# ============================================
+# VOLUMES
+# ============================================
+volumes:
+  auth-postgres-data:
+    driver: local
+  auth-redis-data:
+    driver: local
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  # Rede interna — postgres e redis só acessíveis pelo auth-service
+  # internal: false permite acesso via localhost em desenvolvimento
+  # enable_icc: false isola containers de redes externas entre si
+  auth-network:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+
+  # Rede compartilhada — comunicação entre microserviços
+  # Criar manualmente antes de subir: docker network create helpme-network
+  helpme-network:
+    external: true

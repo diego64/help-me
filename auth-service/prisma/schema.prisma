@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== ENUMS ====================
+
+enum Regra {
+  ADMIN
+  TECNICO
+  USUARIO
+}
+
+enum EventoAuth {
+  LOGIN_SUCESSO
+  LOGIN_FALHA
+  LOGOUT
+  TOKEN_RENOVADO
+  TOKEN_REVOGADO
+  SENHA_ALTERADA
+  USUARIO_CRIADO
+  USUARIO_DESATIVADO
+}
+
+// ==================== MODELS ====================
+
+model Usuario {
+  id           String    @id @default(cuid())
+  nome         String    @db.VarChar(100)
+  sobrenome    String    @db.VarChar(100)
+  email        String    @unique @db.VarChar(255)
+  password     String    @db.VarChar(512)
+  regra        Regra
+  refreshToken String?   @map("refresh_token")
+  ativo        Boolean   @default(true)
+
+  geradoEm     DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  deletadoEm   DateTime? @map("deletado_em") @db.Timestamptz(3)
+
+  auditoria AuditoriaAuth[]
+
+  @@index([email])
+  @@index([regra])
+  @@index([ativo])
+  @@index([deletadoEm])
+  @@index([regra, ativo])
+  @@map("usuarios")
+}
+
+model AuditoriaAuth {
+  id        String     @id @default(cuid())
+  usuarioId String?    @map("usuario_id")
+  evento    EventoAuth
+  ip        String?    @db.VarChar(45)
+  userAgent String?    @map("user_agent") @db.VarChar(512)
+  metadata  Json?
+  criadoEm  DateTime   @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId])
+  @@index([evento])
+  @@index([criadoEm])
+  @@index([usuarioId, evento])
+  @@index([usuarioId, criadoEm])
+  @@map("auditoria_auth")
+}

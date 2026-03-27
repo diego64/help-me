@@ -1,0 +1,39 @@
+# ================================
+# Node.js & Package Managers
+# ================================
+node_modules/
+.pnpm-store/
+pnpm-debug.log*
+
+# ================================
+# Environment & Secrets
+# ================================
+.env
+.env.local
+.env.*.local
+
+# ================================
+# Build Output / Dist Files
+# ================================
+dist/
+build/
+out/
+coverage/
+tmp/
+temp/
+.cache/
+.cache-loader/
+.next/
+.nuxt/
+vite-cache/
+.vitest/
+
+# ================================
+# Testing & Coverage
+# ================================
+coverage/
+.nyc_output/
+jest-cache/
+jest-html-reporters-*
+vitest-report/
+test-results/
