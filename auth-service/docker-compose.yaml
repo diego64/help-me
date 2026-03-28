@@ -131,6 +131,69 @@ services:
 # ============================================
 # VOLUMES
 # ============================================
+  # ============================================
+  # BANCO DE DADOS DE TESTES — PostgreSQL
+  # Uso exclusivo para testes E2E (dados em memória, sem persistência)
+  # Suba com: docker compose up auth-postgres-test -d
+  # ============================================
+  auth-postgres-test:
+    image: postgres:17.9
+    container_name: auth-postgres-test
+    restart: "no"
+    environment:
+      POSTGRES_USER: administrator
+      POSTGRES_PASSWORD: 1qaz2wsx3edc
+      POSTGRES_DB: auth-test
+    ports:
+      - "127.0.0.1:5490:5432"
+    networks:
+      - auth-network
+    tmpfs:
+      - /var/lib/postgresql/data
+      - /tmp
+      - /var/run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U administrator -d auth-test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ============================================
+  # CACHE DE TESTES — Redis
+  # Uso exclusivo para testes E2E (sem persistência)
+  # Suba com: docker compose up auth-redis-test -d
+  # ============================================
+  auth-redis-test:
+    image: redis:8.6
+    container_name: auth-redis-test
+    restart: "no"
+    command:
+      - redis-server
+      - --requirepass
+      - 1qaz2wsx3edc
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:6392:6379"
+    networks:
+      - auth-network
+    tmpfs:
+      - /data
+      - /tmp
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "1qaz2wsx3edc", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
 volumes:
   auth-postgres-data:
     driver: local

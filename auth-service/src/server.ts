@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env' });
 
-import app from './app';
+import { createApp } from './app';
 import { logger } from '@shared/config/logger';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { waitForRedis, disconnectRedis } from '@infrastructure/database/redis/client';
@@ -39,6 +39,8 @@ async function bootstrap(): Promise<void> {
     // Circuit breaker no producer garante que eventos são descartados sem derrubar a app
     logger.warn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos');
   }
+
+  const app = createApp();
 
   const server = app.listen(PORT, () => {
     logger.info(
@@ -79,7 +81,7 @@ async function bootstrap(): Promise<void> {
       process.exit(0);
     });
 
-    /** 
+    /**
      * Force shutdown após 15 segundos se graceful não completar
      * Inspirado em: Kubernetes terminationGracePeriodSeconds
      */

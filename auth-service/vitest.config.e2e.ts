@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import { config } from 'dotenv';
+
+config({ path: resolve(__dirname, '.env.test'), override: true });
 
 export default defineConfig({
   resolve: {
@@ -41,13 +44,6 @@ export default defineConfig({
     testTimeout: 60000,
     hookTimeout: 60000,
     teardownTimeout: 60000,
-    
-    // @ts-expect-error - Vitest não tem tipagem para poolOptions
-    poolOptions: {
-      threads: {
-        singleThread: true,
-      },
-    },
 
     coverage: {
       enabled: false,

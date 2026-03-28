@@ -49,6 +49,7 @@
     "@types/node": "^25.5.0",
     "@types/pg": "8.11.11",
     "@types/qs": "^6.15.0",
+    "@types/supertest": "^7.2.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/uuid": "^11.0.0",
