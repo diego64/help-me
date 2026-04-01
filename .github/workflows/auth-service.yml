@@ -289,18 +289,6 @@ jobs:
         working-directory: ./auth-service
         run: pnpm install --frozen-lockfile
 
-      - name: Criar .env para docker-compose
-        working-directory: ./auth-service
-        run: |
-          cat > .env << 'EOF'
-          DB_USER_TESTE=teste
-          DB_PASSWORD_TESTE=senha_teste
-          DB_NAME_TESTE=auth_database_teste
-          DB_PORT_TESTE=5434
-          REDIS_PASSWORD_TESTE=
-          REDIS_PORT_TESTE=6381
-          EOF
-
       - name: Subir infraestrutura de testes
         working-directory: ./auth-service
         timeout-minutes: 8
@@ -308,10 +296,9 @@ jobs:
           set -e
           echo "=== SUBINDO SERVIÇOS DE TESTE ==="
 
-          docker compose -f docker-compose.yaml up -d
+          docker network create helpme_network 2>/dev/null || true
 
-          echo "Aguardando inicialização dos serviços (60s)..."
-          sleep 60
+          docker compose -f docker-compose.yaml up auth-postgres-test auth-redis-test -d --wait
 
           docker compose -f docker-compose.yaml ps
 
@@ -320,19 +307,19 @@ jobs:
         run: |
           cat > .env.test << 'EOF'
           NODE_ENV=test
-          DB_USER=teste
-          DB_PASSWORD=senha_teste
-          DB_NAME=auth_database_teste
+          DB_USER=administrator
+          DB_PASSWORD=1qaz2wsx3edc
+          DB_NAME=auth-test
           DB_HOST=localhost
-          DB_PORT=5434
-          DATABASE_URL=postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
+          DB_PORT=5490
+          DATABASE_URL=postgresql://administrator:1qaz2wsx3edc@localhost:5490/auth-test?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
           JWT_SECRET=chavesecretadeteste123
           JWT_REFRESH_SECRET=refreshsegredodeteste456
           JWT_EXPIRATION=8h
           JWT_REFRESH_EXPIRATION=7d
           REDIS_HOST=localhost
-          REDIS_PORT=6381
-          REDIS_PASSWORD=
+          REDIS_PORT=6392
+          REDIS_PASSWORD=1qaz2wsx3edc
           API_HOST=0.0.0.0
           API_PORT=3334
           LOG_LEVEL=debug
@@ -341,13 +328,13 @@ jobs:
       - name: Gerar Prisma Client
         working-directory: ./auth-service
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public
+          DATABASE_URL: postgresql://administrator:1qaz2wsx3edc@localhost:5490/auth-test?schema=public
         run: pnpm run generate
 
       - name: Executar migrations
         working-directory: ./auth-service
         env:
-          DATABASE_URL: postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public
+          DATABASE_URL: postgresql://administrator:1qaz2wsx3edc@localhost:5490/auth-test?schema=public
         run: pnpm run migrate:deploy
 
       - name: Executar testes E2E
