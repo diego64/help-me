@@ -1164,7 +1164,6 @@ services:
 # ============================================
 networks:
   helpme_network:
-    external: true
     driver: bridge
     name: helpme_network
     ipam:

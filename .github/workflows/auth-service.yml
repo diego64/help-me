@@ -313,8 +313,8 @@ jobs:
           DB_HOST=localhost
           DB_PORT=5490
           DATABASE_URL=postgresql://administrator:1qaz2wsx3edc@localhost:5490/auth-test?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
-          JWT_SECRET=chavesecretadeteste123
-          JWT_REFRESH_SECRET=refreshsegredodeteste456
+          JWT_SECRET=chavesecretadeteste123456789012345
+          JWT_REFRESH_SECRET=refreshsegredodeteste456789012345
           JWT_EXPIRATION=8h
           JWT_REFRESH_EXPIRATION=7d
           REDIS_HOST=localhost
