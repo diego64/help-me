@@ -3,8 +3,8 @@
 # ========================================
 FROM node:20-alpine AS deps
 
-# Habilitar pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Habilitar pnpm via corepack (versão pinada — evita download não-determinístico)
+RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -20,8 +20,8 @@ RUN pnpm install --frozen-lockfile --prod
 # ========================================
 FROM node:20-alpine AS builder
 
-# Habilitar pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Habilitar pnpm via corepack (versão pinada — evita download não-determinístico)
+RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -67,16 +67,15 @@ LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 LABEL org.opencontainers.image.vendor="Help-Me Team"
 
 # hadolint ignore=DL3018
-# DL3018: Pinar versões de pacotes Alpine quebra builds quando o repositório
-# atualiza por patches de segurança. A imagem base node:20-alpine já é
-# atualizada regularmente com correções de segurança.
 RUN apk add --no-cache \
     dumb-init \
     openssl \
     curl
 
-# Habilitar pnpm via corepack no stage de produção
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Produção não instala dependências — corepack prepare é desnecessário aqui.
+# Apenas habilitar para que ferramentas CLI que dependam de pnpm possam funcionar
+# se necessário, sem realizar nenhum download.
+RUN corepack enable
 
 # Criar grupo e usuário 'prod' (não-root para segurança)
 RUN addgroup -g 1001 -S prod && \
@@ -116,7 +115,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     TZ=America/Sao_Paulo
 
-# Healthcheck para monitoramento usando pnpm
+# Healthcheck para monitoramento
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
