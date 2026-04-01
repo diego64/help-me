@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-redis
+  namespace: helpme
+  labels:
+    app: auth-redis
+    tier: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-redis
+  template:
+    metadata:
+      labels:
+        app: auth-redis
+        tier: cache
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+      - name: auth-redis
+        image: redis:8-alpine
+        command:
+        - redis-server
+        - /usr/local/etc/redis/redis.conf
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        ports:
+        - containerPort: 6379
+          name: redis
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auth-redis-secret
+              key: REDIS_PASSWORD
+        volumeMounts:
+        - name: auth-redis-storage
+          mountPath: /data
+        - name: auth-redis-config
+          mountPath: /usr/local/etc/redis
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --no-auth-warning
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --no-auth-warning
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: auth-redis-storage
+        persistentVolumeClaim:
+          claimName: auth-redis-pvc
+      - name: auth-redis-config
+        configMap:
+          name: auth-redis-config

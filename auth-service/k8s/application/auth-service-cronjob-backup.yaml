@@ -1,0 +1,66 @@
+# CronJob para backup periódico do PostgreSQL do auth-service
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: auth-postgres-backup
+  namespace: helpme
+  labels:
+    app: auth-postgres-backup
+spec:
+  schedule: "0 3 * * *"  # Todo dia às 3h da manhã
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: auth-postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:17-alpine
+            command:
+            - sh
+            - -c
+            - |
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              pg_dump -h auth-postgres-service -U auth_user -d auth-database \
+                > /backup/auth_backup_${TIMESTAMP}.sql
+              echo "Backup concluído: auth_backup_${TIMESTAMP}.sql"
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-postgres-secret
+                  key: POSTGRES_PASSWORD
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "250m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: auth-backup-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: auth-backup-pvc
+  namespace: helpme
+  labels:
+    app: auth-postgres-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

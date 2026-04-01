@@ -91,42 +91,41 @@ services:
 
   # ============================================
   # AUTH SERVICE
-  # Descomente após criar o Dockerfile
   # ============================================
-  # auth-service:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: auth-service
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "127.0.0.1:${PORT}:${PORT}"
-  #   networks:
-  #     - auth-network      # acessa postgres e redis
-  #     - helpme-network    # comunica com o api/ e futuros serviços
-  #   depends_on:
-  #     auth-postgres:
-  #       condition: service_healthy
-  #     auth-redis:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -f http://localhost:${PORT}/health || exit 1"]
-  #     interval: 15s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 20s
-  #   security_opt:
-  #     - no-new-privileges:true
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "1.0"
-  #         memory: 256M
-  #       reservations:
-  #         cpus: "0.1"
-  #         memory: 64M
+#  auth-service:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: auth-service
+#    restart: unless-stopped
+#    env_file:
+#      - .env
+#    ports:
+#      - "127.0.0.1:${PORT}:${PORT}"
+#    networks:
+#      - auth-network      # acessa postgres e redis
+#      - helpme-network    # comunica com o api/ e futuros serviços
+#    depends_on:
+#      auth-postgres:
+#        condition: service_healthy
+#      auth-redis:
+#        condition: service_healthy
+#    healthcheck:
+#      test: ["CMD-SHELL", "curl -f http://localhost:${PORT}/health || exit 1"]
+#      interval: 15s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 20s
+#    security_opt:
+#      - no-new-privileges:true
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "1.0"
+#          memory: 256M
+#        reservations:
+#          cpus: "0.1"
+#          memory: 64M
 
 # ============================================
 # VOLUMES

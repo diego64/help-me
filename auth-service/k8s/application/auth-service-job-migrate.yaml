@@ -1,0 +1,52 @@
+# Job para executar migrations do Prisma no auth-service
+# Executar manualmente antes do primeiro deploy ou após migrations novas:
+#   kubectl apply -f auth-service-job-migrate.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: auth-service-migrate
+  namespace: helpme
+  labels:
+    app: auth-service-migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: auth-service-migrate
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z auth-postgres-service 5432; do
+            echo "Aguardando auth-postgres..."
+            sleep 2
+          done
+          echo "auth-postgres pronto!"
+      containers:
+      - name: migrate
+        image: diegoferreira/helpme-auth-service:latest
+        command: ["pnpm", "run", "migrate:deploy"]
+        envFrom:
+        - configMapRef:
+            name: auth-service-config
+        - secretRef:
+            name: auth-service-secret
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+  namespace: helpme
+  labels:
+    app: helpme-auth-service
+    tier: application
+data:
+  NODE_ENV: production
+  PORT: "3333"
+  LOG_LEVEL: info
+  # LOG_FILE vazio = somente stdout (correto para k8s)
+  LOG_FILE: ""
+
+  # Database
+  DB_HOST: auth-postgres-service
+  DB_PORT: "5432"
+  DB_NAME: auth-database
+  DB_MAX_CONNECTIONS: "50"
+
+  # Redis
+  REDIS_HOST: auth-redis-service
+  REDIS_PORT: "6379"
+
+  # Kafka (broker compartilhado com a API)
+  KAFKA_CLIENT_ID: auth-service
+  KAFKA_GROUP_ID: auth-service-group
+
+  # JWT
+  JWT_EXPIRES_IN: 15m
+  JWT_REFRESH_EXPIRES_IN: 7d
+
+  # Bcrypt
+  BCRYPT_SALT_ROUNDS: "12"
+
+  # CORS
+  CORS_ORIGIN: "*"

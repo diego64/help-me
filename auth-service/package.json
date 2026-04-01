@@ -16,7 +16,8 @@
     "migrate": "dotenv -e .env -- prisma migrate dev",
     "migrate:reset": "dotenv -e .env -- prisma migrate reset --force",
     "studio": "dotenv -e .env -- prisma studio",
-    "seed": "tsx --env-file=.env prisma/seed.ts"
+    "seed": "tsx --env-file=.env prisma/seed.ts",
+    "migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

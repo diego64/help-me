@@ -1,0 +1,157 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helpme-auth-service
+  namespace: helpme
+  labels:
+    app: helpme-auth-service
+    tier: application
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: helpme-auth-service
+  template:
+    metadata:
+      labels:
+        app: helpme-auth-service
+        tier: application
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3333"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: helpme-auth-service
+      priorityClassName: helpme-auth-priority
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      initContainers:
+      # Aguardar PostgreSQL dedicado
+      - name: wait-for-postgres
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z auth-postgres-service 5432; do
+            echo "Aguardando auth-postgres..."
+            sleep 2
+          done
+          echo "auth-postgres pronto!"
+
+      # Aguardar Redis dedicado
+      - name: wait-for-redis
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z auth-redis-service 6379; do
+            echo "Aguardando auth-redis..."
+            sleep 2
+          done
+          echo "auth-redis pronto!"
+
+      # Executar migrations do Prisma
+      - name: run-migrations
+        image: diegoferreira/helpme-auth-service:latest
+        command: ["pnpm", "run", "migrate:deploy"]
+        envFrom:
+        - configMapRef:
+            name: auth-service-config
+        - secretRef:
+            name: auth-service-secret
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+
+      containers:
+      - name: helpme-auth-service
+        image: diegoferreira/helpme-auth-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3333
+          name: http
+          protocol: TCP
+
+        envFrom:
+        - configMapRef:
+            name: auth-service-config
+        - secretRef:
+            name: auth-service-secret
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 3333
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 3333
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3333
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 20
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - helpme-auth-service
+              topologyKey: kubernetes.io/hostname

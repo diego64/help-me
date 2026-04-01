@@ -1,0 +1,21 @@
+# ConfigMap de rate limit específico para o auth-service
+# Rotas de autenticação têm limites mais restritivos que a API principal
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-rate-limit
+  namespace: helpme
+  labels:
+    app: helpme-auth-service
+data:
+  # Login: 5 tentativas por minuto por IP
+  login-limit-rps: "5"
+  login-limit-rpm: "20"
+  login-limit-connections: "3"
+
+  # Refresh token: 10 por minuto
+  refresh-limit-rps: "10"
+  refresh-limit-rpm: "40"
+
+  # Endpoints públicos (health, docs): sem restrição extra
+  public-limit-rps: "50"
