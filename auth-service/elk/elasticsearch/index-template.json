@@ -1,0 +1,62 @@
+{
+  "index_patterns": ["auth-service-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "dynamic": true,
+      "_source": { "enabled": true },
+      "properties": {
+        "@timestamp":    { "type": "date" },
+        "time":          { "type": "date" },
+        "level":         { "type": "keyword" },
+        "msg":           { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } } },
+        "service":       { "type": "keyword" },
+        "environment":   { "type": "keyword" },
+        "env":           { "type": "keyword" },
+        "requestId":     { "type": "keyword" },
+        "correlationId": { "type": "keyword" },
+        "userId":        { "type": "keyword" },
+        "ip":            { "type": "keyword" },
+        "method":        { "type": "keyword" },
+        "url":           { "type": "keyword" },
+        "path":          { "type": "keyword" },
+        "statusCode":    { "type": "integer" },
+        "duration":      { "type": "float" },
+        "responseSize":  { "type": "integer" },
+        "userAgent":     { "type": "keyword" },
+        "endpoint":      { "type": "keyword" },
+        "evento":        { "type": "keyword" },
+        "blockSeconds":  { "type": "integer" },
+        "threshold":     { "type": "integer" },
+        "error": {
+          "type": "object",
+          "properties": {
+            "message":       { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } } },
+            "name":          { "type": "keyword" },
+            "code":          { "type": "keyword" },
+            "status":        { "type": "integer" },
+            "isOperational": { "type": "boolean" }
+          }
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "id":     { "type": "keyword" },
+            "method": { "type": "keyword" },
+            "url":    { "type": "keyword" },
+            "path":   { "type": "keyword" },
+            "ip":     { "type": "keyword" }
+          }
+        }
+      }
+    }
+  },
+  "priority": 200,
+  "_meta": {
+    "description": "Template de índice para logs do auth-service (Pino JSON)"
+  }
+}

@@ -1,0 +1,8 @@
+es_host: elasticsearch
+es_port: 9200
+rules_folder: /opt/elastalert/rules
+run_every:
+  seconds: 30
+buffer_time:
+  minutes: 1
+writeback_index: elastalert_status

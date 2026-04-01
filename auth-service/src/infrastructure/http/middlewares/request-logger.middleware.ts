@@ -213,6 +213,8 @@ export const requestLoggerMiddleware = (
       {
         statusCode: res.statusCode,
         duration,
+        method: req.method,
+        path: req.path,
         // Tamanho da resposta em bytes para monitoramento de performance
         responseSize: JSON.stringify(body)?.length ?? 0,
       },
@@ -243,6 +245,8 @@ export const requestLoggerMiddleware = (
       {
         statusCode: res.statusCode,
         duration,
+        method: req.method,
+        path: req.path,
       },
       `← Request finished [${res.statusCode}] ${duration}ms`
     );

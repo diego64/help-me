@@ -1,6 +1,3 @@
-import { config } from 'dotenv';
-config({ path: '.env' });
-
 import { createApp } from './app';
 import { logger } from '@shared/config/logger';
 import { prisma } from '@infrastructure/database/prisma/client';
@@ -35,8 +32,6 @@ async function bootstrap(): Promise<void> {
     await connectProducer();
     logger.info('[SERVER] Kafka producer conectado');
   } catch (err) {
-    // Kafka não é crítico para subir o serviço
-    // Circuit breaker no producer garante que eventos são descartados sem derrubar a app
     logger.warn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos');
   }
 
@@ -54,20 +49,12 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  /**
-   * GRACEFUL SHUTDOWN
-   * Garante que conexões ativas são finalizadas antes de encerrar
-   * Inspirado em: Kubernetes SIGTERM handling, AWS ECS graceful shutdown
-   */
-
   async function shutdown(signal: string): Promise<void> {
     logger.info({ signal }, '[SERVER] Sinal recebido — iniciando graceful shutdown...');
 
-    // Para de aceitar novas conexões
     server.close(async () => {
       logger.info('[SERVER] Servidor HTTP encerrado');
 
-      // Encerra conexões na ordem inversa da inicialização
       await disconnectProducer();
       logger.info('[SERVER] Kafka producer desconectado');
 
@@ -81,10 +68,6 @@ async function bootstrap(): Promise<void> {
       process.exit(0);
     });
 
-    /**
-     * Force shutdown após 15 segundos se graceful não completar
-     * Inspirado em: Kubernetes terminationGracePeriodSeconds
-     */
     setTimeout(() => {
       logger.error('[SERVER] Graceful shutdown excedeu 15s — forçando encerramento');
       process.exit(1);
@@ -93,12 +76,6 @@ async function bootstrap(): Promise<void> {
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT',  () => shutdown('SIGINT'));
-
-  /**
-   * TRATAMENTO DE ERROS NÃO CAPTURADOS
-   * Previne que erros silenciosos deixem o processo em estado inconsistente
-   * Inspirado em: Node.js best practices, PM2 error handling
-   */
 
   process.on('uncaughtException', (err) => {
     logger.fatal({ err }, '[SERVER] Uncaught exception — encerrando processo');

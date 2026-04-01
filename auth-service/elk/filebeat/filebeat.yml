@@ -1,0 +1,42 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /logs/auth-service*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+    json.message_key: msg
+    json.overwrite_keys: true
+    fields:
+      service: auth-service
+      env: "${NODE_ENV:development}"
+    fields_under_root: true
+    close_inactive: 5m
+    scan_frequency: 5s
+
+processors:
+  - timestamp:
+      field: time
+      layouts:
+        - "2006-01-02T15:04:05.999Z07:00"
+        - "2006-01-02T15:04:05Z"
+      target: "@timestamp"
+      ignore_missing: true
+  - drop_fields:
+      fields: ["log", "input", "agent", "ecs", "host", "pid", "hostname"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["${ELASTICSEARCH_HOSTS:http://localhost:9200}"]
+  index: "auth-service-logs-%{+yyyy.MM.dd}"
+
+# Filebeat gerencia o próprio template (sem ILM)
+# O setup.sh sobrescreve com o template customizado após o stack subir
+setup.ilm.enabled: false
+setup.template.name: "auth-service-logs"
+setup.template.pattern: "auth-service-logs-*"
+setup.template.enabled: true
+setup.template.overwrite: false
+
+logging.level: warning
+logging.to_stderr: true

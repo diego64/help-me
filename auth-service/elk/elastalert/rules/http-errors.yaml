@@ -1,0 +1,30 @@
+name: HTTP Error Alert
+type: any
+
+index: auth-service-logs-*
+
+filter:
+  - terms:
+      statusCode: [400, 401, 500]
+
+alert:
+  - post
+
+http_post_url: "http://n8n:5678/webhook/error-alert"
+http_post_payload:
+  status_code: "%(statusCode)s"
+  message: "%(msg)s"
+  service: "%(service)s"
+  path: "%(path)s"
+  method: "%(method)s"
+  duration: "%(duration)s"
+  request_id: "%(requestId)s"
+  correlation_id: "%(correlationId)s"
+  timestamp: "%(@timestamp)s"
+  env: "%(env)s"
+
+http_post_static_payload:
+  source: elastalert
+
+alert_text: ""
+alert_text_type: exclude_fields
