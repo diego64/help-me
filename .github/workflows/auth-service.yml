@@ -2,6 +2,12 @@ name: Pipeline CI/CD - Auth Service
 run-name: Pipeline CI executado por ${{ github.actor }}
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'auth-service/**'
+      - '.github/workflows/auth-service.yml'
   workflow_dispatch:
     inputs:
       branch-type:
@@ -153,7 +159,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Atualizar package.json
-        if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
+        if: ${{ inputs.version-override != '' || (inputs.bump-type != 'none' && inputs.bump-type != '') }}
         working-directory: ./auth-service
         run: |
           echo "Atualizando package.json para versão ${{ steps.version.outputs.version }}"
