@@ -1,0 +1,558 @@
+name: Pipeline CI/CD - Auth Service
+run-name: Pipeline CI executado por ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch-type:
+        description: 'Tipo de branch sendo entregue'
+        required: true
+        type: choice
+        options:
+          - develop
+          - feature
+          - release
+          - hotfix
+        default: develop
+      version-override:
+        description: 'Sobrescrever versão do package.json (opcional, ex: 1.0.0)'
+        required: false
+        type: string
+      create-tag:
+        description: 'Criar tag Git com a versão?'
+        required: false
+        type: boolean
+        default: false
+      bump-type:
+        description: 'Tipo de incremento de versão (se não informar version-override)'
+        required: false
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: none
+
+permissions:
+  contents: write
+
+jobs:
+  ambiente:
+    name: Verificação dos Ambientes
+    strategy:
+      matrix:
+        versao: [20, 22]
+        plataforma: ["ubuntu"]
+    runs-on: ${{ matrix.plataforma }}-latest
+
+    steps:
+      - name: Instalação do Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.versao }}
+
+      - name: Exibição da versão e da plataforma
+        run: |
+          node --version
+          echo ${{ runner.os }}
+
+  build:
+    name: Build
+    needs: [ambiente]
+    runs-on: ubuntu-latest
+    environment: homologacao
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ativar pnpm
+        run: corepack enable
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./auth-service/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-auth-${{ hashFiles('auth-service/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-auth-
+
+      - name: Limpar instalação anterior
+        working-directory: ./auth-service
+        run: rm -rf node_modules .turbo dist
+
+      - name: Instalar dependências
+        working-directory: ./auth-service
+        run: pnpm install --frozen-lockfile
+
+      - name: Determinar versão
+        id: version
+        working-directory: ./auth-service
+        run: |
+          bump_version() {
+            local version=$1
+            local bump_type=$2
+
+            IFS='.' read -ra VERSION_PARTS <<< "$version"
+            MAJOR="${VERSION_PARTS[0]}"
+            MINOR="${VERSION_PARTS[1]}"
+            PATCH="${VERSION_PARTS[2]}"
+
+            case $bump_type in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+
+            echo "$MAJOR.$MINOR.$PATCH"
+          }
+
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "Versão do package.json: $PACKAGE_VERSION"
+
+          if [ -n "${{ inputs.version-override }}" ]; then
+            VERSION="${{ inputs.version-override }}"
+            echo "Usando versão manual: $VERSION"
+          elif [ "${{ inputs.bump-type }}" != "none" ]; then
+            VERSION=$(bump_version "$PACKAGE_VERSION" "${{ inputs.bump-type }}")
+            echo "Versão incrementada (${{ inputs.bump-type }}): $VERSION"
+          else
+            VERSION="$PACKAGE_VERSION"
+            echo "Usando versão do package.json: $VERSION"
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Versão inválida: $VERSION"
+            echo "Formato esperado: X.Y.Z (ex: 1.0.0, 2.3.4)"
+            exit 1
+          fi
+
+          echo "Versão final: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Atualizar package.json
+        if: ${{ inputs.version-override != '' || inputs.bump-type != 'none' }}
+        working-directory: ./auth-service
+        run: |
+          echo "Atualizando package.json para versão ${{ steps.version.outputs.version }}"
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add package.json
+          git commit -m "chore(auth-service): bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração"
+          git push origin HEAD:${{ github.ref_name }} || echo "Nenhuma alteração para enviar"
+
+      - name: Gerar Prisma Client (sem banco)
+        working-directory: ./auth-service
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
+        run: pnpm run generate
+
+      - name: Verificar TypeScript
+        continue-on-error: true
+        working-directory: ./auth-service
+        run: |
+          echo "Verificando versão do TypeScript:"
+          pnpm tsc --version
+          echo "Executando type check:"
+          pnpm tsc --noEmit --pretty
+
+      - name: Build do projeto
+        working-directory: ./auth-service
+        run: pnpm build
+
+      - name: Verificar build gerado
+        working-directory: ./auth-service
+        run: |
+          echo "Conteúdo do diretório dist:"
+          ls -lah dist/
+          test -f dist/server.js && echo "[SUCESSO] server.js encontrado" || (echo "[ERROR] server.js NÃO encontrado" && exit 1)
+
+      - name: Upload do build
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-build-artifacts
+          path: |
+            ./auth-service/dist
+            ./auth-service/node_modules
+          retention-days: 1
+
+  testes-unitarios:
+    name: Testes Unitários
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: homologacao
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ativar pnpm
+        run: corepack enable
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./auth-service/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-auth-${{ hashFiles('auth-service/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-auth-
+
+      - name: Instalar dependências
+        working-directory: ./auth-service
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar Prisma Client (sem banco)
+        working-directory: ./auth-service
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
+        run: pnpm run generate
+
+      - name: Executar testes unitários
+        working-directory: ./auth-service
+        run: pnpm run test:unit
+
+      - name: Upload de coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-coverage-unit
+          path: ./auth-service/coverage/
+          retention-days: 7
+        continue-on-error: true
+
+  testes-e2e:
+    name: Testes E2E
+    needs: [testes-unitarios]
+    runs-on: ubuntu-latest
+    environment: homologacao
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ativar pnpm
+        run: corepack enable
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./auth-service/node_modules
+            ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-auth-${{ hashFiles('auth-service/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-auth-
+
+      - name: Instalar dependências
+        working-directory: ./auth-service
+        run: pnpm install --frozen-lockfile
+
+      - name: Criar .env para docker-compose
+        working-directory: ./auth-service
+        run: |
+          cat > .env << 'EOF'
+          DB_USER_TESTE=teste
+          DB_PASSWORD_TESTE=senha_teste
+          DB_NAME_TESTE=auth_database_teste
+          DB_PORT_TESTE=5434
+          REDIS_PASSWORD_TESTE=
+          REDIS_PORT_TESTE=6381
+          EOF
+
+      - name: Subir infraestrutura de testes
+        working-directory: ./auth-service
+        timeout-minutes: 8
+        run: |
+          set -e
+          echo "=== SUBINDO SERVIÇOS DE TESTE ==="
+
+          docker compose -f docker-compose.yaml up -d
+
+          echo "Aguardando inicialização dos serviços (60s)..."
+          sleep 60
+
+          docker compose -f docker-compose.yaml ps
+
+      - name: Criar .env.test
+        working-directory: ./auth-service
+        run: |
+          cat > .env.test << 'EOF'
+          NODE_ENV=test
+          DB_USER=teste
+          DB_PASSWORD=senha_teste
+          DB_NAME=auth_database_teste
+          DB_HOST=localhost
+          DB_PORT=5434
+          DATABASE_URL=postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public&connection_limit=10&pool_timeout=60&connect_timeout=30&statement_timeout=60000
+          JWT_SECRET=chavesecretadeteste123
+          JWT_REFRESH_SECRET=refreshsegredodeteste456
+          JWT_EXPIRATION=8h
+          JWT_REFRESH_EXPIRATION=7d
+          REDIS_HOST=localhost
+          REDIS_PORT=6381
+          REDIS_PASSWORD=
+          API_HOST=0.0.0.0
+          API_PORT=3334
+          LOG_LEVEL=debug
+          EOF
+
+      - name: Gerar Prisma Client
+        working-directory: ./auth-service
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public
+        run: pnpm run generate
+
+      - name: Executar migrations
+        working-directory: ./auth-service
+        env:
+          DATABASE_URL: postgresql://teste:senha_teste@localhost:5434/auth_database_teste?schema=public
+        run: pnpm run migrate:deploy
+
+      - name: Executar testes E2E
+        working-directory: ./auth-service
+        run: pnpm run test:e2e
+
+      - name: Upload de coverage E2E
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-coverage-e2e
+          path: ./auth-service/coverage/
+          retention-days: 7
+        continue-on-error: true
+
+      - name: Logs dos serviços (em caso de falha)
+        working-directory: ./auth-service
+        if: failure()
+        run: docker compose -f docker-compose.yaml logs --tail=100 || true
+
+      - name: Derrubar infraestrutura de testes
+        working-directory: ./auth-service
+        if: always()
+        run: docker compose -f docker-compose.yaml down --volumes --timeout 30 2>/dev/null || true
+
+  deploy:
+    name: Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [build, testes-unitarios, testes-e2e]
+    environment: homologacao
+    outputs:
+      version: ${{ needs.build.outputs.version }}
+      tags: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extrair metadados Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-auth-service
+          tags: |
+            type=raw,value=${{ needs.build.outputs.version }}
+            type=raw,value=latest
+            type=raw,value=homolog
+            type=sha,prefix=sha-
+            type=raw,value=build-${{ github.run_number }}
+          flavor: |
+            latest=auto
+
+      - name: Análise do Dockerfile com Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./auth-service/Dockerfile
+        continue-on-error: true
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build e Push da imagem
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          context: ./auth-service
+          file: ./auth-service/Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-auth-service:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/helpme-auth-service:buildcache,mode=max
+          build-args: |
+            VERSION=${{ needs.build.outputs.version }}
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            GIT_COMMIT=${{ github.sha }}
+
+      - name: Scan de vulnerabilidades com Trivy
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/helpme-auth-service:${{ needs.build.outputs.version }}
+          format: json
+          output: trivy-results.json
+          severity: "HIGH,CRITICAL"
+        continue-on-error: true
+
+      - name: Upload resultados do Trivy
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: auth-trivy-results
+          path: trivy-results.json
+          retention-days: 30
+        continue-on-error: true
+
+      - name: Criar tag Git
+        if: ${{ inputs.create-tag == true }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -fa "auth-v${{ needs.build.outputs.version }}" \
+            -m "Auth Service Release v${{ needs.build.outputs.version }}"
+          git push origin "auth-v${{ needs.build.outputs.version }}" --force
+
+      - name: Gerar Notes
+        id: notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          BRANCH_TYPE: ${{ inputs.branch-type }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REF_NAME: ${{ github.ref_name }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "auth-v*" HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD \
+              --pretty=format:"- %s ([%h](${SERVER_URL}/${REPO}/commit/%H))" \
+              --no-merges)
+          else
+            COMMITS=$(git log \
+              --pretty=format:"- %s ([%h](${SERVER_URL}/${REPO}/commit/%H))" \
+              --no-merges -n 20)
+          fi
+
+          SHORT_SHA="${SHA:0:7}"
+
+          {
+            echo "## Help-Me Auth Service v${VERSION}"
+            echo ""
+            echo "Microserviço de autenticação, autorização e RBAC."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Branch Information"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|-------|-------|"
+            echo "| **Tipo de Branch** | \`${BRANCH_TYPE}\` |"
+            echo "| **Branch Origem** | \`${REF_NAME}\` |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## What's New"
+            echo ""
+            echo "$COMMITS"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Technical Details"
+            echo ""
+            echo "| Attribute | Value |"
+            echo "|-----------|-------|"
+            echo "| **Version** | \`${VERSION}\` |"
+            echo "| **Build** | #${RUN_NUMBER} |"
+            echo "| **Commit** | [\`${SHORT_SHA}\`](${SERVER_URL}/${REPO}/commit/${SHA}) |"
+            echo "| **Node.js** | 22.x |"
+            echo "| **Docker Base** | node:20-alpine |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Docker Images"
+            echo ""
+            echo "| Tag | Purpose |"
+            echo "|-----|---------|"
+            echo "| \`${VERSION}\` | Stable |"
+            echo "| \`homolog\` | Staging |"
+            echo "| \`sha-${SHORT_SHA}\` | Immutable |"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${DOCKERHUB_USERNAME}/helpme-auth-service:${VERSION}"
+            echo '```'
+          } > notes.md
+
+          echo "Notes geradas com sucesso!"
+
+      - name: Criar GitHub Release
+        if: ${{ inputs.create-tag == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "auth-v${{ needs.build.outputs.version }}" \
+            --title "Auth Service v${{ needs.build.outputs.version }}" \
+            --notes-file notes.md \
+            --target "${{ github.ref_name }}" \
+            --prerelease=${{ inputs.branch-type != 'release' }}
+
+      - name: Resumo
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'END_SUMMARY'
+          ## Auth Service — Quality Gates
+
+          | Gate | Status |
+          |------|--------|
+          | **Build** | ✅ Passed |
+          | **Unit Tests** | ✅ Passed |
+          | **E2E Tests** | ✅ Passed |
+          | **Security Scan** | ✅ Completed |
+          | **Docker Build** | ✅ Pushed |
+          END_SUMMARY
+
+          echo "| **Versão** | \`${{ needs.build.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | \`${{ secrets.DOCKERHUB_USERNAME }}/helpme-auth-service:${{ needs.build.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY

@@ -164,6 +164,7 @@ jobs:
           git config user.email "actions@github.com"
           git add package.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "Nenhuma alteração"
+          git push origin HEAD:${{ github.ref_name }} || echo "Nenhuma alteração para enviar"
 
       - name: Gerar Prisma Client (sem banco)
         working-directory: ./api
@@ -641,15 +642,16 @@ jobs:
 
           END_SUMMARY
 
-      # FIX: tag criada explicitamente antes da release para evitar falha quando
+      # Tag criada explicitamente antes da release para evitar falha quando
       # a tag ainda não existe no remote no momento da criação da release
       - name: Criar tag Git
+        if: ${{ inputs.create-tag == true }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git tag -fa "v${{ needs.build.outputs.version }}" \
-            -m "Release v${{ needs.build.outputs.version }}" || true
-          git push origin "v${{ needs.build.outputs.version }}" --force || true
+            -m "Release v${{ needs.build.outputs.version }}"
+          git push origin "v${{ needs.build.outputs.version }}" --force
 
       - name: Gerar Notes
         id: notes
@@ -796,3 +798,14 @@ jobs:
           } > notes.md
 
           echo "Notes geradas com sucesso!"
+
+      - name: Criar GitHub Release
+        if: ${{ inputs.create-tag == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ needs.build.outputs.version }}" \
+            --title "v${{ needs.build.outputs.version }}" \
+            --notes-file notes.md \
+            --target "${{ github.ref_name }}" \
+            --prerelease=${{ inputs.branch-type != 'release' }}
