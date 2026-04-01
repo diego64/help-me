@@ -1,0 +1,126 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: helpme-auth-service-network-policy
+  namespace: helpme
+spec:
+  podSelector:
+    matchLabels:
+      app: helpme-auth-service
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Tráfego do Ingress Controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3333
+
+  # Tráfego da API principal (validação de token)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: helpme-api
+    ports:
+    - protocol: TCP
+      port: 3333
+
+  # Scraping do Prometheus
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 3333
+
+  egress:
+  # PostgreSQL dedicado
+  - to:
+    - podSelector:
+        matchLabels:
+          app: auth-postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Redis dedicado
+  - to:
+    - podSelector:
+        matchLabels:
+          app: auth-redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Kafka compartilhado
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+
+  # DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# auth-postgres: isolado — só aceita conexões do auth-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-postgres-network-policy
+  namespace: helpme
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-postgres
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: helpme-auth-service
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress: []
+
+---
+# auth-redis: isolado — só aceita conexões do auth-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-redis-network-policy
+  namespace: helpme
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: helpme-auth-service
+    ports:
+    - protocol: TCP
+      port: 6379
+  egress: []

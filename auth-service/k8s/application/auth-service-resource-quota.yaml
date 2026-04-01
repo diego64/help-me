@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: helpme-auth-service-quota
+  namespace: helpme
+  labels:
+    app: helpme-auth-service
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    persistentvolumeclaims: "3"
+    pods: "8"
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values: ["helpme-auth-priority"]

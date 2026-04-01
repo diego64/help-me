@@ -1,0 +1,62 @@
+.
+├── docker-compose.yaml
+├── package.json
+├── pnpm-lock.yaml
+├── prisma
+│   ├── schema.prisma
+│   └── seed.ts
+├── prisma.config.ts
+├── scan-estrutura-projeto.txt
+├── src
+│   ├── app.ts
+│   ├── application
+│   │   ├── auth
+│   │   │   ├── login.use-case.ts
+│   │   │   ├── logout.use-case.ts
+│   │   │   └── refresh-token.use-case.ts
+│   │   └── usuario
+│   │       ├── atualizar-usuario.use-case.ts
+│   │       ├── buscar-usuario.use-case.ts
+│   │       ├── criar-usuario.use-case.ts
+│   │       ├── deletar-usuario.use-case.ts
+│   │       ├── listar-usuarios.use-case.ts
+│   │       └── reativar-usuario.use-case.ts
+│   ├── infrastructure
+│   │   ├── database
+│   │   │   ├── prisma
+│   │   │   │   └── client.ts
+│   │   │   └── redis
+│   │   │       └── client.ts
+│   │   ├── http
+│   │   │   └── middlewares
+│   │   │       ├── auth.middlewares.ts
+│   │   │       ├── error-logger.middleware.ts
+│   │   │       ├── error.middleware.ts
+│   │   │       ├── rate-limit.middleware.ts
+│   │   │       ├── request-logger.middleware.ts
+│   │   │       └── tracing.middleware.ts
+│   │   └── messaging
+│   │       └── kafka
+│   │           ├── events
+│   │           └── producers
+│   ├── presentation
+│   │   └── http
+│   │       └── routes
+│   │           ├── auth.routes.ts
+│   │           ├── index.routes.ts
+│   │           └── usuario.routes.ts
+│   ├── server.ts
+│   └── shared
+│       ├── @types
+│       │   └── express.d.ts
+│       ├── config
+│       │   ├── jwt.ts
+│       │   ├── logger.ts
+│       │   ├── password.ts
+│       │   └── swagger.ts
+│       └── utils
+│           └── request-params.ts
+├── tsconfig.json
+└── tsup.config.ts
+
+22 directories, 37 files

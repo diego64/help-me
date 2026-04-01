@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: helpme
+  labels:
+    app: helpme-auth-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: helpme-auth-service

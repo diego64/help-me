@@ -3,7 +3,7 @@ services:
   # BANCO DE DADOS - PostgreSQL
   # ============================================
   postgresql_helpme:
-    image: postgres:16
+    image: postgres:17
     container_name: postgresql_helpme
     hostname: postgresql_helpme
     environment:
@@ -177,7 +177,7 @@ services:
   # MESSAGE BROKER - Kafka
   # ============================================
   zookeeper_helpme:
-    image: confluentinc/cp-zookeeper:7.5.0
+    image: confluentinc/cp-zookeeper:7.9.0
     container_name: zookeeper_helpme
     hostname: zookeeper_helpme
     environment:
@@ -207,7 +207,7 @@ services:
       - "com.helpme.messaging.type=zookeeper"
 
   kafka_helpme:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:7.9.0
     container_name: kafka_helpme
     hostname: kafka_helpme
     depends_on:
@@ -241,7 +241,7 @@ services:
       - "com.helpme.messaging.type=kafka"
 
   control_center_helpme:
-    image: confluentinc/cp-enterprise-control-center:7.5.0
+    image: confluentinc/cp-enterprise-control-center:7.9.0
     container_name: control_center_helpme
     hostname: control_center_helpme
     depends_on:
@@ -372,7 +372,7 @@ services:
   # MONITORAMENTO - Loki (Logs)
   # ============================================
   loki_helpme:
-      image: grafana/loki:3.0.0
+      image: grafana/loki:3.4.3
       container_name: loki_helpme
       hostname: loki_helpme
       environment:
@@ -411,9 +411,11 @@ services:
 
   # ============================================
   # MONITORAMENTO - Promtail (Log Collector)
+  # AVISO: Promtail atingiu EOL em março/2026.
+  # Considere migrar para grafana/alloy.
   # ============================================
   promtail_helpme:
-    image: grafana/promtail:3.0.0
+    image: grafana/promtail:3.4.3
     container_name: promtail_helpme
     hostname: promtail_helpme
     command: -config.file=/etc/promtail/config.yml
@@ -450,9 +452,10 @@ services:
   # MONITORAMENTO - Tempo (Tracing)
   # ============================================
   tempo_helpme:
-    image: grafana/tempo:2.4.0
+    image: grafana/tempo:2.7.2
     container_name: tempo_helpme
     hostname: tempo_helpme
+    user: "0"  # roda como root para ter permissão no volume
     environment:
       TZ: America/Sao_Paulo
     command: ["-config.file=/etc/tempo.yaml"]
@@ -493,7 +496,7 @@ services:
   # MONITORAMENTO - Grafana
   # ============================================
   grafana_helpme:
-    image: grafana/grafana:10.2.3
+    image: grafana/grafana:12.0.0
     container_name: grafana_helpme
     hostname: grafana_helpme
     environment:
@@ -548,7 +551,7 @@ services:
   # MONITORAMENTO - Prometheus
   # ============================================
   prometheus_helpme:
-    image: prom/prometheus:v2.48.1
+    image: prom/prometheus:v3.2.1
     container_name: prometheus_helpme
     hostname: prometheus_helpme
     environment:
@@ -595,7 +598,7 @@ services:
   # MONITORAMENTO - Node Exporter
   # ============================================
   node_exporter_helpme:
-    image: prom/node-exporter:v1.7.0
+    image: prom/node-exporter:v1.9.1
     container_name: node_exporter_helpme
     hostname: node_exporter_helpme
     environment:
@@ -636,7 +639,7 @@ services:
   # MONITORAMENTO - cAdvisor
   # ============================================
   cadvisor_helpme:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
     container_name: cadvisor_helpme
     hostname: cadvisor_helpme
     privileged: true
@@ -679,7 +682,7 @@ services:
   # MONITORAMENTO - PostgreSQL Exporter
   # ============================================
   postgres_exporter_helpme:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: postgres_exporter_helpme
     hostname: postgres_exporter_helpme
     environment:
@@ -712,7 +715,7 @@ services:
   # MONITORAMENTO - MongoDB Exporter
   # ============================================
   mongodb_exporter_helpme:
-    image: percona/mongodb_exporter:0.40
+    image: percona/mongodb_exporter:0.42
     container_name: mongodb_exporter_helpme
     hostname: mongodb_exporter_helpme
     environment:
@@ -749,7 +752,7 @@ services:
   # MONITORAMENTO - Redis Exporter
   # ============================================
   redis_exporter_helpme:
-    image: oliver006/redis_exporter:v1.55.0
+    image: oliver006/redis_exporter:v1.69.0
     container_name: redis_exporter_helpme
     hostname: redis_exporter_helpme
     environment:
@@ -785,7 +788,7 @@ services:
   # MONITORAMENTO - Kafka Exporter
   # ============================================
   kafka_exporter_helpme:
-    image: danielqsj/kafka-exporter:v1.7.0
+    image: danielqsj/kafka-exporter:v1.8.0
     container_name: kafka_exporter_helpme
     hostname: kafka_exporter_helpme
     environment:
@@ -821,7 +824,7 @@ services:
   # BANCO DE DADOS - PostgreSQL (Teste)
   # ============================================
   postgresql_helpme_teste:
-    image: postgres:16
+    image: postgres:17
     container_name: postgresql_helpme_teste
     hostname: postgresql_helpme_teste
     environment:
@@ -1025,7 +1028,7 @@ services:
   # MESSAGE BROKER - Zookeeper (Teste)
   # ============================================
   zookeeper_helpme_teste:
-    image: confluentinc/cp-zookeeper:7.5.0
+    image: confluentinc/cp-zookeeper:7.9.0
     container_name: zookeeper_helpme_teste
     hostname: zookeeper_helpme_teste
     environment:
@@ -1059,7 +1062,7 @@ services:
   # MESSAGE BROKER - Kafka (Teste)
   # ============================================
   kafka_helpme_teste:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:7.9.0
     container_name: kafka_helpme_teste
     hostname: kafka_helpme_teste
     depends_on:
@@ -1161,6 +1164,7 @@ services:
 # ============================================
 networks:
   helpme_network:
+    external: true
     driver: bridge
     name: helpme_network
     ipam:

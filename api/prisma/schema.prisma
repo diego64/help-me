@@ -54,46 +54,32 @@ enum Setor {
 // ==================== MODELS ====================
 
 model Usuario {
-  id                     String        @id @default(cuid())
-  nome                   String        @db.VarChar(100)
-  sobrenome              String        @db.VarChar(100)
-  email                  String        @unique @db.VarChar(255)
-  password               String        @db.VarChar(512)
-  regra                  Regra
-  nivel                  NivelTecnico? @default(N1)
-  setor                  Setor?
-  telefone               String?
-  ramal                  String?
-  avatarUrl              String?
+  id           String        @id  // mesmo id gerado pelo auth-service
+  nome         String        @db.VarChar(100)
+  sobrenome    String        @db.VarChar(100)
+  email        String        @unique @db.VarChar(255)
+  regra        Regra
+  nivel        NivelTecnico? @default(N1)
+  setor        Setor?
+  telefone     String?
+  ramal        String?
+  avatarUrl    String?
+  ativo        Boolean       @default(true)
 
-  geradoEm               DateTime    @default(now()) @map("gerado_em") @db.Timestamptz(3)
-  atualizadoEm           DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(3)
-  deletadoEm             DateTime?   @map("deletado_em") @db.Timestamptz(3)
-  ativo                  Boolean     @default(true)
-  refreshToken           String?
+  geradoEm     DateTime      @default(now()) @map("gerado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  deletadoEm   DateTime?     @map("deletado_em") @db.Timestamptz(3)
 
-  chamadoOS              Chamado[]   @relation("UsuarioChamado")
-  tecnicoChamados        Chamado[]   @relation("TecnicoResponsavel")
-  tecnicoDisponibilidade Expediente[]
-
-  // Sistema de Transferência
+  chamadoOS                Chamado[]              @relation("UsuarioChamado")
+  tecnicoChamados          Chamado[]              @relation("TecnicoResponsavel")
+  tecnicoDisponibilidade   Expediente[]
   transferenciasRealizadas TransferenciaChamado[] @relation("TransferenciasRealizadas")
   transferenciasRecebidas  TransferenciaChamado[] @relation("TransferenciasPara")
   transferenciasEnviadas   TransferenciaChamado[] @relation("TransferenciasDe")
-
-  // Sistema de Priorização
   alteracoesPrioridade     Chamado[]              @relation("AlteracoesPrioridade")
-
-  // Sistema de Comentários
   comentarios              ComentarioChamado[]
-
-  // Sistema de Anexos
   anexos                   AnexoChamado[]
-
-  // Sistema de Vínculos
   vinculosChamado          Chamado[]              @relation("VinculosChamado")
-
-  // ==================== INDEX ====================
 
   @@index([email])
   @@index([regra])

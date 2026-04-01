@@ -1,0 +1,169 @@
+services:
+  # ================
+  # ELASTICSEARCH
+  # ================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+    container_name: auth-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.ml.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - cluster.name=auth-service-logs
+    ports:
+      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - auth-es-data:/usr/share/elasticsearch/data
+    networks:
+      - auth-elk-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+  # ================
+  # KIBANA
+  # ================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.4
+    container_name: auth-kibana
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_HOST=0.0.0.0
+      - SERVER_NAME=auth-kibana
+      - XPACK_SECURITY_ENABLED=false
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY:-auth-service-elk-key-32-chars-ok}
+      - TELEMETRY_OPTIN=false
+      - TELEMETRY_ENABLED=false
+      - NEWSFEED_ENABLED=false
+      - LOGGING_ROOT_LEVEL=warn
+      - NODE_OPTIONS=--max-old-space-size=1024
+    ports:
+      - "127.0.0.1:${KIBANA_PORT:-5601}:5601"
+    volumes:
+      - auth-kibana-data:/usr/share/kibana/data
+    networks:
+      - auth-elk-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q available"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
+
+  # ================
+  # FILEBEAT
+  # ================
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.4
+    container_name: auth-filebeat
+    restart: unless-stopped
+    user: root
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ${LOG_FILE_DIR:-../logs}:/logs:ro
+      - auth-filebeat-data:/usr/share/filebeat/data
+    networks:
+      - auth-elk-network
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  # ================
+  # ELASTALERT2
+  # ================
+  elastalert:
+    image: jertel/elastalert2:latest
+    container_name: auth-elastalert
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./elastalert/config.yaml:/opt/elastalert/config.yaml:ro
+      - ./elastalert/rules:/opt/elastalert/rules:ro
+    networks:
+      - auth-elk-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+  # ================
+  # N8N
+  # ================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: auth-n8n
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://n8n:5678/
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - auth-n8n-data:/home/node/.n8n
+    networks:
+      - auth-elk-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+# ================
+# VOLUMES
+# ================
+volumes:
+  auth-es-data:
+    driver: local
+  auth-kibana-data:
+    driver: local
+  auth-filebeat-data:
+    driver: local
+  auth-n8n-data:
+    driver: local
+
+# ================
+# NETWORKS
+# ================
+networks:
+  auth-elk-network:
+    driver: bridge

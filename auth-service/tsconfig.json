@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+
+    "baseUrl": ".",
+    //"rootDir": ".",
+    "outDir": "./dist",
+
+    "paths": {
+      "@/*": ["./src/*"],
+      "@application/*": ["src/application/*"],
+      "@infrastructure/*": ["src/infrastructure/*"],
+      "@messaging/*": ["src/infrastructure/messaging/*"],
+      "@presentation/*": ["src/presentation/*"],
+      "@shared/*": ["src/shared/*"],
+      "@templates/*": ["src/templates/*"],
+      "@tests/*": ["src/__tests__/*"],
+    },
+
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*", "prisma/**/*", "vitest.setup.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -1,0 +1,1 @@
+{"type":"index-pattern","id":"auth-service-logs","attributes":{"title":"auth-service-logs-*","timeFieldName":"@timestamp"},"references":[],"managed":false}

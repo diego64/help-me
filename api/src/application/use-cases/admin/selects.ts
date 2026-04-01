@@ -1,0 +1,15 @@
+export const ADMIN_SELECT = {
+  id: true,
+  nome: true,
+  sobrenome: true,
+  email: true,
+  regra: true,
+  setor: true,
+  telefone: true,
+  ramal: true,
+  avatarUrl: true,
+  ativo: true,
+  geradoEm: true,
+  atualizadoEm: true,
+  deletadoEm: true,
+} as const;
