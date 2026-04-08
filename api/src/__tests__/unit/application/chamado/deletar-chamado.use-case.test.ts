@@ -28,7 +28,7 @@ const makeInput = (overrides = {}): Parameters<typeof deletarChamadoUseCase>[0] 
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   status: ChamadoStatus.ABERTO,
   ...overrides,
 })
@@ -94,13 +94,13 @@ describe('deletarChamadoUseCase', () => {
     it('deve retornar message com OS do chamado', async () => {
       const result = await deletarChamadoUseCase(makeInput({ permanente: false }))
 
-      expect(result.message).toContain('INC0001')
+      expect(result.message).toContain('INC0000001')
     })
 
     it('deve retornar message com texto de sucesso', async () => {
       const result = await deletarChamadoUseCase(makeInput({ permanente: false }))
 
-      expect(result.message).toBe('Chamado INC0001 excluído com sucesso')
+      expect(result.message).toBe('Chamado INC0000001 excluído com sucesso')
     })
 
     it('deve retornar o id do chamado', async () => {
@@ -113,7 +113,7 @@ describe('deletarChamadoUseCase', () => {
       await deletarChamadoUseCase(makeInput({ permanente: false }))
 
       expect(logger.info).toHaveBeenCalledWith(
-        { chamadoId: 'chamado-id-123', OS: 'INC0001' },
+        { chamadoId: 'chamado-id-123', OS: 'INC0000001' },
         '[CHAMADO] Soft delete realizado'
       )
     })
@@ -163,13 +163,13 @@ describe('deletarChamadoUseCase', () => {
     it('deve retornar message com OS do chamado', async () => {
       const result = await deletarChamadoUseCase(makeInput({ permanente: true }))
 
-      expect(result.message).toContain('INC0001')
+      expect(result.message).toContain('INC0000001')
     })
 
     it('deve retornar message com texto de exclusão permanente', async () => {
       const result = await deletarChamadoUseCase(makeInput({ permanente: true }))
 
-      expect(result.message).toBe('Chamado INC0001 excluído permanentemente')
+      expect(result.message).toBe('Chamado INC0000001 excluído permanentemente')
     })
 
     it('deve retornar o id do chamado', async () => {
@@ -182,7 +182,7 @@ describe('deletarChamadoUseCase', () => {
       await deletarChamadoUseCase(makeInput({ permanente: true }))
 
       expect(logger.info).toHaveBeenCalledWith(
-        { chamadoId: 'chamado-id-123', OS: 'INC0001' },
+        { chamadoId: 'chamado-id-123', OS: 'INC0000001' },
         '[CHAMADO] Excluído permanentemente'
       )
     })

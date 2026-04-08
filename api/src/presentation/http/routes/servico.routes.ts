@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { getStringParamRequired, getNumberParamClamped, getBooleanParam, getStringParam } from '@shared/utils/request-params';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { REGRAS_USUARIO } from '@application/use-cases/usuario/selects';
 import { ServicoError } from '@application/use-cases/servico/errors';
 import { criarServicoUseCase } from '@application/use-cases/servico/criar-servico.use-case';
 import { listarServicosUseCase } from '@application/use-cases/servico/listar-servicos.use-case';
@@ -123,7 +124,7 @@ router.post('/', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthReques
  *       500:
  *         description: Erro ao listar serviços
  */
-router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'), async (req: AuthRequest, res: Response) => {
+router.get('/', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const result = await listarServicosUseCase({
       page:             getNumberParamClamped(req.query.page,  1,  1),
@@ -159,7 +160,7 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'), a
  *       500:
  *         description: Erro ao buscar serviço
  */
-router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO', 'TECNICO'), async (req: AuthRequest, res: Response) => {
+router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const result = await buscarServicoUseCase(getStringParamRequired(req.params.id));
     res.json(result);

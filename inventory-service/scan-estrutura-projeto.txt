@@ -1,0 +1,95 @@
+.
+├── __tests__
+│   ├── e2e
+│   └── unit
+├── docker-compose.yaml
+├── package.json
+├── pnpm-lock.yaml
+├── prisma
+│   ├── schema.prisma
+│   └── seed.ts
+├── prisma.config.ts
+├── scan-estrutura-projeto.txt
+├── src
+│   ├── app.ts
+│   ├── application
+│   │   └── use-cases
+│   │       ├── baixa
+│   │       │   ├── aprovar-baixa-gestor.use-case.ts
+│   │       │   ├── aprovar-baixa-tecnico.use-case.ts
+│   │       │   ├── criar-baixa.use-case.ts
+│   │       │   ├── executar-baixa.use-case.ts
+│   │       │   └── rejeitar-baixa.use-case.ts
+│   │       ├── categoria
+│   │       │   ├── criar-categoria.use-case.ts
+│   │       │   └── listar-categorias.use-case.ts
+│   │       ├── compra
+│   │       │   ├── aprovar-solicitacao-compra.use-case.ts
+│   │       │   ├── cancelar-solicitacao-compra.use-case.ts
+│   │       │   ├── criar-solicitacao-compra.use-case.ts
+│   │       │   ├── executar-compra.use-case.ts
+│   │       │   └── rejeitar-solicitacao-compra.use-case.ts
+│   │       ├── fornecedor
+│   │       │   ├── criar-fornecedor.use-case.ts
+│   │       │   └── listar-fornecedores.use-case.ts
+│   │       ├── inventario
+│   │       │   ├── atualizar-item.use-case.ts
+│   │       │   ├── consultar-item.use-case.ts
+│   │       │   ├── listar-itens.use-case.ts
+│   │       │   └── registrar-item.use-case.ts
+│   │       └── reembolso
+│   │           ├── aprovar-reembolso.use-case.ts
+│   │           ├── criar-reembolso.use-case.ts
+│   │           ├── processar-reembolso.use-case.ts
+│   │           └── rejeitar-reembolso.use-case.ts
+│   ├── domain
+│   │   ├── baixa
+│   │   │   ├── baixa.entity.ts
+│   │   │   └── item-baixa.entity.ts
+│   │   ├── compra
+│   │   │   ├── item-solicitacao-compra.entity.ts
+│   │   │   └── solicitacao-compra.entity.ts
+│   │   ├── inventario
+│   │   │   ├── categoria.entity.ts
+│   │   │   ├── fornecedor.entity.ts
+│   │   │   ├── item-inventario.entity.ts
+│   │   │   └── movimentacao-estoque.entity.ts
+│   │   └── reembolso
+│   │       └── reembolso.entity.ts
+│   ├── infrastructure
+│   │   ├── database
+│   │   │   └── prisma.client.ts
+│   │   ├── http
+│   │   │   └── axios.client.ts
+│   │   ├── messaging
+│   │   │   ├── consumers
+│   │   │   │   └── auth.consumer.ts
+│   │   │   ├── kafka.client.ts
+│   │   │   └── producers
+│   │   │       ├── baixa.producer.ts
+│   │   │       ├── compra.producer.ts
+│   │   │       └── reembolso.producer.ts
+│   │   ├── repositories
+│   │   │   ├── prisma-baixa.repository.ts
+│   │   │   ├── prisma-item-inventario.repository.ts
+│   │   │   ├── prisma-reembolso.repository.ts
+│   │   │   └── prisma-solicitacao-compra.repository.ts
+│   │   └── storage
+│   │       └── minio.client.ts
+│   ├── presentation
+│   │   └── http
+│   │       └── routes
+│   │           ├── baixa.routes.ts
+│   │           ├── categoria.routes.ts
+│   │           ├── compra.routes.ts
+│   │           ├── fornecedor.routes.ts
+│   │           ├── index.ts
+│   │           ├── inventario.routes.ts
+│   │           └── reembolso.routes.ts
+│   └── server.ts
+├── tsconfig.json
+├── tsup.config.ts
+├── vitest.config.e2e.ts
+└── vitest.config.ts
+
+29 directories, 63 files

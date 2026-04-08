@@ -41,7 +41,7 @@ const makeInput = (overrides = {}): Parameters<typeof filaBaixaUseCase>[0] => ({
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   descricao: 'Problema com acesso ao sistema',
   status: ChamadoStatus.ABERTO,
   prioridade: PrioridadeChamado.P4,

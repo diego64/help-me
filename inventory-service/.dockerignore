@@ -1,0 +1,75 @@
+# ================================
+# Dependências
+# ================================
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ================================
+# Build e dist
+# ================================
+dist
+build
+.next
+out
+
+# ================================
+# Testes e cobertura
+# ================================
+coverage
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# ================================
+# Ambientes e configurações
+# ================================
+.env.local
+.env*.local
+.gitignore
+
+# ================================
+# Git e controle de versão
+# ================================
+.git
+.github
+.husky
+
+# ================================
+# Docker
+# ================================
+.docker
+docker-compose*.yml
+Dockerfile*
+
+# ================================
+# IDEs e editores
+# ================================
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# ================================
+# Documentação
+# ================================
+README.md
+*.md
+docs
+
+# ================================
+# Logs
+# ================================
+logs
+*.log
+
+# ================================
+# Temporários
+# ================================
+tmp
+temp
+.cache

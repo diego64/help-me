@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { REGRAS_USUARIO } from '@application/use-cases/usuario/selects';
 import { FilaError } from '@application/use-cases/fila/errors';
 import { resumoFilaUseCase } from '@application/use-cases/fila/resumo-fila.use-case';
 import { filaAltaUseCase } from '@application/use-cases/fila/fila-alta.use-case';
@@ -164,7 +165,7 @@ router.get('/baixa', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'), async (
  *       500:
  *         description: Erro ao listar chamados
  */
-router.get('/meus-chamados', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res: Response) => {
+router.get('/meus-chamados', authMiddleware, authorizeRoles(...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const { page, limit } = getPagination(req.query);
     const result = await meusChamadosUseCase({

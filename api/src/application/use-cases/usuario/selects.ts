@@ -1,3 +1,7 @@
+import { Regra } from '@prisma/client';
+
+export const REGRAS_USUARIO = [Regra.USUARIO, Regra.COMPRADOR, Regra.GESTOR, Regra.INVENTARIANTE] as const;
+
 export const USUARIO_SELECT = {
   id:           true,
   nome:         true,

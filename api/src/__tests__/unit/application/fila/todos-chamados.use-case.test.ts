@@ -35,7 +35,7 @@ const makeInput = (overrides = {}): Parameters<typeof todosChamadosUseCase>[0] =
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   descricao: 'Problema com acesso ao sistema',
   descricaoEncerramento: null,
   status: ChamadoStatus.ABERTO,
@@ -246,13 +246,13 @@ describe('todosChamadosUseCase', () => {
 
   describe('filtro de busca', () => {
     it('deve buscar por OS quando busca fornecida', async () => {
-      await todosChamadosUseCase(makeInput({ busca: 'INC0001' }))
+      await todosChamadosUseCase(makeInput({ busca: 'INC0000001' }))
 
       expect(prisma.chamado.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             OR: expect.arrayContaining([
-              { OS: { contains: 'INC0001', mode: 'insensitive' } },
+              { OS: { contains: 'INC0000001', mode: 'insensitive' } },
             ]),
           }),
         })
@@ -399,7 +399,7 @@ describe('todosChamadosUseCase', () => {
 
   describe('retorno da resposta paginada', () => {
     it('deve retornar data com os chamados', async () => {
-      const chamados = [makeChamado(), makeChamado({ id: 'chamado-id-456', OS: 'INC0002' })]
+      const chamados = [makeChamado(), makeChamado({ id: 'chamado-id-456', OS: 'INC0000002' })]
       vi.mocked(prisma.chamado.findMany).mockResolvedValue(chamados as any)
       vi.mocked(prisma.chamado.count).mockResolvedValue(2)
 

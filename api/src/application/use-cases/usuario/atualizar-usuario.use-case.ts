@@ -1,9 +1,9 @@
-import { Regra, Setor } from '@prisma/client';
+import { Setor } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { cacheDel } from '@infrastructure/database/redis/client';
 import { logger } from '@shared/config/logger';
 import { UsuarioError } from './errors';
-import { USUARIO_SELECT } from './selects';
+import { USUARIO_SELECT, REGRAS_USUARIO } from './selects';
 
 interface AtualizarUsuarioInput {
   id: string;
@@ -25,7 +25,7 @@ export async function atualizarUsuarioUseCase(input: AtualizarUsuarioInput) {
       select: { id: true, regra: true, email: true, deletadoEm: true },
     });
 
-    if (!usuario || usuario.regra !== Regra.USUARIO) throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
+    if (!usuario || !REGRAS_USUARIO.includes(usuario.regra as any)) throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
     if (usuario.deletadoEm) throw new UsuarioError('Não é possível editar um usuário deletado', 'DELETED', 400);
 
     const data: Record<string, unknown> = {};

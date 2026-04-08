@@ -1,0 +1,218 @@
+services:
+  # ============================================
+  # BANCO DE DADOS - PostgreSQL
+  # ============================================
+  inventory-postgres:
+    image: postgres:17.9
+    container_name: inventory-postgres
+    restart: unless-stopped
+    user: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS}
+    ports:
+      - "127.0.0.1:${DB_PORT}:5432"
+    volumes:
+      - inventory-postgres-data:/var/lib/postgresql/data
+    networks:
+      - inventory-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  # ============================================
+  # BANCO DE DADOS - Redis
+  # ============================================
+  inventory-redis:
+    image: redis:8.6
+    container_name: inventory-redis
+    restart: unless-stopped
+    user: redis
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --protected-mode
+      - "yes"
+      - --loglevel
+      - warning
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    volumes:
+      - inventory-redis-data:/data
+    networks:
+      - inventory-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  # ============================================
+  # INVENTORY SERVICE
+  # ============================================
+#  inventory-service:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: inventory-service
+#    restart: unless-stopped
+#    env_file:
+#      - .env
+#    ports:
+#      - "127.0.0.1:${PORT}:${PORT}"
+#    networks:
+#      - inventory-network      # acessa postgres e redis
+#      - helpme-network         # comunica com o api/ e futuros serviços
+#    depends_on:
+#      inventory-postgres:
+#        condition: service_healthy
+#      inventory-redis:
+#        condition: service_healthy
+#    healthcheck:
+#      test: ["CMD-SHELL", "curl -f http://localhost:${PORT}/health || exit 1"]
+#      interval: 15s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 20s
+#    security_opt:
+#      - no-new-privileges:true
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "1.0"
+#          memory: 256M
+#        reservations:
+#          cpus: "0.1"
+#          memory: 64M
+
+# ============================================
+# VOLUMES
+# ============================================
+  # ============================================
+  # BANCO DE DADOS DE TESTES — PostgreSQL
+  # Uso exclusivo para testes E2E (dados em memória, sem persistência)
+  # Suba com: docker compose up inventory-postgres-test -d
+  # ============================================
+  inventory-postgres-test:
+    image: postgres:17.9
+    container_name: inventory-postgres-test
+    restart: "no"
+    environment:
+      POSTGRES_USER: administrator
+      POSTGRES_PASSWORD: 1qaz2wsx3edc
+      POSTGRES_DB: inventory-test
+    ports:
+      - "127.0.0.1:5490:5432"
+    networks:
+      - inventory-network
+    tmpfs:
+      - /var/lib/postgresql/data
+      - /tmp
+      - /var/run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U administrator -d inventory-test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ============================================
+  # CACHE DE TESTES — Redis
+  # Uso exclusivo para testes E2E (sem persistência)
+  # Suba com: docker compose up inventory-redis-test -d
+  # ============================================
+  inventory-redis-test:
+    image: redis:8.6
+    container_name: inventory-redis-test
+    restart: "no"
+    command:
+      - redis-server
+      - --requirepass
+      - 1qaz2wsx3edc
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:6392:6379"
+    networks:
+      - inventory-network
+    tmpfs:
+      - /data
+      - /tmp
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "1qaz2wsx3edc", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+volumes:
+  inventory-postgres-data:
+    driver: local
+  inventory-redis-data:
+    driver: local
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  # Rede interna — postgres e redis só acessíveis pelo inventory-service
+  # internal: false permite acesso via localhost em desenvolvimento
+  # enable_icc: false isola containers de redes externas entre si
+  inventory-network:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+
+  # Rede compartilhada — comunicação entre microserviços
+  # Criar manualmente antes de subir: docker network create helpme-network
+  helpme-network:
+    external: true

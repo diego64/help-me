@@ -43,7 +43,7 @@ const makeAnexo = (overrides = {}) => ({
   mimetype: 'application/pdf',
   tamanho: 1024,
   bucketMinio: 'helpme-bucket',
-  objetoMinio: 'INC0001/uuid.pdf',
+  objetoMinio: 'INC0000001/uuid.pdf',
   deletadoEm: null,
   ...overrides,
 })
@@ -52,7 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 
   vi.mocked(prisma.anexoChamado.findUnique).mockResolvedValue(makeAnexo() as any)
-  vi.mocked(minioClient.presignedGetObject).mockResolvedValue('https://minio.example.com/helpme-bucket/INC0001/uuid.pdf?X-Amz-Expires=600')
+  vi.mocked(minioClient.presignedGetObject).mockResolvedValue('https://minio.example.com/helpme-bucket/INC0000001/uuid.pdf?X-Amz-Expires=600')
 })
 
 describe('downloadAnexoUseCase', () => {
@@ -144,7 +144,7 @@ describe('downloadAnexoUseCase', () => {
 
       expect(minioClient.presignedGetObject).toHaveBeenCalledWith(
         'helpme-bucket',
-        'INC0001/uuid.pdf',
+        'INC0000001/uuid.pdf',
         600
       )
     })
@@ -169,13 +169,13 @@ describe('downloadAnexoUseCase', () => {
 
     it('deve usar o objetoMinio do anexo', async () => {
       vi.mocked(prisma.anexoChamado.findUnique).mockResolvedValue(
-        makeAnexo({ objetoMinio: 'INC0002/outro-uuid.png' }) as any
+        makeAnexo({ objetoMinio: 'INC0000002/outro-uuid.png' }) as any
       )
 
       await downloadAnexoUseCase(makeInput())
 
       const [, objeto] = vi.mocked(minioClient.presignedGetObject).mock.calls[0] ?? []
-      expect(objeto).toBe('INC0002/outro-uuid.png')
+      expect(objeto).toBe('INC0000002/outro-uuid.png')
     })
   })
 
@@ -183,7 +183,7 @@ describe('downloadAnexoUseCase', () => {
     it('deve retornar url gerada pelo MinIO', async () => {
       const result = await downloadAnexoUseCase(makeInput())
 
-      expect(result.url).toBe('https://minio.example.com/helpme-bucket/INC0001/uuid.pdf?X-Amz-Expires=600')
+      expect(result.url).toBe('https://minio.example.com/helpme-bucket/INC0000001/uuid.pdf?X-Amz-Expires=600')
     })
 
     it('deve retornar expiraEm como ISO string', async () => {

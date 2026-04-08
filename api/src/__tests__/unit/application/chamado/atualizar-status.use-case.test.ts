@@ -59,7 +59,7 @@ const makeInput = (overrides = {}): Parameters<typeof atualizarStatusUseCase>[0]
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   status: ChamadoStatus.ABERTO,
   prioridade: PrioridadeChamado.P3,
   descricao: 'Problema reportado pelo usuário',

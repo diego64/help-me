@@ -10,6 +10,9 @@ datasource db {
 
 enum Regra {
   ADMIN
+  COMPRADOR
+  GESTOR
+  INVENTARIANTE
   TECNICO
   USUARIO
 }
@@ -51,6 +54,22 @@ enum Setor {
   TECNOLOGIA_INFORMACAO
 }
 
+enum ReembolsoStatus {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  PAGO
+  CANCELADO
+}
+
+enum CategoriaReembolso {
+  TRANSPORTE
+  ALIMENTACAO
+  HOSPEDAGEM
+  MATERIAL
+  OUTRO
+}
+
 // ==================== MODELS ====================
 
 model Usuario {
@@ -80,6 +99,11 @@ model Usuario {
   comentarios              ComentarioChamado[]
   anexos                   AnexoChamado[]
   vinculosChamado          Chamado[]              @relation("VinculosChamado")
+
+  reembolsosSolicitados    Reembolso[]            @relation("ReembolsosSolicitados")
+  reembolsosAprovados      Reembolso[]            @relation("ReembolsosAprovados")
+  reembolsosPagos          Reembolso[]            @relation("ReembolsosPagos")
+  anexosReembolso          AnexoReembolso[]
 
   @@index([email])
   @@index([regra])
@@ -281,4 +305,70 @@ model AnexoChamado {
   @@index([deletadoEm])
   @@index([chamadoId, deletadoEm])
   @@map("anexos_chamado")
+}
+
+model Reembolso {
+  id        String             @id @default(cuid())
+  numero    String             @unique @db.VarChar(20)
+  descricao String             @db.Text
+  categoria CategoriaReembolso
+  valor     Decimal            @db.Decimal(10, 2)
+  status    ReembolsoStatus    @default(PENDENTE)
+  setor     Setor?             // copiado do solicitante no momento da criação
+
+  solicitanteId String   @map("solicitante_id")
+  solicitante   Usuario  @relation("ReembolsosSolicitados", fields: [solicitanteId], references: [id])
+
+  aprovadorId    String?   @map("aprovador_id")
+  aprovador      Usuario?  @relation("ReembolsosAprovados", fields: [aprovadorId], references: [id])
+  aprovadoEm     DateTime? @map("aprovado_em") @db.Timestamptz(3)
+  motivoRejeicao String?   @map("motivo_rejeicao") @db.Text
+
+  pagadorId               String?   @map("pagador_id")
+  pagador                 Usuario?  @relation("ReembolsosPagos", fields: [pagadorId], references: [id])
+  pagoEm                  DateTime? @map("pago_em") @db.Timestamptz(3)
+  comprovantePagamentoUrl String?   @map("comprovante_pagamento_url") @db.VarChar(500)
+
+  geradoEm     DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  deletadoEm   DateTime? @map("deletado_em") @db.Timestamptz(3)
+
+  comprovantes AnexoReembolso[]
+
+  @@index([solicitanteId])
+  @@index([aprovadorId])
+  @@index([pagadorId])
+  @@index([status])
+  @@index([categoria])
+  @@index([setor])
+  @@index([geradoEm])
+  @@index([deletadoEm])
+  @@index([status, geradoEm])
+  @@index([solicitanteId, status])
+  @@index([setor, status])
+  @@map("reembolsos")
+}
+
+model AnexoReembolso {
+  id          String    @id @default(cuid())
+  reembolsoId String    @map("reembolso_id")
+  autorId     String    @map("autor_id")
+  nomeArquivo String    @map("nome_arquivo") @db.VarChar(255)
+  nomeOriginal String   @map("nome_original") @db.VarChar(255)
+  mimetype    String    @db.VarChar(100)
+  tamanho     Int
+  bucketMinio String    @map("bucket_minio") @db.VarChar(100)
+  objetoMinio String    @map("objeto_minio") @db.VarChar(255)
+
+  criadoEm   DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  deletadoEm DateTime? @map("deletado_em") @db.Timestamptz(3)
+
+  reembolso Reembolso @relation(fields: [reembolsoId], references: [id], onDelete: Cascade)
+  autor     Usuario   @relation(fields: [autorId], references: [id])
+
+  @@index([reembolsoId])
+  @@index([autorId])
+  @@index([criadoEm])
+  @@index([deletadoEm])
+  @@map("anexos_reembolso")
 }

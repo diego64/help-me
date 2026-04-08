@@ -29,7 +29,7 @@ const DATA_FIXA = new Date('2024-01-01T00:00:00.000Z')
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   deletadoEm: null,
   ...overrides,
 })
@@ -162,7 +162,7 @@ describe('listarAnexosUseCase', () => {
     it('deve retornar chamadoOS corretamente', async () => {
       const result = await listarAnexosUseCase('chamado-id-123')
 
-      expect(result.chamadoOS).toBe('INC0001')
+      expect(result.chamadoOS).toBe('INC0000001')
     })
 
     it('deve retornar total de anexos', async () => {

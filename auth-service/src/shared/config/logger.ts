@@ -69,7 +69,7 @@ function buildDestination(): pino.MultiStreamRes | NodeJS.WritableStream {
     });
   }
 
-  return streams.length === 1 ? streams[0]!.stream : pino.multistream(streams);
+  return streams.length === 1 ? (streams[0]!.stream as unknown as NodeJS.WritableStream) : pino.multistream(streams);
 }
 
 export const logger = pino(pinoOptions, buildDestination());

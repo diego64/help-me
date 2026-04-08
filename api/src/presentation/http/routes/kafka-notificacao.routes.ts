@@ -124,7 +124,7 @@ function handleError(res: Response, err: unknown, mensagem: string) {
  *                 default: "123"
  *               OS:
  *                 type: string
- *                 default: "INC0001"
+ *                 default: "INC0000001"
  *               descricao:
  *                 type: string
  *               dataAbertura:
@@ -156,7 +156,7 @@ router.post('/chamado-teste', authMiddleware, authorizeRoles('ADMIN'), async (re
       emailUsuario  = 'teste@mailtrap.io',
       assunto       = 'Chamado Encerrado',
       id            = '123',
-      OS            = 'INC0001',
+      OS            = 'INC0000001',
       descricao,
       dataAbertura,
       dataEncerramento,

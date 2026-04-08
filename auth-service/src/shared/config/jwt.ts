@@ -42,6 +42,7 @@ export interface TokenPayload extends JwtPayload {
   id: string;
   email?: string;
   regra: Regra;
+  setor?: string | null;
   type: 'access' | 'refresh';
   fingerprint?: string;
   jti: string;
@@ -211,6 +212,7 @@ export function generateToken(
     id: usuario.id,
     email: usuario.email,
     regra: usuario.regra,
+    setor: usuario.setor ?? null,
     type,
     jti: generateJti(),
     // Fingerprint apenas no access token — vincula ao dispositivo

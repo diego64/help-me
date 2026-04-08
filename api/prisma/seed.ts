@@ -316,7 +316,7 @@ async function main() {
   const cs = await prisma.$transaction(async (tx) => {
 
     const c01 = await tx.chamado.create({ data: {
-      OS: 'INC0001', status: ChamadoStatus.ABERTO, prioridade: PrioridadeChamado.P3,
+      OS: 'INC0000001', status: ChamadoStatus.ABERTO, prioridade: PrioridadeChamado.P3,
       usuarioId: ana.id, geradoEm: hrs(2), atualizadoEm: hrs(2),
       descricao: 'Impressora do setor comercial offline após atualização de driver.',
     }});
@@ -324,16 +324,16 @@ async function main() {
     historico.push(hAbertura(c01.id, c01.descricao, ana.id, nAna, ana.email, hrs(2)));
 
     const c02 = await tx.chamado.create({ data: {
-      OS: 'INC0002', status: ChamadoStatus.ABERTO, prioridade: PrioridadeChamado.P4,
+      OS: 'INC0000002', status: ChamadoStatus.ABERTO, prioridade: PrioridadeChamado.P4,
       usuarioId: fernanda.id, geradoEm: hrs(3), atualizadoEm: hrs(3),
       descricao: 'Solicitação de instalação do pacote Office 365 em novo notebook.',
     }});
     await tx.ordemDeServico.create({ data: { chamadoId: c02.id, servicoId: S['Instalação de Software'] } });
     historico.push(hAbertura(c02.id, c02.descricao, fernanda.id, nFernanda, fernanda.email, hrs(3)));
-    log.success('[SUCESSO] ABERTOS: INC0001–INC0002');
+    log.success('[SUCESSO] ABERTOS: INC0000001–INC0000002');
 
     const c03 = await tx.chamado.create({ data: {
-      OS: 'INC0003', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P2,
+      OS: 'INC0000003', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P2,
       usuarioId: bruno.id, tecnicoId: patricia.id,
       geradoEm: hrs(2), atualizadoEm: hrs(1),
       descricao: 'Sistema ERP inacessível para todo o setor financeiro. Erro 503.',
@@ -345,7 +345,7 @@ async function main() {
     historico.push(hStatus(c03.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', patricia.id, nPatricia, patricia.email, hrs(1)));
 
     const c04 = await tx.chamado.create({ data: {
-      OS: 'INC0004', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P3,
+      OS: 'INC0000004', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P3,
       usuarioId: ana.id, tecnicoId: carlos.id,
       geradoEm: hrs(4), atualizadoEm: hrs(3),
       descricao: 'VPN corporativa não conecta após atualização do cliente. Erro de certificado SSL.',
@@ -357,7 +357,7 @@ async function main() {
     historico.push(hStatus(c04.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', carlos.id, nCarlos, carlos.email, hrs(3)));
 
     const c05 = await tx.chamado.create({ data: {
-      OS: 'INC0005', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P3,
+      OS: 'INC0000005', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P3,
       usuarioId: fernanda.id, tecnicoId: rafael.id,
       geradoEm: hrs(5), atualizadoEm: hrs(2),
       descricao: 'Backup noturno falhando há 3 dias. Logs indicam disco cheio no servidor.',
@@ -372,7 +372,7 @@ async function main() {
     historico.push(hTransferencia(c05.id, carlos.id, rafael.id, 'Requer N2.', diego.id, nDiego, diego.email, hrs(3)));
 
     const c06 = await tx.chamado.create({ data: {
-      OS: 'INC0006', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P4,
+      OS: 'INC0000006', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P4,
       usuarioId: bruno.id, tecnicoId: carlos.id,
       geradoEm: hrs(6), atualizadoEm: hrs(5),
       descricao: 'Mouse sem fio parou de funcionar. Bateria nova não resolve.',
@@ -381,12 +381,12 @@ async function main() {
     historico.push(hAbertura(c06.id, c06.descricao, bruno.id, nBruno, bruno.email, hrs(6)));
     historico.push(hStatus(c06.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', carlos.id, nCarlos, carlos.email, hrs(5)));
 
-    log.success('[SUCESSO] EM ATENDIMENTO: INC0003–INC0006');
+    log.success('[SUCESSO] EM ATENDIMENTO: INC0000003–INC0000006');
 
     // ── ENCERRADOS ───────────────────────────────────────────────────────
     const gC07 = dias(4); const eC07 = new Date(gC07.getTime() + 2 * 3_600_000);
     const c07 = await tx.chamado.create({ data: {
-      OS: 'INC0007', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P2,
+      OS: 'INC0000007', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P2,
       usuarioId: ana.id, tecnicoId: rafael.id,
       descricao: 'Servidor de arquivos inacessível para usuários do financeiro.',
       descricaoEncerramento: 'Switch com porta com falha substituído. Acesso restaurado.',
@@ -399,7 +399,7 @@ async function main() {
 
     const gC08 = dias(5); const eC08 = new Date(gC08.getTime() + 5 * 3_600_000);
     const c08 = await tx.chamado.create({ data: {
-      OS: 'INC0008', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P3,
+      OS: 'INC0000008', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P3,
       usuarioId: bruno.id, tecnicoId: carlos.id,
       descricao: 'Email corporativo parou de sincronizar no celular após redefinição de senha.',
       descricaoEncerramento: 'Conta reconfigurada no dispositivo com novo perfil IMAP.',
@@ -412,7 +412,7 @@ async function main() {
 
     const gC09 = dias(3); const eC09 = new Date(gC09.getTime() + 8 * 3_600_000);
     const c09 = await tx.chamado.create({ data: {
-      OS: 'INC0009', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P4,
+      OS: 'INC0000009', status: ChamadoStatus.ENCERRADO, prioridade: PrioridadeChamado.P4,
       usuarioId: fernanda.id, tecnicoId: patricia.id,
       descricao: 'Teclado físico com tecla Enter sem resposta após derramamento de líquido.',
       descricaoEncerramento: 'Teclado substituído por unidade reserva.',
@@ -423,11 +423,11 @@ async function main() {
     historico.push(hStatus(c09.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', patricia.id, nPatricia, patricia.email, new Date(gC09.getTime() + 3_600_000)));
     historico.push(hStatus(c09.id, 'EM_ATENDIMENTO', 'ENCERRADO', c09.descricaoEncerramento!, patricia.id, nPatricia, patricia.email, eC09));
 
-    log.success('[SUCESSO] ENCERRADOS: INC0007–INC0009');
+    log.success('[SUCESSO] ENCERRADOS: INC0000007–INC0000009');
 
     const gC10 = dias(14); const eC10 = new Date(gC10.getTime() + 36 * 3_600_000);
     const c10 = await tx.chamado.create({ data: {
-      OS: 'INC0010', status: ChamadoStatus.CANCELADO, prioridade: PrioridadeChamado.P4,
+      OS: 'INC0000010', status: ChamadoStatus.CANCELADO, prioridade: PrioridadeChamado.P4,
       usuarioId: ana.id,
       descricao: 'Solicitação de upgrade de memória RAM de 8GB para 16GB no desktop.',
       descricaoEncerramento: 'Solicitação cancelada — orçamento de hardware congelado.',
@@ -436,10 +436,10 @@ async function main() {
     await tx.ordemDeServico.create({ data: { chamadoId: c10.id, servicoId: S['Manutenção de Hardware'] } });
     historico.push(hAbertura(c10.id, c10.descricao, ana.id, nAna, ana.email, gC10));
     historico.push(hStatus(c10.id, 'ABERTO', 'CANCELADO', c10.descricaoEncerramento!, diego.id, nDiego, diego.email, eC10));
-    log.success('[SUCESSO] CANCELADO: INC0010');
+    log.success('[SUCESSO] CANCELADO: INC0000010');
 
     const c11 = await tx.chamado.create({ data: {
-      OS: 'INC0011', status: ChamadoStatus.REABERTO, prioridade: PrioridadeChamado.P1,
+      OS: 'INC0000011', status: ChamadoStatus.REABERTO, prioridade: PrioridadeChamado.P1,
       usuarioId: fernanda.id, tecnicoId: patricia.id,
       prioridadeAlterada: dias(1), prioridadeAlteradaPor: juliana.id,
       descricao: 'Servidor de produção voltou a apresentar instabilidade. Sistema caindo a cada 2h.',
@@ -456,7 +456,7 @@ async function main() {
     historico.push(hReavertura(c11.id, 'Instabilidade voltou — reescalonado P1.', fernanda.id, nFernanda, fernanda.email, hrs(20)));
 
     const c12 = await tx.chamado.create({ data: {
-      OS: 'INC0012', status: ChamadoStatus.REABERTO, prioridade: PrioridadeChamado.P2,
+      OS: 'INC0000012', status: ChamadoStatus.REABERTO, prioridade: PrioridadeChamado.P2,
       usuarioId: ana.id, tecnicoId: rafael.id,
       descricao: 'VPN cai após aproximadamente 10 minutos de conexão ativa.',
     }});
@@ -466,10 +466,10 @@ async function main() {
     historico.push(hStatus(c12.id, 'EM_ATENDIMENTO', 'ENCERRADO', 'Timeout de sessão ajustado para 8h.', rafael.id, nRafael, rafael.email, dias(2)));
     historico.push(hReavertura(c12.id, 'VPN voltou a cair após ~10min.', ana.id, nAna, ana.email, hrs(36)));
 
-    log.success('[SUCESSO] REABERTOS: INC0011–INC0012');
+    log.success('[SUCESSO] REABERTOS: INC0000011–INC0000012');
 
     const c13 = await tx.chamado.create({ data: {
-      OS: 'INC0013', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P1,
+      OS: 'INC0000013', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P1,
       usuarioId: fernanda.id, tecnicoId: patricia.id,
       geradoEm: hrs(3), atualizadoEm: hrs(1),
       descricao: 'Servidor de autenticação LDAP fora do ar. Ninguém consegue fazer login.',
@@ -477,10 +477,10 @@ async function main() {
     await tx.ordemDeServico.create({ data: { chamadoId: c13.id, servicoId: S['Suporte de Rede'] } });
     historico.push(hAbertura(c13.id, c13.descricao, fernanda.id, nFernanda, fernanda.email, hrs(3)));
     historico.push(hStatus(c13.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido com urgência.', patricia.id, nPatricia, patricia.email, hrs(2)));
-    notificacoes.push({ destinatarioId: diego.id, destinatarioEmail: diego.email, tipo: 'SLA_VENCENDO' as TipoEvento, titulo: 'SLA VENCIDO — P1 crítico', mensagem: `Chamado INC0013 (P1) com SLA vencido há 2 horas.`, chamadoId: c13.id, chamadoOS: 'INC0013', lida: false, criadoEm: hrs(2), dadosExtras: { horasVencido: 2 } });
+    notificacoes.push({ destinatarioId: diego.id, destinatarioEmail: diego.email, tipo: 'SLA_VENCENDO' as TipoEvento, titulo: 'SLA VENCIDO — P1 crítico', mensagem: `Chamado INC0000013 (P1) com SLA vencido há 2 horas.`, chamadoId: c13.id, chamadoOS: 'INC0000013', lida: false, criadoEm: hrs(2), dadosExtras: { horasVencido: 2 } });
 
     const c14 = await tx.chamado.create({ data: {
-      OS: 'INC0014', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P2,
+      OS: 'INC0000014', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P2,
       usuarioId: bruno.id, tecnicoId: rafael.id,
       geradoEm: hrs(7), atualizadoEm: hrs(4),
       descricao: 'Sistema de NF-e retornando erro 999. Faturamento parado.',
@@ -488,10 +488,10 @@ async function main() {
     await tx.ordemDeServico.create({ data: { chamadoId: c14.id, servicoId: S['Suporte Técnico Geral'] } });
     historico.push(hAbertura(c14.id, c14.descricao, bruno.id, nBruno, bruno.email, hrs(7)));
     historico.push(hStatus(c14.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', rafael.id, nRafael, rafael.email, hrs(6)));
-    notificacoes.push({ destinatarioId: marcos.id, destinatarioEmail: marcos.email, tipo: 'SLA_VENCENDO' as TipoEvento, titulo: 'SLA VENCIDO — P2', mensagem: `Chamado INC0014 (P2) com SLA vencido. Faturamento parado.`, chamadoId: c14.id, chamadoOS: 'INC0014', lida: false, criadoEm: hrs(3), dadosExtras: { horasVencido: 3 } });
+    notificacoes.push({ destinatarioId: marcos.id, destinatarioEmail: marcos.email, tipo: 'SLA_VENCENDO' as TipoEvento, titulo: 'SLA VENCIDO — P2', mensagem: `Chamado INC0000014 (P2) com SLA vencido. Faturamento parado.`, chamadoId: c14.id, chamadoOS: 'INC0000014', lida: false, criadoEm: hrs(3), dadosExtras: { horasVencido: 3 } });
 
     const c15 = await tx.chamado.create({ data: {
-      OS: 'INC0015', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P4,
+      OS: 'INC0000015', status: ChamadoStatus.EM_ATENDIMENTO, prioridade: PrioridadeChamado.P4,
       usuarioId: ana.id, tecnicoId: carlos.id,
       geradoEm: dias(2), atualizadoEm: dias(1),
       descricao: 'Fonte do desktop com ruído anormal. Computador desligando aleatoriamente.',
@@ -500,7 +500,7 @@ async function main() {
     historico.push(hAbertura(c15.id, c15.descricao, ana.id, nAna, ana.email, dias(2)));
     historico.push(hStatus(c15.id, 'ABERTO', 'EM_ATENDIMENTO', 'Chamado assumido.', carlos.id, nCarlos, carlos.email, dias(2)));
 
-    log.success('[SUCESSO] VENCIDOS: INC0013–INC0015');
+    log.success('[SUCESSO] VENCIDOS: INC0000013–INC0000015');
 
     return { c01, c02, c03, c04, c05, c06, c07, c08, c09, c10, c11, c12, c13, c14, c15 };
   });
@@ -508,12 +508,12 @@ async function main() {
   log.title('[5/6] INSERINDO HISTÓRICO E NOTIFICAÇÕES (MongoDB)...\n');
 
   notificacoes.push(
-    { destinatarioId: diego.id,    destinatarioEmail: diego.email,    tipo: 'CHAMADO_ABERTO'      as TipoEvento, titulo: 'Novo chamado P3 aberto',       mensagem: `O chamado INC0001 foi aberto e aguarda atribuição.`,            chamadoId: cs.c01.id, chamadoOS: 'INC0001', lida: false, criadoEm: hrs(2)  },
-    { destinatarioId: patricia.id, destinatarioEmail: patricia.email, tipo: 'CHAMADO_ATRIBUIDO'   as TipoEvento, titulo: 'Chamado P2 atribuído a você',  mensagem: `O chamado INC0003 foi atribuído a você.`,                       chamadoId: cs.c03.id, chamadoOS: 'INC0003', lida: false, criadoEm: hrs(1)  },
-    { destinatarioId: diego.id,    destinatarioEmail: diego.email,    tipo: 'CHAMADO_TRANSFERIDO' as TipoEvento, titulo: 'Transferência realizada',      mensagem: `O chamado INC0005 foi transferido de Carlos para Rafael.`,      chamadoId: cs.c05.id, chamadoOS: 'INC0005', lida: true,  lidaEm: hrs(2), criadoEm: hrs(3) },
-    { destinatarioId: fernanda.id, destinatarioEmail: fernanda.email, tipo: 'CHAMADO_REABERTO'    as TipoEvento, titulo: 'Chamado reaberto — P1 crítico',mensagem: `Seu chamado INC0011 foi reaberto e escalado para P1.`,           chamadoId: cs.c11.id, chamadoOS: 'INC0011', lida: false, criadoEm: hrs(20) },
-    { destinatarioId: ana.id,      destinatarioEmail: ana.email,      tipo: 'CHAMADO_ENCERRADO'   as TipoEvento, titulo: 'Chamado encerrado',            mensagem: `Seu chamado INC0007 foi encerrado com sucesso.`,                chamadoId: cs.c07.id, chamadoOS: 'INC0007', lida: true,  lidaEm: dias(2), criadoEm: new Date(dias(4).getTime() + 2 * 3_600_000) },
-    { destinatarioId: juliana.id,  destinatarioEmail: juliana.email,  tipo: 'SLA_VENCENDO'        as TipoEvento, titulo: 'Múltiplos SLAs vencidos',     mensagem: `3 chamados com SLA vencido aguardam resolução.`,                chamadoId: cs.c13.id, chamadoOS: 'INC0013', lida: false, criadoEm: hrs(1), dadosExtras: { totalVencidos: 3 } },
+    { destinatarioId: diego.id,    destinatarioEmail: diego.email,    tipo: 'CHAMADO_ABERTO'      as TipoEvento, titulo: 'Novo chamado P3 aberto',       mensagem: `O chamado INC0000001 foi aberto e aguarda atribuição.`,            chamadoId: cs.c01.id, chamadoOS: 'INC0000001', lida: false, criadoEm: hrs(2)  },
+    { destinatarioId: patricia.id, destinatarioEmail: patricia.email, tipo: 'CHAMADO_ATRIBUIDO'   as TipoEvento, titulo: 'Chamado P2 atribuído a você',  mensagem: `O chamado INC0000003 foi atribuído a você.`,                       chamadoId: cs.c03.id, chamadoOS: 'INC0000003', lida: false, criadoEm: hrs(1)  },
+    { destinatarioId: diego.id,    destinatarioEmail: diego.email,    tipo: 'CHAMADO_TRANSFERIDO' as TipoEvento, titulo: 'Transferência realizada',      mensagem: `O chamado INC0000005 foi transferido de Carlos para Rafael.`,      chamadoId: cs.c05.id, chamadoOS: 'INC0000005', lida: true,  lidaEm: hrs(2), criadoEm: hrs(3) },
+    { destinatarioId: fernanda.id, destinatarioEmail: fernanda.email, tipo: 'CHAMADO_REABERTO'    as TipoEvento, titulo: 'Chamado reaberto — P1 crítico',mensagem: `Seu chamado INC0000011 foi reaberto e escalado para P1.`,           chamadoId: cs.c11.id, chamadoOS: 'INC0000011', lida: false, criadoEm: hrs(20) },
+    { destinatarioId: ana.id,      destinatarioEmail: ana.email,      tipo: 'CHAMADO_ENCERRADO'   as TipoEvento, titulo: 'Chamado encerrado',            mensagem: `Seu chamado INC0000007 foi encerrado com sucesso.`,                chamadoId: cs.c07.id, chamadoOS: 'INC0000007', lida: true,  lidaEm: dias(2), criadoEm: new Date(dias(4).getTime() + 2 * 3_600_000) },
+    { destinatarioId: juliana.id,  destinatarioEmail: juliana.email,  tipo: 'SLA_VENCENDO'        as TipoEvento, titulo: 'Múltiplos SLAs vencidos',     mensagem: `3 chamados com SLA vencido aguardam resolução.`,                chamadoId: cs.c13.id, chamadoOS: 'INC0000013', lida: false, criadoEm: hrs(1), dadosExtras: { totalVencidos: 3 } },
   );
 
   await AtualizacaoChamado.insertMany(historico);
@@ -565,7 +565,7 @@ async function main() {
   console.log(`  Técnicos:       ${totalTecnicos}  (N1: Carlos | N2: Rafael | N3: Patricia)`);
   console.log(`  Usuários:       ${totalUsuarios}`);
   console.log(`  Serviços:       ${totalServicos}  (9 ativos, 1 inativo)`);
-  console.log(`  Chamados:       ${totalChamados}  (INC0001–INC0015)`);
+  console.log(`  Chamados:       ${totalChamados}  (INC0000001–INC0000015)`);
   console.log(`  Transferências: ${totalTransferencias}`);
   console.log(`  Comentários:    ${totalComentarios}`);
   console.log(`  Notificações:   ${totalNotificacoes}  (MongoDB)`);
