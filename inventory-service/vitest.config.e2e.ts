@@ -9,7 +9,9 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, './src'),
       '@application': resolve(__dirname, 'src/application'),
+      '@domain': resolve(__dirname, 'src/domain'),
       '@infrastructure': resolve(__dirname, 'src/infrastructure'),
+      '@messaging': resolve(__dirname, 'src/infrastructure/messaging'),
       '@presentation': resolve(__dirname, 'src/presentation'),
       '@shared': resolve(__dirname, 'src/shared'),
       '@templates': resolve(__dirname, 'src/templates'),
@@ -21,23 +23,23 @@ export default defineConfig({
     environment: 'node',
 
     globalSetup: [
-      './src/__tests__/e2e/setup/global-setup.ts'
+      './__tests__/e2e/setup/global-setup.ts'
     ],
 
     setupFiles: [
-      './src/__tests__/e2e/setup/test.environment.ts'
+      './__tests__/e2e/setup/test.environment.ts'
     ],
 
     include: [
-      'src/__tests__/e2e/**/*.e2e.test.ts'
+      '__tests__/e2e/**/*.e2e.test.ts'
     ],
-    
+
     exclude: [
       'node_modules/**',
       'dist/**',
       'build/**',
-      'src/__tests__/unit/**',
-      'src/__tests__/performance/**',
+      '__tests__/unit/**',
+      '__tests__/performance/**',
     ],
 
     fileParallelism: false,

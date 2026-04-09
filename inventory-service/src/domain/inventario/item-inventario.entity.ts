@@ -114,9 +114,12 @@ export class ItemInventario {
   atualizar(
     dados: Partial<Pick<ItemInventarioProps, 'nome' | 'descricao' | 'unidade' | 'estoqueMinimo' | 'categoriaId'>>,
   ): ItemInventario {
+    const definidos = Object.fromEntries(
+      Object.entries(dados).filter(([, v]) => v !== undefined),
+    ) as typeof dados;
     return ItemInventario.create({
       ...this,
-      ...dados,
+      ...definidos,
       atualizadoEm: new Date(),
     });
   }
