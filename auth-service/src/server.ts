@@ -45,7 +45,10 @@ async function bootstrap(): Promise<void> {
   // Kafka conecta em background — não bloqueia o servidor HTTP
   connectProducer()
     .then(() => logger.info('[SERVER] Kafka producer conectado'))
-    .catch((err) => logger.warn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos'));
+    .catch((err) => {
+      const logFn = NODE_ENV === 'development' ? logger.info.bind(logger) : logger.warn.bind(logger);
+      logFn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos');
+    });
 
   async function shutdown(signal: string): Promise<void> {
     logger.info({ signal }, '[SERVER] Sinal recebido — iniciando graceful shutdown...');

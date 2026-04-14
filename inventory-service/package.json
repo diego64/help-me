@@ -12,6 +12,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
+    "test:carga": "k6 run __tests__/performance/load.k6.js",
     "migrate": "dotenv -e .env -- prisma migrate dev",
     "generate": "dotenv -e .env -- prisma generate",
     "migrate:reset": "dotenv -e .env -- prisma migrate reset --force",

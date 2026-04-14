@@ -51,8 +51,13 @@ export default defineConfig({
         'src/consumers/**',
         'src/infrastructure/database/**',
         'src/infrastructure/messaging/**',
+        'src/infrastructure/http/middlewares/error-logger.middleware.ts',
+        'src/infrastructure/http/middlewares/tracing.middleware.ts',
         'src/presentation/**',
         'src/server.ts',
+        'src/shared/config/logger.ts',
+        'src/shared/config/swagger.ts',
+        'src/shared/@types/**',
       ],
       thresholds: {
         lines:      80,

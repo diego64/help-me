@@ -5,6 +5,8 @@ import { rateLimit } from 'express-rate-limit';
 import { logger } from '@shared/config/logger';
 import { errorMiddleware } from '@infrastructure/http/middlewares/error.middleware';
 import routes from '@presentation/http/routes/index';
+import { prisma } from '@infrastructure/database/prisma.client';
+import { isKafkaConectado } from '@infrastructure/messaging/kafka.client';
 
 export function createApp(): Application {
   const app: Application = express();
@@ -18,9 +20,10 @@ export function createApp(): Application {
     exposedHeaders: ['X-Request-ID', 'X-Correlation-ID'],
   }));
 
+  const isProduction = process.env.NODE_ENV === 'production';
   app.use(rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: isProduction ? 200 : 50_000,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Muitas requisições. Tente novamente em instantes.' },
@@ -50,6 +53,32 @@ export function createApp(): Application {
     logger.info('[APP] Swagger disponível em /docs');
   }
 
+  // Liveness: processo está vivo? Sem I/O — usado pelo K8s para reiniciar o pod
+  app.get('/health/live', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
+  // Readiness: serviço está pronto para receber tráfego? Verifica dependências reais
+  app.get('/health/ready', async (_req: Request, res: Response) => {
+    const [dbResult] = await Promise.allSettled([
+      prisma.$queryRaw`SELECT 1`.then(() => ({ status: 'healthy' as const })),
+    ]);
+
+    const db    = dbResult.status === 'fulfilled' ? dbResult.value : { status: 'unhealthy' as const, error: String(dbResult.reason) };
+    const kafka = { status: isKafkaConectado() ? 'healthy' : 'degraded' } as const;
+
+    const statusCode = db.status === 'healthy' ? 200 : 503;
+
+    res.status(statusCode).json({
+      status: db.status === 'healthy' ? 'ok' : 'degraded',
+      service: 'inventory-service',
+      timestamp: new Date().toISOString(),
+      version: process.env.APP_VERSION ?? '1.0.0',
+      checks: { db, kafka },
+    });
+  });
+
+  // Rota legada — mantém compatibilidade com Kong e scripts existentes
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'ok',
@@ -58,14 +87,6 @@ export function createApp(): Application {
       version: process.env.APP_VERSION ?? '1.0.0',
       environment: process.env.NODE_ENV ?? 'development',
     });
-  });
-
-  app.get('/health/live', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ok' });
-  });
-
-  app.get('/health/ready', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ok' });
   });
 
   app.use('/v1', routes);

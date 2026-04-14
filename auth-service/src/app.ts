@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import { swaggerSpec } from '@shared/config/swagger';
 import { logger } from '@shared/config/logger';
 import { validateSecrets } from '@shared/config/jwt';
+import { prisma } from '@infrastructure/database/prisma/client';
+import { cacheHealthCheck } from '@infrastructure/database/redis/client';
+import { isKafkaProducerConnected } from '@infrastructure/messaging/kafka/producers/producer';
 import {
   requestTimingMiddleware,
   correlationIdMiddleware,
@@ -56,6 +59,35 @@ export function createApp(): Application {
     logger.info('[APP] Swagger disponível em /docs');
   }
 
+  // Liveness: processo está vivo? Sem I/O — usado pelo K8s para reiniciar o pod
+  app.get('/health/live', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
+  // Readiness: serviço está pronto para receber tráfego? Verifica dependências reais
+  app.get('/health/ready', async (_req: Request, res: Response) => {
+    const [redisHealth, dbHealth] = await Promise.allSettled([
+      cacheHealthCheck(),
+      prisma.$queryRaw`SELECT 1`.then(() => ({ status: 'healthy' as const })),
+    ]);
+
+    const redis = redisHealth.status === 'fulfilled' ? redisHealth.value : { status: 'unhealthy' as const, error: String(redisHealth.reason) };
+    const db    = dbHealth.status    === 'fulfilled' ? dbHealth.value    : { status: 'unhealthy' as const, error: String(dbHealth.reason) };
+    const kafka = { status: isKafkaProducerConnected() ? 'healthy' : 'degraded' } as const;
+
+    const allCriticalHealthy = redis.status === 'healthy' && db.status === 'healthy';
+    const statusCode = allCriticalHealthy ? 200 : 503;
+
+    res.status(statusCode).json({
+      status: allCriticalHealthy ? 'ok' : 'degraded',
+      service: 'auth-service',
+      timestamp: new Date().toISOString(),
+      version: process.env.APP_VERSION || '1.0.0',
+      checks: { db, redis, kafka },
+    });
+  });
+
+  // Rota legada — mantém compatibilidade com Kong e scripts existentes
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'ok',
@@ -64,14 +96,6 @@ export function createApp(): Application {
       version: process.env.APP_VERSION || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
     });
-  });
-
-  app.get('/health/live', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ok' });
-  });
-
-  app.get('/health/ready', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ok' });
   });
 
   app.use('/auth', routes);

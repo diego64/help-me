@@ -296,6 +296,23 @@ describe('loginUseCase', () => {
         })
       )
     })
+
+    it('não deve lançar exceção quando auditoria de sucesso falhar', async () => {
+      vi.mocked(prisma.auditoriaAuth.create).mockRejectedValueOnce(new Error('db audit error'))
+
+      await expect(
+        loginUseCase({ email: 'diego@email.com', password: 'senha123' }, makeRequest())
+      ).resolves.toBeDefined()
+    })
+
+    it('não deve lançar exceção quando auditoria de falha lançar erro', async () => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue(null)
+      vi.mocked(prisma.auditoriaAuth.create).mockRejectedValueOnce(new Error('db audit error'))
+
+      await expect(
+        loginUseCase({ email: 'inexistente@email.com', password: 'senha123' }, makeRequest())
+      ).rejects.toThrow('Email ou senha inválidos.')
+    })
   })
 
   describe('extração de IP e User-Agent', () => {

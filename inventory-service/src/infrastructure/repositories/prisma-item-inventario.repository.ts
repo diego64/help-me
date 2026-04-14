@@ -197,8 +197,9 @@ export class PrismaItemInventarioRepository {
       sku: record.sku,
       descricao: record.descricao,
       unidade: record.unidade as unknown as UnidadeMedida,
-      estoqueAtual: record.estoqueAtual,
-      estoqueMinimo: record.estoqueMinimo,
+      // $queryRaw retorna BigInt para colunas INTEGER no PostgreSQL — converte para number
+      estoqueAtual: Number(record.estoqueAtual),
+      estoqueMinimo: Number(record.estoqueMinimo),
       categoriaId: record.categoriaId,
       ocNumero: record.ocNumero,
       criadoPor: record.criadoPor,

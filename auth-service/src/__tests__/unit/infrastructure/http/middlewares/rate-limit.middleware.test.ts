@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Request, Response, NextFunction } from 'express'
 
-import { checkProgressiveBlock } from '../../../../../infrastructure/http/middlewares/rate-limit.middleware'
+import { checkProgressiveBlock, authLimiter, registerLimiter } from '../../../../../infrastructure/http/middlewares/rate-limit.middleware'
 import { cacheIncr, cacheExpire, cacheSet, cacheGet } from '../../../../../infrastructure/database/redis/client'
 import { logger } from '../../../../../shared/config/logger'
 
@@ -274,6 +274,83 @@ describe('rate-limit.middleware', () => {
         await expect(checkProgressiveBlock('auth')).resolves.toBeDefined()
         await expect(checkProgressiveBlock('register')).resolves.toBeDefined()
       })
+    })
+  })
+
+  describe('authLimiter handler', () => {
+    beforeEach(() => {
+      vi.mocked(cacheIncr).mockResolvedValue(1)
+      vi.mocked(cacheExpire).mockResolvedValue(undefined as any)
+      vi.mocked(cacheSet).mockResolvedValue(undefined as any)
+    })
+
+    it('deve retornar 429 com retryAfter', async () => {
+      const req = makeReq({ ip: EXTERNAL_IP, body: { email: 'teste@email.com' } })
+      const res = makeRes()
+
+      // Access the handler function directly from the limiter config
+      const handler = (authLimiter as any).options?.handler
+      if (handler) {
+        await handler(req, res, makeNext(), {} as any)
+        expect(res.status).toHaveBeenCalledWith(429)
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            error: 'Too many login attempts',
+            retryAfter: expect.any(Number),
+          })
+        )
+      }
+    })
+
+    it('deve aplicar bloqueio progressivo e logar warning', async () => {
+      const req = makeReq({ ip: EXTERNAL_IP, body: { email: 'teste@email.com' } })
+
+      const handler = (authLimiter as any).options?.handler
+      if (handler) {
+        await handler(req, makeRes(), makeNext(), {} as any)
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({ ip: EXTERNAL_IP, endpoint: expect.any(String) }),
+          '[SECURITY] Rate limit de autenticação excedido'
+        )
+      }
+    })
+  })
+
+  describe('registerLimiter handler', () => {
+    beforeEach(() => {
+      vi.mocked(cacheIncr).mockResolvedValue(1)
+      vi.mocked(cacheExpire).mockResolvedValue(undefined as any)
+      vi.mocked(cacheSet).mockResolvedValue(undefined as any)
+    })
+
+    it('deve retornar 429 com mensagem de limite de registro', async () => {
+      const req = makeReq({ ip: EXTERNAL_IP })
+      const res = makeRes()
+
+      const handler = (registerLimiter as any).options?.handler
+      if (handler) {
+        await handler(req, res, makeNext(), {} as any)
+        expect(res.status).toHaveBeenCalledWith(429)
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            error: 'Too many accounts created',
+            retryAfter: expect.any(Number),
+          })
+        )
+      }
+    })
+
+    it('deve logar warning ao exceder limite de registro', async () => {
+      const req = makeReq({ ip: EXTERNAL_IP })
+
+      const handler = (registerLimiter as any).options?.handler
+      if (handler) {
+        await handler(req, makeRes(), makeNext(), {} as any)
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({ ip: EXTERNAL_IP }),
+          '[SECURITY] Rate limit de registro excedido'
+        )
+      }
     })
   })
 })

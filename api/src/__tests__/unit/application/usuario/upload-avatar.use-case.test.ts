@@ -130,6 +130,12 @@ describe('uploadAvatarUsuarioUseCase', () => {
       expect(cacheDel).toHaveBeenCalledWith('usuarios:list')
     })
 
+    it('deve continuar mesmo se cacheDel falhar', async () => {
+      vi.mocked(cacheDel).mockRejectedValue(new Error('Redis error'))
+
+      await expect(uploadAvatarUsuarioUseCase(makeInput())).resolves.toBeDefined()
+    })
+
     it('deve logar sucesso após upload', async () => {
       await uploadAvatarUsuarioUseCase(makeInput({ filename: 'avatar.png' }))
 

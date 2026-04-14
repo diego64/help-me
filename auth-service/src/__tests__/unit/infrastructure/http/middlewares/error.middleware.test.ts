@@ -235,6 +235,26 @@ describe('error.middleware', () => {
         expect(arg?.request?.body?._truncated).toBe(true)
         expect(arg?.request?.body?._originalSize).toBeGreaterThan(10000)
       })
+
+      it('deve redimir campos sensíveis em objetos aninhados', () => {
+        const req = makeReq({ body: { user: { password: 'secreto', nome: 'Diego' } } })
+
+        errorLoggerMiddleware(makeError({ status: 400 }), req, makeRes(), makeNext())
+
+        const arg = getFirstCallArg(loggerMock.warn!)
+        expect(arg?.request?.body?.user?.password).toBe('[REDACTED]')
+        expect(arg?.request?.body?.user?.nome).toBe('Diego')
+      })
+
+      it('deve processar body quando é um array de objetos', () => {
+        const req = makeReq({ body: [{ email: 'a@b.com', password: 'sec' }] })
+
+        errorLoggerMiddleware(makeError({ status: 400 }), req, makeRes(), makeNext())
+
+        const arg = getFirstCallArg(loggerMock.warn!)
+        // Quando o body é array, sanitizeObject retorna o array mapeado
+        expect(arg?.request?.body).toBeDefined()
+      })
     })
 
     describe('sanitização de headers', () => {
@@ -293,6 +313,17 @@ describe('error.middleware', () => {
         const arg = getFirstCallArg(loggerMock.warn!)
         expect(arg?.request?.url).toContain('/api/usuarios')
         expect(arg?.request?.url).toContain('page=1')
+      })
+
+      it('deve retornar URL original quando parsing falhar', () => {
+        // URL com caractere de controle que causa falha no parser
+        const malformedUrl = '/path\x00/with-null'
+        const req = makeReq({ originalUrl: malformedUrl })
+
+        // Não deve lançar exceção — o catch retorna a URL original
+        expect(() => {
+          errorLoggerMiddleware(makeError({ status: 400 }), req, makeRes(), makeNext())
+        }).not.toThrow()
       })
     })
 

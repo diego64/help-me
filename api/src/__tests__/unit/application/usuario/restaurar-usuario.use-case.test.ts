@@ -171,6 +171,12 @@ describe('restaurarUsuarioUseCase', () => {
       expect(cacheDel).toHaveBeenCalledWith('usuarios:list')
     })
 
+    it('deve continuar mesmo se cacheDel falhar', async () => {
+      vi.mocked(cacheDel).mockRejectedValue(new Error('Redis error'))
+
+      await expect(restaurarUsuarioUseCase('usuario-id-123')).resolves.toBeDefined()
+    })
+
     it('deve logar sucesso após restauração', async () => {
       await restaurarUsuarioUseCase('usuario-id-123')
 
