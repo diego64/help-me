@@ -67,7 +67,7 @@ const makeServico = (overrides = {}) => ({
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   descricao: 'Problema com acesso ao sistema',
   status: ChamadoStatus.ABERTO,
   prioridade: PrioridadeChamado.P4,
@@ -116,7 +116,7 @@ const makeFile = (overrides = {}): Express.Multer.File => ({
 beforeEach(() => {
   vi.clearAllMocks()
 
-  vi.mocked(gerarNumeroOS).mockResolvedValue('INC0001')
+  vi.mocked(gerarNumeroOS).mockResolvedValue('INC0000001')
   vi.mocked(prisma.servico.findMany).mockResolvedValue([makeServico()] as any)
   vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn({
     chamado: {
@@ -240,13 +240,13 @@ describe('abrirChamadoUseCase', () => {
     it('deve chamar uploadArquivos quando há arquivos', async () => {
       const arquivo = makeFile()
       vi.mocked(uploadArquivos).mockResolvedValue({
-        data: [{ nomeArquivo: 'INC0001/uuid.pdf' }],
+        data: [{ nomeArquivo: 'INC0000001/uuid.pdf' }],
         erros: [],
       })
 
       await abrirChamadoUseCase(makeInput({ arquivos: [arquivo] }))
 
-      expect(uploadArquivos).toHaveBeenCalledWith([arquivo], '', 'INC0001', 'usuario-id-123')
+      expect(uploadArquivos).toHaveBeenCalledWith([arquivo], '', 'INC0000001', 'usuario-id-123')
     })
 
     it('deve retornar erros de upload quando alguns arquivos falham', async () => {
@@ -268,7 +268,7 @@ describe('abrirChamadoUseCase', () => {
 
     it('deve retornar quantidade correta de arquivos enviados', async () => {
       vi.mocked(uploadArquivos).mockResolvedValue({
-        data: [{ nomeArquivo: 'INC0001/uuid.pdf' }],
+        data: [{ nomeArquivo: 'INC0000001/uuid.pdf' }],
         erros: [],
       })
 
@@ -345,7 +345,7 @@ describe('abrirChamadoUseCase', () => {
 
       await abrirChamadoUseCase(makeInput())
 
-      expect(createArgs.data.OS).toBe('INC0001')
+      expect(createArgs.data.OS).toBe('INC0000001')
     })
 
     it('deve trimar descricao antes de criar', async () => {
@@ -443,7 +443,7 @@ describe('abrirChamadoUseCase', () => {
       await abrirChamadoUseCase(makeInput())
 
       expect(logger.info).toHaveBeenCalledWith(
-        { chamadoId: 'chamado-id-123', OS: 'INC0001', usuarioId: 'usuario-id-123' },
+        { chamadoId: 'chamado-id-123', OS: 'INC0000001', usuarioId: 'usuario-id-123' },
         '[CHAMADO] Chamado aberto'
       )
     })

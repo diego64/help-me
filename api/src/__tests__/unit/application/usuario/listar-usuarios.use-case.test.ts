@@ -103,12 +103,14 @@ describe('listarUsuariosUseCase', () => {
   })
 
   describe('filtros da query', () => {
-    it('deve sempre filtrar por regra USUARIO', async () => {
+    it('deve sempre filtrar por regras de usuário', async () => {
       await listarUsuariosUseCase(makeInput())
 
       expect(prisma.usuario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ regra: 'USUARIO' }),
+          where: expect.objectContaining({
+            regra: expect.objectContaining({ in: expect.arrayContaining(['USUARIO']) }),
+          }),
         })
       )
     })

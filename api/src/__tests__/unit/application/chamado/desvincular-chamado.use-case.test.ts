@@ -29,7 +29,7 @@ const makeInput = (overrides = {}): Parameters<typeof desvincularChamadoUseCase>
 
 const makeFilho = (overrides = {}) => ({
   id: 'chamado-filho-id',
-  OS: 'INC0002',
+  OS: 'INC0000002',
   chamadoPaiId: 'chamado-pai-id',
   deletadoEm: null,
   ...overrides,
@@ -208,10 +208,10 @@ describe('desvincularChamadoUseCase', () => {
 
     it('deve lançar ChamadoError com mensagem contendo OS do filho quando vínculo não confere', async () => {
       vi.mocked(prisma.chamado.findUnique).mockResolvedValue(
-        makeFilho({ OS: 'INC0099', chamadoPaiId: 'outro-pai-id' }) as any
+        makeFilho({ OS: 'INC0000099', chamadoPaiId: 'outro-pai-id' }) as any
       )
 
-      await expect(desvincularChamadoUseCase(makeInput())).rejects.toThrow('INC0099')
+      await expect(desvincularChamadoUseCase(makeInput())).rejects.toThrow('INC0000099')
     })
   })
 
@@ -242,13 +242,13 @@ describe('desvincularChamadoUseCase', () => {
     it('deve retornar message com OS do filho', async () => {
       const result = await desvincularChamadoUseCase(makeInput())
 
-      expect(result.message).toContain('INC0002')
+      expect(result.message).toContain('INC0000002')
     })
 
     it('deve retornar message com texto de sucesso', async () => {
       const result = await desvincularChamadoUseCase(makeInput())
 
-      expect(result.message).toBe('Chamado INC0002 desvinculado com sucesso')
+      expect(result.message).toBe('Chamado INC0000002 desvinculado com sucesso')
     })
 
     it('deve retornar filhoId', async () => {

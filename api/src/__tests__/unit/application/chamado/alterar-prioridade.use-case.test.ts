@@ -52,7 +52,7 @@ const makeInput = (overrides = {}): Parameters<typeof alterarPrioridadeUseCase>[
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   prioridade: PrioridadeChamado.P4,
   status: ChamadoStatus.ABERTO,
   deletadoEm: null,
@@ -74,7 +74,7 @@ const makeChamadoComTecnico = (overrides = {}) => ({
 
 const makeChamadoAtualizado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   descricao: 'Problema com acesso',
   descricaoEncerramento: null,
   status: ChamadoStatus.ABERTO,
@@ -441,7 +441,7 @@ describe('alterarPrioridadeUseCase', () => {
     it('deve retornar message com OS e nova prioridade', async () => {
       const result = await alterarPrioridadeUseCase(makeInput())
 
-      expect(result.message).toContain('INC0001')
+      expect(result.message).toContain('INC0000001')
       expect(result.message).toContain('P2')
     })
 

@@ -1,0 +1,208 @@
+# ============================================================
+# ELK Stack — Inventory Service
+# Kibana:        http://localhost:5602
+# Elasticsearch: http://localhost:9201
+#
+# Subir: docker compose -f elk/docker-compose.elk.yml --env-file .env up -d
+# Parar: docker compose -f elk/docker-compose.elk.yml down
+# ============================================================
+
+services:
+
+  # ============================================================
+  # ELASTICSEARCH — porta 9201 (9200 em uso pela auth-service)
+  # ============================================================
+  elk-inventory-service-es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elk-inventory-service-es
+    restart: unless-stopped
+    environment:
+      - node.name=elk-inventory-service-es
+      - cluster.name=elk-inventory-cluster
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.license.self_generated.type=basic
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "127.0.0.1:9201:9200"
+    volumes:
+      - elk-inv-es-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    networks:
+      - elk-inv-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s | grep -E '\"status\":\"(green|yellow)\"'"]
+      interval: 20s
+      timeout: 15s
+      retries: 12
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1.2G
+        reservations:
+          cpus: "0.25"
+          memory: 600M
+
+  # ============================================================
+  # LOGSTASH — beats: 5045 (5044 em uso), api: 9601
+  # Pipeline 01: logs da aplicação (via Filebeat)
+  # Pipeline 02: dados financeiros (JDBC → PostgreSQL)
+  # Pipeline 03: dados de estoque/inventário (JDBC → PostgreSQL)
+  # ============================================================
+  elk-inventory-service-logstash:
+    build:
+      context: ./logstash
+      dockerfile: Dockerfile
+    container_name: elk-inventory-service-logstash
+    restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - ELASTICSEARCH_HOST=http://elk-inventory-service-es:9200
+      - DB_HOST=inventory-postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5045:5045"
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/config/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - elk-inv-logstash-sincedb:/usr/share/logstash/data/sincedb
+      - ../logs:/logs:ro
+    networks:
+      - elk-inv-network
+      - inventory-network
+    depends_on:
+      elk-inventory-service-es:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 600M
+        reservations:
+          cpus: "0.1"
+          memory: 300M
+
+  # ============================================================
+  # KIBANA — porta 5602 (5601 em uso pela auth-service)
+  # Container principal: elk-inventory-service
+  # ============================================================
+  elk-inventory-service:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: elk-inventory-service
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elk-inventory-service-es:9200
+      - KIBANA_SYSTEM_PASSWORD=kibana_system
+      - xpack.security.enabled=false
+    ports:
+      - "127.0.0.1:5602:5601"
+    volumes:
+      - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    networks:
+      - elk-inv-network
+    depends_on:
+      elk-inventory-service-es:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -o '\"level\":\"available\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1G
+        reservations:
+          cpus: "0.1"
+          memory: 512M
+
+  # ============================================================
+  # FILEBEAT — lê o arquivo de log da aplicação e envia ao Logstash
+  # ============================================================
+  elk-inventory-service-filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.4
+    container_name: elk-inventory-service-filebeat
+    restart: unless-stopped
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../logs:/logs:ro
+      - elk-inv-filebeat-data:/usr/share/filebeat/data
+    networks:
+      - elk-inv-network
+    depends_on:
+      - elk-inventory-service-logstash
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  # ============================================================
+  # SETUP — cria índices, painéis e dashboards no Kibana
+  # Roda uma única vez na inicialização do stack
+  # ============================================================
+  elk-inventory-service-setup:
+    build:
+      context: ./setup
+      dockerfile: Dockerfile
+    container_name: elk-inventory-service-setup
+    environment:
+      - KIBANA_HOST=http://elk-inventory-service:5601
+      - ES_HOST=http://elk-inventory-service-es:9200
+    volumes:
+      - ./setup/dashboards:/dashboards:ro
+      - ./setup/init-kibana.sh:/init-kibana.sh:ro
+    networks:
+      - elk-inv-network
+    depends_on:
+      elk-inventory-service:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init-kibana.sh"]
+    restart: "no"
+
+# ============================================================
+# VOLUMES
+# ============================================================
+volumes:
+  elk-inv-es-data:
+    driver: local
+  elk-inv-logstash-sincedb:
+    driver: local
+  elk-inv-filebeat-data:
+    driver: local
+
+# ============================================================
+# NETWORKS
+# ============================================================
+networks:
+  elk-inv-network:
+    driver: bridge
+    internal: false
+
+  # Rede interna do inventory-service (acesso ao PostgreSQL via inventory-postgres:5432)
+  # Criada automaticamente pelo docker-compose.yaml principal com o nome inventory-service_inventory-network
+  inventory-network:
+    external: true
+    name: inventory-service_inventory-network

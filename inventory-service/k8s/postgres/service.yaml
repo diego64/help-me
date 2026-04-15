@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-postgres
+  namespace: inventory
+  labels:
+    app.kubernetes.io/name: inventory-postgres
+    app.kubernetes.io/part-of: helpme
+spec:
+  # ClusterIP: banco acessível apenas dentro do cluster
+  type: ClusterIP
+  selector:
+    app: inventory-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP

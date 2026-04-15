@@ -1,14 +1,13 @@
-import { Regra } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { logger } from '@shared/config/logger';
 import { UsuarioError } from './errors';
-import { USUARIO_SELECT } from './selects';
+import { USUARIO_SELECT, REGRAS_USUARIO } from './selects';
 
 export async function buscarUsuarioUseCase(id: string) {
   try {
     const usuario = await prisma.usuario.findUnique({ where: { id }, select: USUARIO_SELECT });
 
-    if (!usuario || usuario.regra !== Regra.USUARIO) {
+    if (!usuario || !REGRAS_USUARIO.includes(usuario.regra as any)) {
       throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
     }
 

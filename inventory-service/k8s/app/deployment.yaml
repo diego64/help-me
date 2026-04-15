@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  namespace: inventory
+  labels:
+    app.kubernetes.io/name: inventory-service
+    app.kubernetes.io/part-of: helpme
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inventory-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0   # zero-downtime: novo pod pronto antes de matar o antigo
+  template:
+    metadata:
+      labels:
+        app: inventory-service
+        app.kubernetes.io/name: inventory-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+
+      # --------------------------------------------------------
+      # Init container: executa prisma migrate deploy antes
+      # da aplicação iniciar. Usa a mesma imagem do app.
+      # --------------------------------------------------------
+      initContainers:
+        - name: migrate
+          # Substitua pela imagem real após o build e push
+          image: helpme/inventory-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+
+      containers:
+        - name: inventory-service
+          # Substitua pela imagem real após o build e push
+          image: helpme/inventory-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3334
+
+          # Configurações não-sensíveis via ConfigMap
+          envFrom:
+            - configMapRef:
+                name: inventory-config
+
+          # Secrets injetadas individualmente
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: DB_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: JWT_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: JWT_REFRESH_SECRET
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: MINIO_SECRET_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: DATABASE_URL
+
+          # --------------------------------------------------------
+          # Liveness: reinicia o pod se o processo travar
+          # Readiness: retira do balanceador se o banco cair
+          # --------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3334
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3334
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Prisma e pino-http precisam escrever em /tmp
+
+      # Garante que o pod não seja escalado até o postgres estar disponível
+      # Não remove a necessidade do initContainer — é um complemento.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: inventory-service

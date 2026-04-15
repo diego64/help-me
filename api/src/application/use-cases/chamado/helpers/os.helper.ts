@@ -1,7 +1,7 @@
 import { prisma } from '@infrastructure/database/prisma/client';
 
 const OS_PREFIX  = 'INC';
-const OS_PADDING = 4;
+const OS_PADDING = 7;
 
 export async function gerarNumeroOS(): Promise<string> {
   return await prisma.$transaction(async (tx) => {

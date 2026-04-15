@@ -1,9 +1,8 @@
-import { Regra } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { cacheDel } from '@infrastructure/database/redis/client';
 import { logger } from '@shared/config/logger';
 import { UsuarioError } from './errors';
-import { USUARIO_SELECT } from './selects';
+import { USUARIO_SELECT, REGRAS_USUARIO } from './selects';
 
 export async function restaurarUsuarioUseCase(id: string) {
   try {
@@ -12,7 +11,7 @@ export async function restaurarUsuarioUseCase(id: string) {
       select: { id: true, regra: true, email: true, deletadoEm: true },
     });
 
-    if (!usuario || usuario.regra !== Regra.USUARIO) throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
+    if (!usuario || !REGRAS_USUARIO.includes(usuario.regra as any)) throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
     if (!usuario.deletadoEm) throw new UsuarioError('Usuário não está deletado', 'NOT_DELETED', 400);
 
     const restaurado = await prisma.usuario.update({

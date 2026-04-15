@@ -1,8 +1,8 @@
-import { Regra } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { cacheDel } from '@infrastructure/database/redis/client';
 import { logger } from '@shared/config/logger';
 import { UsuarioError } from './errors';
+import { REGRAS_USUARIO } from './selects';
 
 interface DeletarUsuarioInput {
   id: string;
@@ -21,7 +21,7 @@ export async function deletarUsuarioUseCase(input: DeletarUsuarioInput) {
       },
     });
 
-    if (!usuario || usuario.regra !== Regra.USUARIO) {
+    if (!usuario || !REGRAS_USUARIO.includes(usuario.regra as any)) {
       throw new UsuarioError('Usuário não encontrado', 'NOT_FOUND', 404);
     }
 

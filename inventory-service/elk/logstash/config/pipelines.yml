@@ -1,0 +1,16 @@
+# Pipeline 01 — Logs da aplicação (via Filebeat → Logstash → Elasticsearch)
+- pipeline.id: logs-pipeline
+  path.config: "/usr/share/logstash/pipeline/01-logs.conf"
+  pipeline.workers: 1
+
+# Pipeline 02 — Dados financeiros (JDBC polling no PostgreSQL)
+# Poleia solicitacoes_compra e reembolsos a cada 30 segundos
+- pipeline.id: financeiro-pipeline
+  path.config: "/usr/share/logstash/pipeline/02-financeiro.conf"
+  pipeline.workers: 1
+
+# Pipeline 03 — Dados de inventário/estoque (JDBC polling no PostgreSQL)
+# Poleia itens_inventario, categorias e movimentacoes_estoque a cada 30 segundos
+- pipeline.id: inventario-pipeline
+  path.config: "/usr/share/logstash/pipeline/03-inventario.conf"
+  pipeline.workers: 1

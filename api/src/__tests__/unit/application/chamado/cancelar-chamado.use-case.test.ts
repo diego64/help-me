@@ -42,7 +42,7 @@ const makeInput = (overrides = {}): Parameters<typeof cancelarChamadoUseCase>[0]
 
 const makeChamado = (overrides = {}) => ({
   id:        'chamado-id-123',
-  OS:        'INC0001',
+  OS:        'INC0000001',
   status:    ChamadoStatus.ABERTO,
   usuarioId: 'usuario-id-123',
   ...overrides,

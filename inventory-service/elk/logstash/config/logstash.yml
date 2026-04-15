@@ -1,0 +1,19 @@
+http.host: "0.0.0.0"
+http.port: 9600
+
+# Monitoramento desabilitado (sem licença X-Pack)
+xpack.monitoring.enabled: false
+
+# Pipeline settings
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Configuração de múltiplos pipelines
+path.config: /usr/share/logstash/pipeline
+config.reload.automatic: true
+config.reload.interval: 30s
+
+# Logs do próprio Logstash
+log.level: warn
+log.format: json

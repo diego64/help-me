@@ -35,7 +35,7 @@ const makeInput = (overrides = {}): Parameters<typeof listarComentariosUseCase>[
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   deletadoEm: null,
   ...overrides,
 })
@@ -183,7 +183,7 @@ describe('listarComentariosUseCase', () => {
     it('deve retornar chamadoOS corretamente', async () => {
       const result = await listarComentariosUseCase(makeInput())
 
-      expect(result.chamadoOS).toBe('INC0001')
+      expect(result.chamadoOS).toBe('INC0000001')
     })
 
     it('deve retornar total de comentários', async () => {

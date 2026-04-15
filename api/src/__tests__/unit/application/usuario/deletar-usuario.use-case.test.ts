@@ -138,6 +138,12 @@ describe('deletarUsuarioUseCase', () => {
       expect(cacheDel).toHaveBeenCalledWith('usuarios:list')
     })
 
+    it('deve continuar mesmo se cacheDel falhar no soft delete', async () => {
+      vi.mocked(cacheDel).mockRejectedValue(new Error('Redis error'))
+
+      await expect(deletarUsuarioUseCase(makeInput({ permanente: false }))).resolves.toBeDefined()
+    })
+
     it('deve logar info após soft delete', async () => {
       await deletarUsuarioUseCase(makeInput({ permanente: false }))
 
@@ -196,6 +202,12 @@ describe('deletarUsuarioUseCase', () => {
       await deletarUsuarioUseCase(makeInput({ permanente: true }))
 
       expect(cacheDel).toHaveBeenCalledWith('usuarios:list')
+    })
+
+    it('deve continuar mesmo se cacheDel falhar no hard delete', async () => {
+      vi.mocked(cacheDel).mockRejectedValue(new Error('Redis error'))
+
+      await expect(deletarUsuarioUseCase(makeInput({ permanente: true }))).resolves.toBeDefined()
     })
 
     it('deve logar info após hard delete', async () => {

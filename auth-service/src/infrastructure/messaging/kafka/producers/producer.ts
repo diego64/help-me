@@ -148,4 +148,8 @@ export async function publishEvent<T>(
   }
 }
 
-export { kafka }; 
+export function isKafkaProducerConnected(): boolean {
+  return isConnected;
+}
+
+export { kafka };

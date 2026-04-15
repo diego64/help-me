@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== ENUMS REPLICADOS DO BANCO PRINCIPAL ====================
+
+enum Regra {
+  ADMIN
+  COMPRADOR
+  GESTOR
+  INVENTARIANTE
+  TECNICO
+  USUARIO
+}
+
+// ==================== ENUMS DO INVENTORY-SERVICE ====================
+
+enum StatusSolicitacaoCompra {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  COMPRADO
+  CANCELADO
+}
+
+enum FormaPagamento {
+  PIX
+  DEBITO
+  BOLETO
+  CARTAO_CREDITO
+}
+
+enum StatusReembolso {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  PAGO
+}
+
+enum StatusBaixa {
+  PENDENTE
+  APROVADO_TECNICO
+  APROVADO_GESTOR
+  CONCLUIDO
+  REJEITADO
+}
+
+enum TipoMovimentacao {
+  ENTRADA
+  SAIDA
+}
+
+enum MotivoMovimentacao {
+  COMPRA
+  ENTRADA_MANUAL
+  BAIXA
+  AJUSTE
+  DESTINACAO
+}
+
+enum UnidadeMedida {
+  UN
+  KG
+  M
+  CX
+  L
+  PC
+}
+
+enum MotivoBaixa {
+  QUEBRA
+  PERDA
+  VENCIMENTO
+  OBSOLESCENCIA
+  OUTROS
+}
+
+// ==================== INVENTÁRIO ====================
+
+model Categoria {
+  id           String   @id @default(cuid())
+  nome         String   @unique @db.VarChar(100)
+  descricao    String?  @db.VarChar(512)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  itens ItemInventario[]
+
+  @@map("categorias")
+}
+
+model Fornecedor {
+  id           String   @id @default(cuid())
+  nome         String   @db.VarChar(100)
+  cnpj         String?  @unique @db.VarChar(18)
+  email        String?  @db.VarChar(255)
+  telefone     String?  @db.VarChar(20)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  solicitacoesCompra SolicitacaoCompra[]
+
+  @@map("fornecedores")
+}
+
+model Contador {
+  tipo   String @id
+  ultimo Int    @default(0)
+
+  @@map("contadores")
+}
+
+model ItemInventario {
+  id            String        @id @default(cuid())
+  numero        String        @unique @map("numero") @db.VarChar(12) // "INV-000001"
+  nome          String        @db.VarChar(100)
+  sku           String        @unique @db.VarChar(50)
+  descricao     String?       @db.VarChar(512)
+  unidade       UnidadeMedida 
+  estoqueAtual  Int           @default(0) @map("estoque_atual")
+  estoqueMinimo Int           @default(0) @map("estoque_minimo")
+  categoriaId   String        @map("categoria_id")
+  ocNumero      String?       @map("oc_numero") @db.VarChar(12) // referência à O.C de origem — auditoria
+  criadoPor     String        @map("criado_por") // userId do INVENTARIANTE via JWT
+  criadoEm      DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm  DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  categoria     Categoria               @relation(fields: [categoriaId], references: [id])
+  movimentacoes MovimentacaoEstoque[]
+  itensBaixa    ItemBaixa[]
+  itensCompra   ItemSolicitacaoCompra[]
+  estoqueSetor  EstoqueSetor[]
+
+  @@index([categoriaId])
+  @@index([sku])
+  @@map("itens_inventario")
+}
+
+model MovimentacaoEstoque {
+  id            String             @id @default(cuid())
+  itemId        String             @map("item_id")
+  tipo          TipoMovimentacao
+  motivo        MotivoMovimentacao
+  quantidade    Int
+  estoqueBefore Int                @map("estoque_before")
+  estoqueAfter  Int                @map("estoque_after")
+  referenciaId  String?            @map("referencia_id")
+  realizadoPor  String             @map("realizado_por")
+  observacoes   String?            @db.VarChar(512)
+
+  // [NOVO] Setor de destino — referência cruzada ao domínio de org/RH
+  // setorDestinoId: ID externo do setor (não FK — cross-service)
+  // setorDestinoNome: snapshot do nome no momento do registro (imutável para auditoria)
+  setorDestinoId   String? @map("setor_destino_id")
+  setorDestinoNome String? @map("setor_destino_nome") @db.VarChar(100)
+
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  item ItemInventario @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+  @@index([itemId, criadoEm]) // [NOVO] histórico de item por período
+  @@index([referenciaId])
+  @@index([criadoEm])
+  @@index([motivo])            // [NOVO] relatórios por motivo
+  @@index([tipo])              // [NOVO] relatórios por tipo
+  @@map("movimentacoes_estoque")
+}
+
+// ==================== ESTOQUE POR SETOR ====================
+
+model EstoqueSetor {
+  id               String   @id @default(cuid())
+  itemInventarioId String   @map("item_inventario_id")
+  setor            String   @db.VarChar(50)
+  quantidade       Int      @default(0)
+  criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm     DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  itemInventario ItemInventario @relation(fields: [itemInventarioId], references: [id])
+
+  @@unique([itemInventarioId, setor])
+  @@index([setor])
+  @@index([itemInventarioId])
+  @@map("estoque_setor")
+}
+
+// ==================== COMPRAS ====================
+
+model SolicitacaoCompra {
+  id             String                  @id @default(cuid())
+  acNumero       String                  @unique @map("ac_numero") @db.VarChar(12) // "A.C-000001" — gerado na criação
+  ocNumero       String                  @unique @map("oc_numero") @db.VarChar(12) // "O.C-000001" — gerado na criação
+  solicitadoPor       String                  @map("solicitado_por")
+  setorSolicitante    String?                 @map("setor_solicitante") @db.VarChar(50)
+  fornecedorId        String?                 @map("fornecedor_id")
+  status         StatusSolicitacaoCompra @default(PENDENTE)
+  justificativa  String?                 @db.VarChar(512)
+  nfe            String?                 @map("nfe") @db.VarChar(44)               // chave de acesso NF-e (44 dígitos)
+  dataEmissao    DateTime?               @map("data_emissao") @db.Timestamptz(3)   // data de emissão da NF-e
+  formaPagamento FormaPagamento?         @map("forma_pagamento")
+  parcelas       Int?
+  aprovadoPor    String?                 @map("aprovado_por")
+  aprovadoEm     DateTime?               @map("aprovado_em") @db.Timestamptz(3)
+  rejeitadoPor   String?                 @map("rejeitado_por")
+  rejeitadoEm    DateTime?               @map("rejeitado_em") @db.Timestamptz(3)
+  motivoRejeicao String?                 @map("motivo_rejeicao") @db.VarChar(512)
+  executadoPor   String?                 @map("executado_por")
+  executadoEm    DateTime?               @map("executado_em") @db.Timestamptz(3)
+  valorTotal     Decimal?                @map("valor_total") @db.Decimal(10, 2)
+  observacoes    String?                 @db.VarChar(512)
+  criadoEm       DateTime                @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm   DateTime                @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  fornecedor Fornecedor?             @relation(fields: [fornecedorId], references: [id])
+  itens      ItemSolicitacaoCompra[]
+  reembolso  Reembolso?
+
+  @@index([solicitadoPor])
+  @@index([status])
+  @@index([criadoEm])
+  @@map("solicitacoes_compra")
+}
+
+model ItemSolicitacaoCompra {
+  id                  String   @id @default(cuid())
+  solicitacaoCompraId String   @map("solicitacao_compra_id")
+  itemInventarioId    String?  @map("item_inventario_id")
+  nomeProduto         String   @map("nome_produto") @db.VarChar(255)
+  quantidade          Int
+  precoEstimado       Decimal? @map("preco_estimado") @db.Decimal(10, 2)
+  precoReal           Decimal? @map("preco_real") @db.Decimal(10, 2) // preenchido pelo COMPRADOR ao executar
+
+  solicitacaoCompra SolicitacaoCompra  @relation(fields: [solicitacaoCompraId], references: [id])
+  itemInventario    ItemInventario?    @relation(fields: [itemInventarioId], references: [id])
+
+  @@index([solicitacaoCompraId])
+  @@index([itemInventarioId])
+  @@map("itens_solicitacao_compra")
+}
+
+// ==================== REEMBOLSO ====================
+
+model Reembolso {
+  id                  String          @id @default(cuid())
+  solicitadoPor       String          @map("solicitado_por")
+  solicitacaoCompraId String?         @unique @map("solicitacao_compra_id")
+  valor               Decimal         @db.Decimal(10, 2)
+  descricao           String          @db.VarChar(512)
+  urlComprovante      String?         @map("url_comprovante") @db.VarChar(512)
+  status              StatusReembolso @default(PENDENTE)
+
+  // [NOVO] Dados fiscais — comprovação obrigatória para auditoria
+  // cnpjFornecedor: campo livre pois pode ser compra avulsa sem fornecedor cadastrado
+  nfe            String?   @map("nfe") @db.VarChar(44)
+  dataEmissao    DateTime? @map("data_emissao") @db.Timestamptz(3)
+  cnpjFornecedor String?   @map("cnpj_fornecedor") @db.VarChar(18)
+
+  aprovadoPor    String?   @map("aprovado_por")
+  aprovadoEm     DateTime? @map("aprovado_em") @db.Timestamptz(3)
+  rejeitadoPor   String?   @map("rejeitado_por")
+  rejeitadoEm    DateTime? @map("rejeitado_em") @db.Timestamptz(3)
+  motivoRejeicao String?   @map("motivo_rejeicao") @db.VarChar(512)
+  processadoPor  String?   @map("processado_por")
+  processadoEm   DateTime? @map("processado_em") @db.Timestamptz(3)
+  observacoes    String?   @db.VarChar(512)
+  criadoEm       DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm   DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  solicitacaoCompra SolicitacaoCompra? @relation(fields: [solicitacaoCompraId], references: [id])
+
+  @@index([solicitadoPor])
+  @@index([status])
+  @@index([criadoEm])
+  @@map("reembolsos")
+}
+
+// ==================== BAIXA DE MATERIAL ====================
+
+model Baixa {
+  id                String  @id @default(cuid())
+  avNumero          String? @unique @map("av_numero") @db.VarChar(12) // "AV0000001" — gerado após criação
+  solicitadoPor     String  @map("solicitado_por")
+
+  // [ALTERADO] snapshot como String — desacopla do enum Regra do auth-service
+  // Se o enum mudar no auth-service, o histórico de auditoria permanece intacto
+  perfilSolicitante String      @map("perfil_solicitante") @db.VarChar(50)
+
+  status        StatusBaixa @default(PENDENTE)
+  justificativa String      @db.VarChar(512)
+
+  // Aprovação técnica (só quando perfilSolicitante = USUARIO)
+  aprovadoTecnicoPor String?   @map("aprovado_tecnico_por")
+  aprovadoTecnicoEm  DateTime? @map("aprovado_tecnico_em") @db.Timestamptz(3)
+
+  // Aprovação do GESTOR
+  aprovadoGestorPor String?   @map("aprovado_gestor_por")
+  aprovadoGestorEm  DateTime? @map("aprovado_gestor_em") @db.Timestamptz(3)
+
+  // Rejeição (qualquer etapa)
+  rejeitadoPor   String?   @map("rejeitado_por")
+  rejeitadoEm    DateTime? @map("rejeitado_em") @db.Timestamptz(3)
+  motivoRejeicao String?   @map("motivo_rejeicao") @db.VarChar(512)
+
+  // Execução pelo INVENTARIANTE
+  executadoPor String?   @map("executado_por")
+  executadoEm  DateTime? @map("executado_em") @db.Timestamptz(3)
+
+  observacoes  String?  @db.VarChar(512)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  itens ItemBaixa[]
+
+  @@index([solicitadoPor])
+  @@index([status])
+  @@index([criadoEm])
+  @@map("baixas")
+}
+
+model ItemBaixa {
+  id               String       @id @default(cuid())
+  baixaId          String       @map("baixa_id")
+  itemInventarioId String       @map("item_inventario_id")
+  quantidade       Int
+  motivo           MotivoBaixa?
+
+  baixa          Baixa          @relation(fields: [baixaId], references: [id])
+  itemInventario ItemInventario @relation(fields: [itemInventarioId], references: [id])
+
+  @@index([baixaId])
+  @@index([itemInventarioId])
+  @@map("itens_baixa")
+}

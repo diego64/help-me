@@ -9,6 +9,7 @@ import tecnicoRoutes from './tecnico.routes';
 import usuarioRoutes from './usuario.routes';
 import kafkaRoutes from './kafka.routes';
 import kafkaNotificacaoRoutes from './kafka-notificacao.routes';
+import reembolsoRoutes from './reembolso.routes';
 
 const router: RouterType = Router();
 
@@ -21,6 +22,7 @@ router.use('/tecnicos', tecnicoRoutes);
 router.use('/usuarios', usuarioRoutes);
 router.use('/kafka', kafkaRoutes);
 router.use('/kafka-notificacoes', kafkaNotificacaoRoutes);
+router.use('/reembolsos', reembolsoRoutes);
 
 router.get('/health', (req, res) => {
   res.json({

@@ -1,9 +1,9 @@
-import { Regra, Setor } from '@prisma/client';
+import { Setor } from '@prisma/client';
 import { prisma } from '@infrastructure/database/prisma/client';
 import { cacheGet, cacheSet } from '@infrastructure/database/redis/client';
 import { logger } from '@shared/config/logger';
 import { UsuarioError } from './errors';
-import { USUARIO_SELECT } from './selects';
+import { USUARIO_SELECT, REGRAS_USUARIO } from './selects';
 
 const CACHE_TTL = 60;
 const CACHE_KEY_PREFIX = 'usuarios:';
@@ -26,7 +26,7 @@ export async function listarUsuariosUseCase(input: ListarUsuariosInput) {
     const cached = await cacheGet(cacheKey);
     if (cached) return JSON.parse(cached);
 
-    const where: any = { regra: Regra.USUARIO };
+    const where: any = { regra: { in: REGRAS_USUARIO } };
     if (!incluirInativos)  where.ativo      = true;
     if (!incluirDeletados) where.deletadoEm = null;
     if (setor) where.setor = setor as Setor;

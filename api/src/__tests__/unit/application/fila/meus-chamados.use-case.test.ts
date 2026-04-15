@@ -36,7 +36,7 @@ const makeInput = (overrides = {}): Parameters<typeof meusChamadosUseCase>[0] =>
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   descricao: 'Problema com acesso ao sistema',
   descricaoEncerramento: null,
   status: ChamadoStatus.ABERTO,
@@ -264,7 +264,7 @@ describe('meusChamadosUseCase', () => {
 
   describe('retorno da resposta paginada', () => {
     it('deve retornar data com os chamados', async () => {
-      const chamados = [makeChamado(), makeChamado({ id: 'chamado-id-456', OS: 'INC0002' })]
+      const chamados = [makeChamado(), makeChamado({ id: 'chamado-id-456', OS: 'INC0000002' })]
       vi.mocked(prisma.chamado.findMany).mockResolvedValue(chamados as any)
       vi.mocked(prisma.chamado.count).mockResolvedValue(2)
 

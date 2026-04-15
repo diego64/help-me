@@ -242,6 +242,12 @@ describe('atualizarUsuarioUseCase', () => {
 
       expect(cacheDel).not.toHaveBeenCalled()
     })
+
+    it('deve continuar mesmo se cacheDel falhar', async () => {
+      vi.mocked(cacheDel).mockRejectedValue(new Error('Redis error'))
+
+      await expect(atualizarUsuarioUseCase(makeInput({ nome: 'Ana' }))).resolves.toBeDefined()
+    })
   })
 
   describe('retorno e logging', () => {

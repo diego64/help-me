@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { getStringParamRequired } from '@shared/utils/request-params';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { REGRAS_USUARIO } from '@application/use-cases/usuario/selects';
 import { ChamadoError } from '@application/use-cases/chamado/errors';
 import { MIMETYPES_PERMITIDOS } from '@application/use-cases/chamado/helpers/upload-arquivos.helper';
 import { listarChamadosUseCase } from '@application/use-cases/chamado/listar-chamados.use-case';
@@ -140,7 +141,7 @@ function uploadMiddleware(req: any, res: any, next: any) {
  *       500:
  *         description: Erro ao listar chamados
  */
-router.get('/', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.get('/', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await listarChamadosUseCase({
       pagina:     Math.max(1, parseInt(req.query.pagina as string) || 1),
@@ -199,7 +200,7 @@ router.get('/', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), a
  *       500:
  *         description: Erro ao criar o chamado
  */
-router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), uploadMiddleware, async (req: AuthRequest, res) => {
+router.post('/abertura-chamado', authMiddleware, authorizeRoles(...REGRAS_USUARIO), uploadMiddleware, async (req: AuthRequest, res) => {
   try {
     const { descricao, servico } = req.body;
     const v = validarDescricao(descricao);
@@ -241,7 +242,7 @@ router.post('/abertura-chamado', authMiddleware, authorizeRoles('USUARIO'), uplo
  *       500:
  *         description: Erro ao editar chamado
  */
-router.patch('/:id', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), uploadMiddleware, async (req: AuthRequest, res) => {
+router.patch('/:id', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), uploadMiddleware, async (req: AuthRequest, res) => {
   try {
     const { descricao } = req.body;
     if (descricao) { const v = validarDescricao(descricao); if (!v.valida) return res.status(400).json({ error: v.erro }); }
@@ -280,7 +281,7 @@ router.patch('/:id', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), uploadM
  *       500:
  *         description: Erro ao fazer upload
  */
-router.post('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), uploadMiddleware, async (req: AuthRequest, res) => {
+router.post('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), uploadMiddleware, async (req: AuthRequest, res) => {
   try {
     const result = await uploadAnexosUseCase({
       chamadoId: getStringParamRequired(req.params.id),
@@ -312,7 +313,7 @@ router.post('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'U
  *       500:
  *         description: Erro ao listar anexos
  */
-router.get('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.get('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await listarAnexosUseCase(getStringParamRequired(req.params.id));
     res.status(200).json(result);
@@ -344,7 +345,7 @@ router.get('/:id/anexos', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'US
  *       500:
  *         description: Erro ao gerar URL
  */
-router.get('/:id/anexos/:anexoId/download', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.get('/:id/anexos/:anexoId/download', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await downloadAnexoUseCase({ chamadoId: getStringParamRequired(req.params.id), anexoId: getStringParamRequired(req.params.anexoId) });
     res.status(200).json(result);
@@ -378,7 +379,7 @@ router.get('/:id/anexos/:anexoId/download', authMiddleware, authorizeRoles('ADMI
  *       500:
  *         description: Erro ao remover anexo
  */
-router.delete('/:id/anexos/:anexoId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.delete('/:id/anexos/:anexoId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await deletarAnexoUseCase({ chamadoId: getStringParamRequired(req.params.id), anexoId: getStringParamRequired(req.params.anexoId), autorId: req.usuario!.id, autorRegra: req.usuario!.regra });
     res.status(200).json(result);
@@ -410,7 +411,7 @@ router.delete('/:id/anexos/:anexoId', authMiddleware, authorizeRoles('ADMIN', 'T
  *       500:
  *         description: Erro ao criar comentário
  */
-router.post('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.post('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const { comentario, visibilidadeInterna = false } = req.body;
     const v = validarComentario(comentario);
@@ -442,7 +443,7 @@ router.post('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO
  *       500:
  *         description: Erro ao listar comentários
  */
-router.get('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.get('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await listarComentariosUseCase({ chamadoId: getStringParamRequired(req.params.id), regra: req.usuario!.regra });
     res.status(200).json(result);
@@ -476,7 +477,7 @@ router.get('/:id/comentarios', authMiddleware, authorizeRoles('ADMIN', 'TECNICO'
  *       500:
  *         description: Erro ao editar comentário
  */
-router.put('/:id/comentarios/:comentarioId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.put('/:id/comentarios/:comentarioId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const { comentario } = req.body;
     const v = validarComentario(comentario);
@@ -514,7 +515,7 @@ router.put('/:id/comentarios/:comentarioId', authMiddleware, authorizeRoles('ADM
  *       500:
  *         description: Erro ao remover comentário
  */
-router.delete('/:id/comentarios/:comentarioId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.delete('/:id/comentarios/:comentarioId', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await deletarComentarioUseCase({ chamadoId: getStringParamRequired(req.params.id), comentarioId: getStringParamRequired(req.params.comentarioId), autorId: req.usuario!.id, autorRegra: req.usuario!.regra });
     res.status(200).json(result);
@@ -724,7 +725,7 @@ router.get('/:id/historico', authMiddleware, async (req: AuthRequest, res) => {
  *       500:
  *         description: Erro ao reabrir chamado
  */
-router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), async (req: AuthRequest, res) => {
+router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles(...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await reabrirChamadoUseCase({
       id:                   getStringParamRequired(req.params.id),
@@ -762,7 +763,7 @@ router.patch('/:id/reabrir-chamado', authMiddleware, authorizeRoles('USUARIO'), 
  *       500:
  *         description: Erro ao cancelar chamado
  */
-router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('USUARIO', 'ADMIN'), async (req: AuthRequest, res) => {
+router.patch('/:id/cancelar-chamado', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const { descricaoEncerramento } = req.body;
     const v = validarDescricao(descricaoEncerramento);
@@ -925,7 +926,7 @@ router.delete('/:id/vincular/:filhoId', authMiddleware, authorizeRoles('ADMIN', 
  *       500:
  *         description: Erro ao buscar hierarquia
  */
-router.get('/:id/hierarquia', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', 'USUARIO'), async (req: AuthRequest, res) => {
+router.get('/:id/hierarquia', authMiddleware, authorizeRoles('ADMIN', 'TECNICO', ...REGRAS_USUARIO), async (req: AuthRequest, res) => {
   try {
     const result = await hierarquiaChamadoUseCase(getStringParamRequired(req.params.id));
     res.status(200).json(result);

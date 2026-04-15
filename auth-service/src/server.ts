@@ -28,13 +28,6 @@ async function bootstrap(): Promise<void> {
   }
   logger.info('[SERVER] Redis conectado');
 
-  try {
-    await connectProducer();
-    logger.info('[SERVER] Kafka producer conectado');
-  } catch (err) {
-    logger.warn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos');
-  }
-
   const app = createApp();
 
   const server = app.listen(PORT, () => {
@@ -48,6 +41,14 @@ async function bootstrap(): Promise<void> {
       `[SERVER] Auth-service rodando na porta ${PORT}`
     );
   });
+
+  // Kafka conecta em background — não bloqueia o servidor HTTP
+  connectProducer()
+    .then(() => logger.info('[SERVER] Kafka producer conectado'))
+    .catch((err) => {
+      const logFn = NODE_ENV === 'development' ? logger.info.bind(logger) : logger.warn.bind(logger);
+      logFn({ err }, '[SERVER] Kafka producer indisponível — serviço continua sem eventos');
+    });
 
   async function shutdown(signal: string): Promise<void> {
     logger.info({ signal }, '[SERVER] Sinal recebido — iniciando graceful shutdown...');

@@ -1,9 +1,9 @@
 import path from 'path';
 import { Router, Response } from 'express';
 import multer from 'multer';
-import { Regra } from '@prisma/client';
 import { getStringParamRequired, getNumberParamClamped, getBooleanParam, getStringParam } from '@shared/utils/request-params';
 import { authMiddleware, authorizeRoles, AuthRequest } from '@infrastructure/http/middlewares/auth';
+import { REGRAS_USUARIO } from '@application/use-cases/usuario/selects';
 import { UsuarioError } from '@application/use-cases/usuario/errors';
 import { listarUsuariosUseCase } from '@application/use-cases/usuario/listar-usuarios.use-case';
 import { buscarUsuarioUseCase } from '@application/use-cases/usuario/buscar-usuario.use-case';
@@ -178,11 +178,11 @@ router.post('/email', authMiddleware, authorizeRoles('ADMIN'), async (req: AuthR
  *       500:
  *         description: Erro ao buscar usuário
  */
-router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res: Response) => {
+router.get('/:id', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const id = getStringParamRequired(req.params.id);
 
-    if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+    if (REGRAS_USUARIO.includes(req.usuario!.regra as any) && req.usuario!.id !== id) {
       return res.status(403).json({ error: 'Você só pode visualizar seu próprio perfil' });
     }
 
@@ -223,12 +223,12 @@ router.get('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
  *       500:
  *         description: Erro ao atualizar usuário
  */
-router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res: Response) => {
+router.put('/:id', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const id = getStringParamRequired(req.params.id);
     const { nome, sobrenome, email, telefone, ramal, setor } = req.body;
 
-    if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+    if (REGRAS_USUARIO.includes(req.usuario!.regra as any) && req.usuario!.id !== id) {
       return res.status(403).json({ error: 'Você só pode editar seu próprio perfil' });
     }
 
@@ -280,11 +280,11 @@ router.put('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (re
  *       500:
  *         description: Erro ao fazer upload
  */
-router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), upload.single('avatar'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), upload.single('avatar'), async (req: AuthRequest, res: Response) => {
   try {
     const id = getStringParamRequired(req.params.id);
 
-    if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+    if (REGRAS_USUARIO.includes(req.usuario!.regra as any) && req.usuario!.id !== id) {
       return res.status(403).json({ error: 'Você só pode fazer upload do seu próprio avatar' });
     }
 
@@ -326,11 +326,11 @@ router.post('/:id/avatar', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), u
  *       500:
  *         description: Erro ao deletar usuário
  */
-router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', 'USUARIO'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authMiddleware, authorizeRoles('ADMIN', ...REGRAS_USUARIO), async (req: AuthRequest, res: Response) => {
   try {
     const id = getStringParamRequired(req.params.id);
 
-    if (req.usuario!.regra === Regra.USUARIO && req.usuario!.id !== id) {
+    if (REGRAS_USUARIO.includes(req.usuario!.regra as any) && req.usuario!.id !== id) {
       return res.status(403).json({ error: 'Você só pode deletar sua própria conta' });
     }
 

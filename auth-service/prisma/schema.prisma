@@ -10,6 +10,9 @@ datasource db {
 
 enum Regra {
   ADMIN
+  COMPRADOR
+  GESTOR
+  INVENTARIANTE
   TECNICO
   USUARIO
 }
@@ -34,6 +37,7 @@ model Usuario {
   email        String    @unique @db.VarChar(255)
   password     String    @db.VarChar(512)
   regra        Regra
+  setor        String?   @db.VarChar(50)
   refreshToken String?   @map("refresh_token")
   ativo        Boolean   @default(true)
 

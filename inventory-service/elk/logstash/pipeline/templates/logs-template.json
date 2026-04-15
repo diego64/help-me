@@ -1,0 +1,50 @@
+{
+  "index_patterns": ["inventory-logs-*"],
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "index.lifecycle.name": "inventory-logs-policy",
+    "refresh_interval": "5s"
+  },
+  "mappings": {
+    "dynamic": true,
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "level":        { "type": "keyword" },
+      "msg":          { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } } },
+      "service":      { "type": "keyword" },
+      "environment":  { "type": "keyword" },
+      "pid":          { "type": "integer" },
+      "hostname":     { "type": "keyword" },
+      "http_method":  { "type": "keyword" },
+      "http_url":     { "type": "keyword" },
+      "http_status":  { "type": "integer" },
+      "request_id":   { "type": "keyword" },
+      "response_time_ms": { "type": "float" },
+      "req": {
+        "type": "object",
+        "properties": {
+          "method":        { "type": "keyword" },
+          "url":           { "type": "keyword" },
+          "remoteAddress": { "type": "keyword" },
+          "remotePort":    { "type": "integer" },
+          "id":            { "type": "keyword" }
+        }
+      },
+      "res": {
+        "type": "object",
+        "properties": {
+          "statusCode": { "type": "integer" }
+        }
+      },
+      "error": {
+        "type": "object",
+        "properties": {
+          "type":    { "type": "keyword" },
+          "message": { "type": "text" },
+          "stack":   { "type": "text" }
+        }
+      }
+    }
+  }
+}

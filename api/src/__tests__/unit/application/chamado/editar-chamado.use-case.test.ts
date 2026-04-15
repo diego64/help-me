@@ -56,7 +56,7 @@ const makeInput = (overrides = {}): Parameters<typeof editarChamadoUseCase>[0] =
 
 const makeChamado = (overrides = {}) => ({
   id: 'chamado-id-123',
-  OS: 'INC0001',
+  OS: 'INC0000001',
   status: ChamadoStatus.ABERTO,
   usuarioId: 'usuario-id-123',
   deletadoEm: null,
@@ -282,7 +282,7 @@ describe('editarChamadoUseCase', () => {
       const arquivos = [makeArquivo()]
       await editarChamadoUseCase(makeInput({ descricao: undefined, arquivos }))
 
-      expect(uploadArquivos).toHaveBeenCalledWith(arquivos, 'chamado-id-123', 'INC0001', 'admin-id-123')
+      expect(uploadArquivos).toHaveBeenCalledWith(arquivos, 'chamado-id-123', 'INC0000001', 'admin-id-123')
     })
 
     it('deve criar anexos na transação quando uploadArquivos retorna dados', async () => {
