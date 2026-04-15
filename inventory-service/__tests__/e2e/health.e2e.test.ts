@@ -15,7 +15,7 @@ vi.mock('@infrastructure/database/prisma.client', () => ({
     baixa: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     itemBaixa: { findMany: vi.fn() },
     contador: { upsert: vi.fn() },
-    $queryRaw: vi.fn(),
+    $queryRaw: vi.fn().mockResolvedValue([{ 1: 1 }]),
   },
 }));
 
@@ -46,7 +46,7 @@ vi.mock('@shared/config/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { createApp } from '@/app';
+import { createApp } from '../../src/app';
 
 const app = createApp();
 
