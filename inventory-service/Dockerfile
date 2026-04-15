@@ -39,8 +39,8 @@ RUN pnpm install --frozen-lockfile --prod
 # Copia schema e migrations (necessário para prisma migrate deploy no initContainer)
 COPY --from=builder /app/prisma ./prisma
 
-# Re-gera o Prisma client no contexto das prod deps
-RUN pnpm exec prisma generate
+# Copia o Prisma Client já gerado no builder (evita precisar do prisma CLI no runtime)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copia o build compilado
 COPY --from=builder /app/dist ./dist
