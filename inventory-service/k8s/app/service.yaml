@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: inventory
+  labels:
+    app.kubernetes.io/name: inventory-service
+    app.kubernetes.io/part-of: helpme
+  annotations:
+    # Kong KIC: expõe o serviço via Kong Ingress Controller
+    # Remova as annotations se não estiver usando Kong KIC
+    konghq.com/protocol: "http"
+spec:
+  # ClusterIP: o Kong (ou Ingress) roteia o tráfego externo para cá
+  type: ClusterIP
+  selector:
+    app: inventory-service
+  ports:
+    - name: http
+      port: 3334
+      targetPort: 3334
+      protocol: TCP

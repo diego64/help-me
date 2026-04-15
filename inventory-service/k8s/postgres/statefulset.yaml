@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: inventory-postgres
+  namespace: inventory
+  labels:
+    app.kubernetes.io/name: inventory-postgres
+    app.kubernetes.io/part-of: helpme
+spec:
+  serviceName: inventory-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-postgres
+  template:
+    metadata:
+      labels:
+        app: inventory-postgres
+        app.kubernetes.io/name: inventory-postgres
+    spec:
+      securityContext:
+        runAsUser: 999   # uid do usuário postgres na imagem oficial
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:17.9
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: inventory-config
+                  key: DB_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: inventory-config
+                  key: DB_NAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: inventory-secrets
+                  key: DB_PASSWORD
+            - name: POSTGRES_MAX_CONNECTIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: inventory-config
+                  key: DB_MAX_CONNECTIONS
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "administrator", "-d", "inventory-database"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "administrator", "-d", "inventory-database"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
